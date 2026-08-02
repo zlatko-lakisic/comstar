@@ -1,0 +1,1 @@
+{"success":false,"error":"No face found in image","inferenceMs":46,"moduleId":"FaceProcessing","moduleName":"Face Processing","code":500,"command":"recognize","requestId":"b8406c05-01a3-4bef-8105-b38a6d3c8f2a","inferenceDevice":"GPU","analysisRoundTripMs":50,"processedBy":"localhost","timestampUTC":"Sun, 02 Aug 2026 02:08:56 GMT"}

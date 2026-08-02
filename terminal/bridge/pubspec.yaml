@@ -1,0 +1,22 @@
+name: comstar_bridge
+description: COMSTAR bridge — ao_reach sidecar and local WebSocket API.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.5.0
+
+dependencies:
+  args: ^2.6.0
+  ao_reach:
+    path: ../../vendor/agentic-orchestration-reach
+  path: ^1.9.0
+  shelf: ^1.4.2
+  shelf_web_socket: ^2.0.1
+  uuid: ^4.5.1
+  web_socket_channel: ^3.0.1
+  yaml: ^3.1.3
+
+dev_dependencies:
+  lints: ^5.0.0
+  test: ^1.25.0

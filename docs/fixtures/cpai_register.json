@@ -1,0 +1,1 @@
+{"success":true,"message":"face added","inferenceMs":295,"processMs":346,"moduleId":"FaceProcessing","moduleName":"Face Processing","code":200,"command":"register","requestId":"cd232cf6-502d-4703-b848-de9bfa8037d3","inferenceDevice":"GPU","analysisRoundTripMs":352,"processedBy":"localhost","timestampUTC":"Sun, 02 Aug 2026 02:08:56 GMT"}

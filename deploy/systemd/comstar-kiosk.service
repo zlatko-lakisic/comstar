@@ -1,0 +1,17 @@
+[Unit]
+Description=COMSTAR kiosk (Chromium avatar renderer)
+After=network-online.target comstar-bridge.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/comstar/terminal/kiosk
+Environment=COMSTAR_LOG=info
+ExecStart=/usr/bin/chromium-browser --kiosk --noerrdialogs file://%h/comstar/terminal/kiosk/index.html
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=2
+
+[Install]
+WantedBy=default.target

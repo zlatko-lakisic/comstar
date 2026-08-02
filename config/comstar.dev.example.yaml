@@ -1,0 +1,42 @@
+# Dev config — copy to config/comstar.dev.yaml for Mac-side bridge development.
+# Requires COMSTAR_ENV=dev and a non-empty lan_token when bind_lan is true.
+
+orchestration:
+  base_url: http://10.0.10.16:8765
+  token: ""
+  ttl_seconds: 3600
+  timeout_seconds: 15
+  overlay_root: ./overlays/comstar
+
+vision:
+  codeproject_url: http://10.0.10.16:32168
+  detection_endpoint: /v1/vision/detection
+  recognize_endpoint: /v1/vision/face/recognize
+  ambient_fps: 1
+  engaged_fps: 3
+  person_confidence: 0.60
+  face_confidence: 0.55
+  recognize_votes: 3
+  identity_ttl_seconds: 300
+
+audio:
+  wakeword_model: ./models/hey_comstar.onnx
+  wakeword_threshold: 0.55
+  vad_silence_ms: 700
+  max_utterance_seconds: 15
+  followup_window_seconds: 10
+  duplex: half
+
+avatar:
+  render: local
+  model: ./assets/comstar.glb
+  tts: piper
+  piper_voice: en_US-ryan-high
+
+attention:
+  face_attention_trigger: false
+  stranger_mode: restricted
+
+dev:
+  bind_lan: true
+  lan_token: "change-me-dev-token"

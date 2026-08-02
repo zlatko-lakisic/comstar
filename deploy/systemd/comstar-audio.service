@@ -1,0 +1,18 @@
+[Unit]
+Description=COMSTAR audio (wake word, VAD, capture)
+After=network-online.target comstar-bridge.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/comstar/terminal/audio
+Environment=COMSTAR_BRIDGE=ws://127.0.0.1:8778/audio
+Environment=COMSTAR_LOG=info
+ExecStart=%h/comstar/terminal/audio/.venv/bin/python __main__.py
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=2
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,43 @@
+# COMSTAR configuration — copy to config/comstar.yaml and edit.
+# Unknown keys cause a fatal startup error (typo protection).
+
+orchestration:
+  base_url: http://10.0.10.16:8765          # AO daemon WebSocket/HTTP base
+  token: ""                                  # x-warpgate-token (set in real config, never commit)
+  ttl_seconds: 3600
+  timeout_seconds: 15                        # 5–60 per CONTRACTS §7
+  overlay_root: ./overlays/comstar
+
+vision:
+  codeproject_url: http://10.0.10.16:32168
+  detection_endpoint: /v1/vision/detection
+  recognize_endpoint: /v1/vision/face/recognize
+  ambient_fps: 1                             # 0.2–5
+  engaged_fps: 3                             # ambient_fps–10
+  person_confidence: 0.60                    # 0.3–0.95
+  face_confidence: 0.55                      # 0.3–0.95
+  recognize_votes: 3                         # 1–10 consecutive matches
+  identity_ttl_seconds: 300
+
+audio:
+  wakeword_model: ./models/hey_comstar.onnx
+  wakeword_threshold: 0.55                   # 0.2–0.95
+  vad_silence_ms: 700                        # 300–2000
+  max_utterance_seconds: 15
+  followup_window_seconds: 10                # 0–30
+  duplex: half                               # half | full
+
+avatar:
+  render: local                              # local | streamed
+  model: ./assets/comstar.glb
+  tts: piper
+  piper_voice: en_US-ryan-high
+
+attention:
+  face_attention_trigger: false
+  stranger_mode: restricted                    # restricted | greet | ignore
+
+# Dev-mode LAN binding — production must keep bind_lan: false.
+dev:
+  bind_lan: false
+  lan_token: ""

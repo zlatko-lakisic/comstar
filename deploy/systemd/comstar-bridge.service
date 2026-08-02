@@ -1,0 +1,18 @@
+[Unit]
+Description=COMSTAR bridge (ao_reach sidecar + local WS)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/comstar
+Environment=COMSTAR_CONFIG=%h/comstar/config/comstar.yaml
+Environment=COMSTAR_LOG=info
+ExecStart=%h/comstar/terminal/bridge/build/comstar_bridge --config %h/comstar/config/comstar.yaml
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=2
+
+[Install]
+WantedBy=default.target

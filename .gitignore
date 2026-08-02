@@ -1,0 +1,13 @@
+config/comstar.yaml
+config/comstar.dev.yaml
+.venv
+node_modules
+*.onnx
+*.glb
+docs/fixtures/*.jpg
+docs/fixtures/*.png
+.dart_tool
+build/
+__pycache__
+.DS_Store
+spike/.dart_tool
