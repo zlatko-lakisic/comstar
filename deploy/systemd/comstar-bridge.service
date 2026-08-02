@@ -1,6 +1,6 @@
 [Unit]
 Description=COMSTAR bridge
-After=network-online.target
+After=network-online.target sound.target
 Wants=network-online.target
 
 [Service]
@@ -11,6 +11,11 @@ Environment=COMSTAR_CPAI_URL=http://10.0.10.16:32168
 Environment=COMSTAR_CAMERA_INPUT=/dev/video0
 Environment=COMSTAR_VISION=1
 Environment=COMSTAR_LOG=info
+Environment=COMSTAR_LOCAL_SPEAKER=1
+Environment=COMSTAR_STT_URL=http://127.0.0.1:8090
+Environment=PATH=/opt/comstar/bin:/usr/local/bin:/usr/bin:/bin
+Environment=LD_LIBRARY_PATH=/opt/comstar/bin
+Environment=XDG_RUNTIME_DIR=/run/user/1000
 ExecStart=/usr/local/bin/dart run bin/comstar_bridge.dart --config /opt/comstar/src/config/comstar.yaml
 Restart=on-failure
 RestartSec=5

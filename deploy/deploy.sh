@@ -18,6 +18,8 @@ rsync -az --delete \
   --exclude '.dart_tool/' \
   --exclude 'terminal/bridge/build/' \
   --exclude 'terminal/audio/.venv/' \
+  --exclude 'config/comstar.yaml' \
+  --exclude 'config/comstar.dev.yaml' \
   "$ROOT/" "$REMOTE:$REMOTE_DIR/"
 
 echo "Ensuring production config + systemd units…"
@@ -34,13 +36,15 @@ fi
 
 UNIT_DIR="$HOME/.config/systemd/user"
 mkdir -p "$UNIT_DIR"
-for unit in comstar-bridge comstar-audio comstar-kiosk; do
+for unit in comstar-bridge comstar-audio comstar-kiosk comstar-stt; do
   src="$REMOTE_DIR/deploy/systemd/${unit}.service"
-  cp "$src" "$UNIT_DIR/${unit}.service"
-  echo "installed $unit.service"
+  if [[ -f "$src" ]]; then
+    cp "$src" "$UNIT_DIR/${unit}.service"
+    echo "installed $unit.service"
+  fi
 done
 systemctl --user daemon-reload
-systemctl --user enable comstar-bridge.service comstar-audio.service comstar-kiosk.service >/dev/null
+systemctl --user enable comstar-bridge.service comstar-audio.service comstar-kiosk.service comstar-stt.service >/dev/null
 EOF
 
 echo "Running dart pub get on bridge…"
@@ -50,6 +54,7 @@ if [[ "$RESTART" == "1" ]]; then
   echo "Restarting user systemd units…"
   ssh "$REMOTE" bash -s <<'EOF'
 set -euo pipefail
+systemctl --user restart comstar-stt.service || true
 systemctl --user restart comstar-bridge.service
 # Wait until bridge WS port is up (dart compile can take a few seconds)
 for i in $(seq 1 30); do
@@ -62,7 +67,7 @@ done
 systemctl --user restart comstar-audio.service
 systemctl --user restart comstar-kiosk.service
 sleep 2
-systemctl --user --no-pager is-active comstar-bridge comstar-audio comstar-kiosk
+systemctl --user --no-pager is-active comstar-bridge comstar-audio comstar-kiosk comstar-stt || true
 EOF
 fi
 

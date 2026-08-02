@@ -31,7 +31,8 @@ avatar:
   render: local                              # local | streamed
   model: ./assets/comstar.glb
   tts: piper
-  piper_voice: en_US-ryan-high
+  piper_voice: en_US-ryan-high               # or absolute path to .onnx on the Pi
+                                             # e.g. /opt/comstar/models/en_US-lessac-medium.onnx
 
 attention:
   face_attention_trigger: false

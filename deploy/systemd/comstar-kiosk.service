@@ -10,8 +10,7 @@ Environment=COMSTAR_LOG=info
 Environment=DISPLAY=:0
 Environment=WAYLAND_DISPLAY=wayland-0
 Environment=XDG_RUNTIME_DIR=/run/user/1000
-# Served by bridge HttpAudioServer at :8776/kiosk/ (ES modules need http://, not file://).
-ExecStart=/usr/bin/chromium --ozone-platform=wayland --user-data-dir=%h/.config/comstar-kiosk-chromium --kiosk --noerrdialogs --disable-session-crashed-bubble --no-first-run --check-for-update-interval=31536000 http://127.0.0.1:8776/kiosk/
+ExecStart=/bin/bash /opt/comstar/src/scripts/kiosk-launch.sh
 Restart=on-failure
 RestartSec=5
 KillSignal=SIGTERM

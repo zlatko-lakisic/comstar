@@ -112,7 +112,17 @@ class PiperTts implements TtsEngine {
   Future<bool> _ensurePiper() async {
     if (_piperAvailable != null) return _piperAvailable!;
     try {
-      final result = await Process.run(piperBinary, ['--version']);
+      final result = await Process.run(
+        piperBinary,
+        ['--version'],
+        environment: {
+          ...Platform.environment,
+          'LD_LIBRARY_PATH':
+              '/opt/comstar/bin${Platform.environment['LD_LIBRARY_PATH'] != null ? ':${Platform.environment['LD_LIBRARY_PATH']}' : ''}',
+          'PATH':
+              '/opt/comstar/bin:/usr/local/bin:/usr/bin:/bin${Platform.environment['PATH'] != null ? ':${Platform.environment['PATH']}' : ''}',
+        },
+      );
       _piperAvailable = result.exitCode == 0;
     } on Object {
       _piperAvailable = false;
@@ -151,6 +161,13 @@ class PiperTts implements TtsEngine {
           '--output_file',
           outPath,
         ],
+        environment: {
+          ...Platform.environment,
+          'LD_LIBRARY_PATH':
+              '/opt/comstar/bin${Platform.environment['LD_LIBRARY_PATH'] != null ? ':${Platform.environment['LD_LIBRARY_PATH']}' : ''}',
+          'PATH':
+              '/opt/comstar/bin:/usr/local/bin:/usr/bin:/bin${Platform.environment['PATH'] != null ? ':${Platform.environment['PATH']}' : ''}',
+        },
       );
       process.stdin.write(text);
       await process.stdin.close();

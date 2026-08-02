@@ -31,7 +31,7 @@ avatar:
   render: local
   model: ./assets/comstar.glb
   tts: piper
-  piper_voice: en_US-ryan-high
+  piper_voice: /opt/comstar/models/en_US-lessac-medium.onnx
 
 attention:
   face_attention_trigger: false

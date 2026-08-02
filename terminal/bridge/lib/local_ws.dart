@@ -142,6 +142,8 @@ class LocalWs {
     }
   }
 
+  bool hasRole(String role) => (_clientsByRole[role] ?? const []).isNotEmpty;
+
   void _handleConnection(WebSocketChannel channel, String role) {
     _clients.add(channel);
     _clientsByRole.putIfAbsent(role, () => []).add(channel);

@@ -114,6 +114,12 @@ class HttpAudioServer {
     return 'http://$host:$port/$id';
   }
 
+  /// Looks up a registered file by basename or full URL path segment.
+  String? filePathForUrl(String audioUrl) {
+    final id = p.basename(Uri.parse(audioUrl).path);
+    return _files[id];
+  }
+
   Future<void> stop() async {
     await _server?.close(force: true);
     _server = null;

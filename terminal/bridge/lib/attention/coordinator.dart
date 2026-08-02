@@ -168,6 +168,7 @@ class AttentionCoordinator {
             data: {'text': text, 'audioUrl': audioUrl},
           ),
         );
+        unawaited(_maybePlayLocal(audioUrl));
       case SpeakFallback(:final line, :final turnId):
         unawaited(_speakFallback(line, turnId));
       case PlayErrorTone():
@@ -395,6 +396,7 @@ class AttentionCoordinator {
           data: {'text': greeting, 'audioUrl': audioUrl},
         ),
       );
+      unawaited(_maybePlayLocal(audioUrl));
     } catch (e) {
       logWarn('greeter_failed', e.toString(), data: {'userid': userid});
       _sendAudio(
@@ -422,6 +424,41 @@ class AttentionCoordinator {
     final path = p.join(dir, name);
     if (File(path).existsSync()) return path;
     return null;
+  }
+
+  Future<void> _maybePlayLocal(String audioUrl) async {
+    // Bring-up: play on Pi speakers when enabled, or when no kiosk is connected.
+    final force = Platform.environment['COMSTAR_LOCAL_SPEAKER'] == '1';
+    if (!force && ws.hasRole('kiosk')) return;
+    final path = audioServer.filePathForUrl(audioUrl);
+    if (path == null) return;
+    try {
+      final paplay = await Process.run('paplay', [path]);
+      if (paplay.exitCode == 0) {
+        logInfo('local_speaker', 'Played via paplay', data: {'path': path});
+        // Synthetic speak.ended if kiosk absent so follow-up can open.
+        if (!ws.hasRole('kiosk')) {
+          _cancelSpeakWatchdog();
+          handle(const PlaybackEnded());
+        }
+        return;
+      }
+      final aplay = await Process.run('aplay', [path]);
+      if (aplay.exitCode == 0) {
+        logInfo('local_speaker', 'Played via aplay', data: {'path': path});
+        if (!ws.hasRole('kiosk')) {
+          _cancelSpeakWatchdog();
+          handle(const PlaybackEnded());
+        }
+        return;
+      }
+      logWarn('local_speaker_failed', 'paplay/aplay failed', data: {
+        'paplay': paplay.exitCode,
+        'aplay': aplay.exitCode,
+      });
+    } catch (e) {
+      logWarn('local_speaker_failed', e.toString());
+    }
   }
 
   void _sendAudio(Envelope envelope) {

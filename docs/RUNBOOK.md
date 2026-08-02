@@ -13,6 +13,9 @@ Hardware baseline: `docs/BASELINES.md`. Dev workflow: `docs/DEV_LOOP.md`.
 | `/opt/comstar/src/config/comstar.yaml` | Production config (created from example on first deploy; not in git) |
 | `/opt/comstar/src/models/` | Wake-word ONNX, avatar GLB (not in repo) |
 | SSH `comstar` | `md-admin@192.168.89.34` (key auth) |
+| Piper TTS | `/usr/local/bin/piper` → `/opt/comstar/bin/piper`; voice `/opt/comstar/models/en_US-lessac-medium.onnx` |
+| Local STT | `comstar-stt` on `127.0.0.1:8090` (faster-whisper `tiny`) |
+| Local speaker | `COMSTAR_LOCAL_SPEAKER=1` plays via `paplay` when kiosk absent |
 | `~/.config/systemd/user/` | User units: `comstar-bridge`, `comstar-audio`, `comstar-kiosk` |
 
 Deploy from the Mac:

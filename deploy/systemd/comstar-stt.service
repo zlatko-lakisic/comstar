@@ -1,0 +1,14 @@
+[Unit]
+Description=COMSTAR local STT (faster-whisper)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/comstar/src
+ExecStart=/opt/comstar/.venv-stt/bin/python scripts/stt_server.py --host 127.0.0.1 --port 8090 --model tiny
+Restart=on-failure
+RestartSec=5
+Environment=OMP_NUM_THREADS=2
+
+[Install]
+WantedBy=default.target
