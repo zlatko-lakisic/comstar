@@ -10,8 +10,10 @@ FRAME_MS = 320
 FRAME_SAMPLES = int(SAMPLE_RATE * FRAME_MS / 1000)
 FRAME_BYTES = FRAME_SAMPLES * 2
 # Include ring audio before listen.start so speech overlapping the wake word is kept.
-PRE_ROLL_MS = 500
+PRE_ROLL_MS = 2000
 PRE_ROLL_BYTES = int(SAMPLE_RATE * PRE_ROLL_MS / 1000) * 2
+# Ignore VAD right after listen.start so HDMI TTS echo does not end the turn.
+VAD_SETTLE_MS = 1500
 
 
 SendBinary = Callable[[bytes], Awaitable[None] | None]
@@ -39,6 +41,7 @@ class PcmStreamer:
         self._read_offset = 0
         self._pending: bytes = b""
         self._started_ms = 0
+        self._vad_live = False
 
     @property
     def active(self) -> bool:
@@ -59,6 +62,7 @@ class PcmStreamer:
             self._pending = snapshot
         self._read_offset = len(snapshot)
         self._started_ms = 0
+        self._vad_live = False
 
         if self.vad is not None:
             self.vad.reset()
@@ -112,20 +116,28 @@ class PcmStreamer:
                     self._started_ms = frames * FRAME_MS
 
                     if self.vad is not None and not speech_ended:
-                        speech_start, speech_end = self.vad.process(frame)
-                        if speech_start:
-                            await _maybe_await(
-                                self.send_envelope("vad.speech_start", {}, turn_id),
-                            )
-                        if speech_end:
-                            speech_ended = True
-                            await _maybe_await(
-                                self.send_envelope(
-                                    "vad.speech_end",
-                                    {"durationMs": self._started_ms},
-                                    turn_id,
-                                ),
-                            )
+                        if self._started_ms < VAD_SETTLE_MS:
+                            # Still settling after TTS — keep streaming PCM but
+                            # do not emit speech_start/end from echo.
+                            pass
+                        else:
+                            if not self._vad_live:
+                                self.vad.reset()
+                                self._vad_live = True
+                            speech_start, speech_end = self.vad.process(frame)
+                            if speech_start:
+                                await _maybe_await(
+                                    self.send_envelope("vad.speech_start", {}, turn_id),
+                                )
+                            if speech_end:
+                                speech_ended = True
+                                await _maybe_await(
+                                    self.send_envelope(
+                                        "vad.speech_end",
+                                        {"durationMs": self._started_ms},
+                                        turn_id,
+                                    ),
+                                )
 
                     await _maybe_await(self.send_binary(frame))
 

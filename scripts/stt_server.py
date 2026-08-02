@@ -107,8 +107,28 @@ class SttHandler(BaseHTTPRequestHandler):
             tmp_path = Path(tmp.name)
 
         try:
-            segments, _info = self._model.transcribe(str(tmp_path))
+            # Keep a copy for debugging empty transcripts on the Pi.
+            debug_path = Path("/tmp/comstar-last-utterance.wav")
+            debug_path.write_bytes(file_bytes)
+
+            segments, info = self._model.transcribe(
+                str(tmp_path),
+                language="en",
+                task="transcribe",
+                # Short / quiet webcam clips get wiped by Silero VAD inside whisper.
+                vad_filter=False,
+                beam_size=3,
+                best_of=3,
+                temperature=0.0,
+                condition_on_previous_text=False,
+                no_speech_threshold=0.45,
+            )
             text = " ".join(segment.text.strip() for segment in segments).strip()
+            print(
+                f"[stt] bytes={len(file_bytes)} lang={getattr(info, 'language', '?')} "
+                f"prob={getattr(info, 'language_probability', 0):.2f} text={text!r}",
+                file=sys.stderr,
+            )
         finally:
             tmp_path.unlink(missing_ok=True)
 

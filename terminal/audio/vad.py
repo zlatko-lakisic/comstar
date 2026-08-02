@@ -12,6 +12,7 @@ class VadEngine:
         self._silero = None
         self._speech = False
         self._silence_samples = 0
+        self._speech_samples = 0
         self._load_silero()
 
     def _load_silero(self) -> None:
@@ -35,6 +36,7 @@ class VadEngine:
     def reset(self) -> None:
         self._speech = False
         self._silence_samples = 0
+        self._speech_samples = 0
 
     def process(self, pcm: bytes) -> tuple[bool | None, bool | None]:
         """Returns (speech_start, speech_end) flags for this chunk."""
@@ -54,14 +56,22 @@ class VadEngine:
                 speech_start = True
             self._speech = True
             self._silence_samples = 0
+            self._speech_samples += samples.size
         else:
             if self._speech:
                 self._silence_samples += samples.size
                 silence_needed = int(self.sample_rate * self.silence_ms / 1000)
-                if self._silence_samples >= silence_needed:
+                # Require a bit of real speech before allowing end (avoids
+                # one-frame wake blips ending the utterance immediately).
+                min_speech = int(self.sample_rate * 0.4)  # 400ms
+                if (
+                    self._silence_samples >= silence_needed
+                    and self._speech_samples >= min_speech
+                ):
                     speech_end = True
                     self._speech = False
                     self._silence_samples = 0
+                    self._speech_samples = 0
 
         return speech_start, speech_end
 
@@ -76,4 +86,5 @@ class VadEngine:
 
     def _energy_detect(self, samples: np.ndarray) -> bool:
         rms = float(np.sqrt(np.mean(np.square(samples.astype(np.float32) / 32768.0))))
-        return rms > 0.02
+        # Webcam mic at +10dB software gain; keep sensitive but above idle hiss.
+        return rms > 0.015

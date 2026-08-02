@@ -160,6 +160,7 @@ class AttentionCoordinator {
           Envelope.create(type: 'thinking', data: {'active': active}),
         );
       case Speak(:final text, :final audioUrl, :final turnId):
+        machine.context.playing = true;
         _beginSpeakWatchdog();
         _broadcastKiosk(
           Envelope.create(
@@ -179,6 +180,13 @@ class AttentionCoordinator {
         );
       case OpenFollowUpWindow():
         _openFollowUpWindow();
+      case PromoteListening():
+        _followUpTimer?.cancel();
+        _followUpTimer = null;
+        logInfo('listen_promote', 'Promoted follow-up capture to Listening');
+        _broadcastKiosk(
+          Envelope.create(type: 'listening', data: {'active': true}),
+        );
       case RunGreeter(:final userid):
         unawaited(_runGreeterAfterSession(userid));
       case EmitState(:final stateName, :final userid, :final displayName):
@@ -199,15 +207,25 @@ class AttentionCoordinator {
 
   void _openFollowUpWindow() {
     final seconds = config.audio.followupWindowSeconds;
-    logDebug('followup', 'Follow-up window opened', data: {'seconds': seconds});
+    logInfo('followup', 'Follow-up window opened', data: {'seconds': seconds});
+    final turnId = 'followup-${clock.nowMs}';
+    machine.context.followUpOpen = true;
+    machine.context.followUpListening = true;
+    machine.context.followUpOpenedAtMs = clock.nowMs;
+    machine.context.turnId = turnId;
+    machine.context.listeningStartedAtMs = clock.nowMs;
+    _captureBuffer.clear();
     _broadcastKiosk(
       Envelope.create(
         type: 'listening',
         data: {'active': true, 'followUp': true},
       ),
     );
+    // Keep force-wake muted until TTS echo settles; VAD also settles in audio.
+    _sendAudio(
+      Envelope.create(type: 'wake.enable', data: {'enabled': false}),
+    );
     // Stream mic so VAD can fire SpeechStart without a wake word.
-    final turnId = 'followup-${clock.nowMs}';
     _sendAudio(
       Envelope.create(
         type: 'listen.start',
@@ -218,17 +236,31 @@ class AttentionCoordinator {
         },
       ),
     );
+    Future<void>.delayed(const Duration(milliseconds: 1500), () {
+      if (machine.context.turnId != turnId) return;
+      if (machine.state is Engaged || machine.context.followUpListening) {
+        machine.context.wakeEnabled = true;
+        _sendAudio(
+          Envelope.create(type: 'wake.enable', data: {'enabled': true}),
+        );
+        logInfo('followup', 'Follow-up mic armed after settle');
+      }
+    });
     _followUpTimer?.cancel();
     _followUpTimer = Timer(Duration(seconds: seconds), () {
       // Only stop if we never entered a real listening turn.
       if (machine.state is! Listening) {
+        machine.context.followUpListening = false;
+        if (machine.context.turnId == turnId) {
+          machine.context.turnId = null;
+        }
         _sendAudio(Envelope.create(type: 'listen.stop'));
         _broadcastKiosk(
           Envelope.create(type: 'listening', data: {'active': false}),
         );
       }
       machine.context.followUpOpen = false;
-      logDebug('followup', 'Follow-up window closed');
+      logInfo('followup', 'Follow-up window closed');
     });
   }
 
@@ -266,6 +298,14 @@ class AttentionCoordinator {
       case 'audio.end':
         break;
       case 'level':
+        // Only drive the avatar mic meter while we are actually capturing.
+        // Broadcasting active=true on every RMS sample made the orb "listen"
+        // continuously even after the follow-up window closed.
+        final listening = machine.state is Listening ||
+            machine.context.followUpListening;
+        if (!listening) {
+          break;
+        }
         final rms = (envelope.data['rms'] as num?)?.toDouble() ?? 0;
         _broadcastKiosk(
           Envelope.create(
@@ -289,13 +329,19 @@ class AttentionCoordinator {
         }
       case 'speak.ended':
         _cancelSpeakWatchdog();
-        // Greeter speaks while Engaged (not Responding) — re-enable wake here.
-        if (machine.context.state is! Responding) {
-          _sendAudio(
-            Envelope.create(type: 'wake.enable', data: {'enabled': true}),
-          );
-        }
+        logInfo(
+          'speak_ended',
+          'Kiosk reported speak.ended',
+          data: {'state': machine.state.name},
+        );
         handle(const PlaybackEnded());
+        // Defensive: if machine did not open follow-up (wrong state), open it.
+        if (machine.state is Engaged && !machine.context.followUpListening) {
+          logWarn('followup_fallback', 'Opening follow-up after speak.ended');
+          machine.context.followUpOpen = true;
+          machine.context.followUpOpenedAtMs = clock.nowMs;
+          _openFollowUpWindow();
+        }
       default:
         break;
     }
@@ -312,6 +358,12 @@ class AttentionCoordinator {
         'kiosk speak.ended missing; forcing PlaybackEnded',
         data: {'timeout_ms': timeout.inMilliseconds},
       );
+      // Greeter speaks while Engaged — mirror speak.ended wake restore.
+      if (machine.context.state is! Responding) {
+        _sendAudio(
+          Envelope.create(type: 'wake.enable', data: {'enabled': true}),
+        );
+      }
       handle(const PlaybackEnded());
     });
   }
@@ -325,9 +377,34 @@ class AttentionCoordinator {
     final span = Span('stt');
     try {
       final pcm = _captureBuffer.toBytes();
+      // One 320 ms frame is never enough for a real utterance — skip the
+      // slow empty STT round-trip and let the machine reopen follow-up.
+      if (pcm.length < 24000) {
+        logWarn(
+          'stt_too_short',
+          'Capture too short for STT; reopening listen',
+          data: {
+            'turn_id': turnId,
+            'bytes': pcm.length,
+            'sample_rate': _captureSampleRate,
+          },
+        );
+        handle(const TranscriptReady(''));
+        return;
+      }
       final text = await stt.transcribe(
         Uint8List.fromList(pcm),
         sampleRate: _captureSampleRate,
+      );
+      logInfo(
+        'stt_result',
+        text.trim().isEmpty ? 'Empty transcript' : 'Transcript ready',
+        data: {
+          'turn_id': turnId,
+          'bytes': pcm.length,
+          'sample_rate': _captureSampleRate,
+          'text': text,
+        },
       );
       handle(TranscriptReady(text));
     } finally {
@@ -381,6 +458,7 @@ class AttentionCoordinator {
       _greetingCache[userid] = greeting;
 
       // Half-duplex: mute wake while greeting plays.
+      machine.context.playing = true;
       _sendAudio(
         Envelope.create(type: 'wake.enable', data: {'enabled': false}),
       );
@@ -399,6 +477,7 @@ class AttentionCoordinator {
       unawaited(_maybePlayLocal(audioUrl));
     } catch (e) {
       logWarn('greeter_failed', e.toString(), data: {'userid': userid});
+      machine.context.playing = false;
       _sendAudio(
         Envelope.create(type: 'wake.enable', data: {'enabled': true}),
       );

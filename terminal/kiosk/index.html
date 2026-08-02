@@ -1,170 +1,190 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>COMSTAR Kiosk</title>
-    <style>
-      :root {
-        color-scheme: dark;
-        font-family: system-ui, sans-serif;
-      }
-      *,
-      *::before,
-      *::after {
-        box-sizing: border-box;
-        cursor: none !important;
-      }
-      html,
-      body {
-        margin: 0;
-        width: 100%;
-        height: 100%;
-        overflow: hidden;
-        background: #0b0f14;
-        color: #e8eef5;
-        cursor: none;
-      }
-      /* Full-bleed TalkingHead mount point (GLB lands here in M7). */
-      #avatar {
-        position: fixed;
-        inset: 0;
-        width: 100%;
-        height: 100%;
-        display: block;
-        background: radial-gradient(circle at 50% 35%, #152033 0%, #0b0f14 70%);
-      }
-      .hud {
-        position: fixed;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        padding: 1rem 1.25rem 1.25rem;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 0.35rem;
-        pointer-events: none;
-        background: linear-gradient(transparent, rgba(11, 15, 20, 0.85));
-      }
-      .hud h1 {
-        margin: 0;
-        font-size: 1.1rem;
-        font-weight: 600;
-        letter-spacing: 0.08em;
-        opacity: 0.85;
-      }
-      .status {
-        font-size: 0.95rem;
-        margin: 0;
-      }
-      .status[data-state="connected"] {
-        color: #6ee7a8;
-      }
-      .status[data-state="connecting"] {
-        color: #fbbf24;
-      }
-      .status[data-state="disconnected"] {
-        color: #f87171;
-      }
-      #avatar-status {
-        margin: 0;
-        font-size: 0.8rem;
-        opacity: 0.65;
-      }
-      .health {
-        position: fixed;
-        top: 0.75rem;
-        right: 0.75rem;
-        width: 168px;
-        height: 56px;
-        z-index: 5;
-        pointer-events: none;
-        opacity: 0.92;
-      }
-      .health canvas {
-        display: block;
-        width: 100%;
-        height: 100%;
-      }
-    </style>
-  </head>
-  <body>
-    <div id="avatar" aria-label="COMSTAR avatar"></div>
-    <div class="health" aria-hidden="true">
-      <canvas id="health-chart" width="168" height="56"></canvas>
-    </div>
-    <div class="hud">
-      <h1>COMSTAR</h1>
-      <p class="status" id="connection-status" data-state="connecting">Connecting…</p>
-      <p id="avatar-status">Avatar: loading</p>
-    </div>
-    <script src="./bridge_client.js"></script>
-    <script src="./avatar.js"></script>
-    <script src="./health_chart.js"></script>
-    <script>
-      (function () {
-        const statusEl = document.getElementById('connection-status');
-        const avatarStatusEl = document.getElementById('avatar-status');
-        const avatarRoot = document.getElementById('avatar');
-        const params = new URLSearchParams(window.location.search);
-        const bridgeUrl = params.get('bridge') ?? 'ws://127.0.0.1:8777/kiosk';
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>COMSTAR</title>
+<style>
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #060d16;
+    overflow: hidden;
+    cursor: none !important;
+  }
+  *, *::before, *::after { cursor: none !important; }
+  #stage {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+  }
+  #status {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 10px 16px;
+    font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #7fc4ff;
+    opacity: .55;
+    white-space: pre;
+    pointer-events: none;
+    display: none;
+  }
+  #status.on { display: block; }
+  #fault {
+    position: absolute;
+    inset: auto 0 24px;
+    text-align: center;
+    font: 14px/1.5 system-ui, sans-serif;
+    color: #7fc4ff;
+    opacity: .7;
+    display: none;
+  }
+  .health {
+    position: fixed;
+    top: 0.75rem;
+    right: 0.75rem;
+    width: 140px;
+    height: 48px;
+    z-index: 5;
+    pointer-events: none;
+    opacity: 0.9;
+  }
+  .health canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "./assets/vendor/three.module.js",
+    "three/addons/": "./assets/vendor/"
+  }
+}
+</script>
+<script src="./health_chart.js"></script>
+</head>
+<body>
+<canvas id="stage"></canvas>
+<div class="health" aria-hidden="true">
+  <canvas id="health-chart" width="140" height="48"></canvas>
+</div>
+<div id="status"></div>
+<div id="fault"></div>
 
-        const healthChart =
-          typeof ComstarHealthChart === 'function'
-            ? new ComstarHealthChart(document.getElementById('health-chart'), {
-                maxPoints: 60,
-              })
-            : null;
+<script type="module">
+import { ComstarAvatar } from './avatar.js';
+import { BridgeClient } from './bridge_client.js';
 
-        // Boot beacon so operators can see JS executed (hits bridge static server).
-        try {
-          fetch('./boot.txt?t=' + Date.now()).catch(function () {});
-        } catch (_) {}
+const params = new URLSearchParams(location.search);
+const bridgeUrl = params.get('bridge') || 'ws://127.0.0.1:8777/kiosk';
+const demo = params.has('demo');
 
-        if (typeof ComstarBridgeClient !== 'function' || typeof ComstarAvatar !== 'function') {
-          statusEl.dataset.state = 'disconnected';
-          statusEl.textContent = 'Kiosk scripts failed to load';
-          avatarStatusEl.textContent = 'Avatar: script error';
-          return;
-        }
+const statusEl = document.getElementById('status');
+const faultEl = document.getElementById('fault');
+if (demo) statusEl.classList.add('on');
 
-        const avatar = new ComstarAvatar({
-          root: avatarRoot,
-          onSpeakStarted: () => bridge.send('speak.started'),
-          onSpeakEnded: () => bridge.send('speak.ended'),
-        });
+const healthChart =
+  typeof ComstarHealthChart === 'function'
+    ? new ComstarHealthChart(document.getElementById('health-chart'), {
+        maxPoints: 60,
+      })
+    : null;
 
-        const bridge = new ComstarBridgeClient(bridgeUrl, {
-          onStateChange: (state) => {
-            statusEl.dataset.state = state;
-            statusEl.textContent =
-              state === 'connected'
-                ? 'Connected to bridge'
-                : state === 'connecting'
-                  ? 'Connecting…'
-                  : 'Disconnected — reconnecting';
-          },
-          onEnvelope: (envelope) => {
-            if (envelope.type === 'health' && healthChart) {
-              const d = envelope.data || {};
-              healthChart.push(d.cpu, d.mem, d.ts);
-              return;
-            }
-            avatar.handle(envelope);
-          },
-          onOpen: () => {
-            bridge.send('ready', {
-              avatarLoaded: avatar.loaded,
-              webglVendor: avatar.webglVendor,
-              fps: 0,
-            });
-            avatarStatusEl.textContent = `Avatar ready · WebGL: ${avatar.webglVendor}`;
-          },
-        });
+let speakStart = 0;
 
-        bridge.connect();
-      })();
-    </script>
-  </body>
+const avatar = new ComstarAvatar(document.getElementById('stage'), {
+  onEvent(type, data) {
+    if (type === 'head.loaded') return;
+    if (type === 'speak.started') {
+      bridge.span('avatar_start', performance.now() - speakStart);
+      bridge.send('speak.started', {});
+      return;
+    }
+    if (type === 'speak.ended') {
+      bridge.send('speak.ended', {});
+      return;
+    }
+    if (type === 'error') {
+      bridge.send('error', data);
+      if (data.code === 'glb_load_failed') {
+        faultEl.textContent = 'Running without the head model.';
+        faultEl.style.display = 'block';
+        setTimeout(() => {
+          faultEl.style.display = 'none';
+        }, 6000);
+      }
+    }
+  },
+});
+
+const bridge = new BridgeClient(bridgeUrl, {
+  onOpen() {
+    const s = avatar.stats();
+    bridge.send('ready', {
+      avatarLoaded: s.headLoaded,
+      webglVendor: s.webglVendor,
+      fps: s.fps,
+    });
+  },
+
+  config(d) {
+    if (d.mood) avatar.setState(d.mood);
+  },
+
+  state(d) {
+    avatar.setState(d.state);
+    if (d.gaze) avatar.setGaze(d.gaze.x, d.gaze.y || 0);
+  },
+
+  speak(d) {
+    speakStart = performance.now();
+    avatar.setState('responding');
+    avatar.speak(d.audioUrl);
+  },
+
+  'speak.cancel'() {
+    avatar.cancelSpeak();
+  },
+
+  listening(d) {
+    if (d.active) avatar.setState('listening');
+    avatar.setMicLevel(d.level ?? 0);
+  },
+
+  thinking(d) {
+    avatar.setThinking(!!d.active);
+  },
+
+  health(d) {
+    if (healthChart) healthChart.push(d.cpu, d.mem, d.ts);
+  },
+
+  error(d) {
+    faultEl.textContent = d.message || 'Something went wrong.';
+    faultEl.style.display = 'block';
+    setTimeout(() => {
+      faultEl.style.display = 'none';
+    }, 6000);
+  },
+});
+
+if (demo) {
+  setInterval(() => {
+    const s = avatar.stats();
+    statusEl.textContent =
+      `state ${avatar.state}  fps ${s.fps}  head ${s.headLoaded ? 'ok' : 'none'}  ` +
+      `gaze ${avatar.gaze.x.toFixed(2)}  amp ${avatar.amplitude.toFixed(2)}`;
+  }, 250);
+}
+
+// Boot beacon so operators can see JS executed.
+try {
+  fetch('./boot.txt?t=' + Date.now()).catch(() => {});
+} catch (_) {}
+</script>
+</body>
 </html>

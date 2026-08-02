@@ -21,6 +21,7 @@ class EffectRunner {
     this.onPlayErrorTone,
     this.onEnableWake,
     this.onOpenFollowUpWindow,
+    this.onPromoteListening,
     this.onRunGreeter,
     this.onEmitState,
   });
@@ -39,6 +40,7 @@ class EffectRunner {
   final void Function()? onPlayErrorTone;
   final void Function(bool enabled)? onEnableWake;
   final void Function()? onOpenFollowUpWindow;
+  final void Function()? onPromoteListening;
   final void Function(String userid)? onRunGreeter;
   final void Function(String state, String? userid, String? displayName)?
       onEmitState;
@@ -99,6 +101,9 @@ class EffectRunner {
       case OpenFollowUpWindow():
         onOpenFollowUpWindow?.call();
         logDebug('effect', 'OpenFollowUpWindow');
+      case PromoteListening():
+        onPromoteListening?.call();
+        logDebug('effect', 'PromoteListening');
       case RunGreeter(:final userid):
         onRunGreeter?.call(userid);
         logDebug('effect', 'RunGreeter', data: {'userid': userid});

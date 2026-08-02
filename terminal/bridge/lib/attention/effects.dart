@@ -73,6 +73,11 @@ final class OpenFollowUpWindow extends Effect {
   const OpenFollowUpWindow();
 }
 
+/// Mic already streaming from follow-up — keep PCM, cancel the follow-up timer.
+final class PromoteListening extends Effect {
+  const PromoteListening();
+}
+
 final class RunGreeter extends Effect {
   const RunGreeter(this.userid);
   final String userid;

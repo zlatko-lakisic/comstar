@@ -122,6 +122,12 @@ void _apply(AttentionMachine machine, AttentionEvent event) {
   assertInvariants(t.context);
 }
 
+void _engageAndListen(AttentionMachine machine) {
+  _apply(machine, const PersonDetected(0.8));
+  _apply(machine, const FaceRecognized('zlatko', 0.9));
+  _apply(machine, const WakeWord(0.9));
+}
+
 bool _hasEffectType<T extends Effect>(List<Effect> effects) =>
     effects.any((e) => e is T);
 
@@ -135,15 +141,32 @@ void main() {
       assertInvariants(t.context);
     });
 
-    test('ambient + WakeWord → listening', () {
+    test('ambient + WakeWord stays ambient (face-first)', () {
       final m = _machine();
       final t = m.handle(const WakeWord(0.9));
-      expect(t.to, isA<Listening>());
-      expect(_hasEffectType<OpenSession>(t.effects), isTrue);
-      expect(_hasEffectType<StartListening>(t.effects), isTrue);
-      expect(m.context.sessionOpen, isTrue);
+      expect(t.to, isA<Ambient>());
+      expect(_hasEffectType<StartListening>(t.effects), isFalse);
+      expect(m.context.sessionOpen, isFalse);
     });
 
+    test('noticed + WakeWord stays noticed (face-first)', () {
+      final m = _machine();
+      _apply(m, const PersonDetected(0.8));
+      final t = m.handle(const WakeWord(0.9));
+      expect(t.to, isA<Noticed>());
+      expect(_hasEffectType<StartListening>(t.effects), isFalse);
+    });
+
+    test('engaged + PlaybackEnded opens follow-up', () {
+      final m = _machine();
+      _apply(m, const PersonDetected(0.8));
+      _apply(m, const FaceRecognized('zlatko', 0.9));
+      final t = m.handle(const PlaybackEnded());
+      expect(t.to, isA<Engaged>());
+      expect(m.context.followUpOpen, isTrue);
+      expect(_hasEffectType<OpenFollowUpWindow>(t.effects), isTrue);
+      expect(_hasEffectType<EnableWake>(t.effects), isTrue);
+    });
     test('noticed + FaceRecognized → engaged', () {
       final m = _machine();
       _apply(m, const PersonDetected(0.8));
@@ -227,7 +250,7 @@ void main() {
 
     test('listening + SpeechEnd stays listening and calls STT', () {
       final m = _machine();
-      _apply(m, const WakeWord(0.9));
+      _engageAndListen(m);
       final t = m.handle(const SpeechEnd(1200));
       expect(t.to, isA<Listening>());
       expect(_hasEffectType<FinalizeCapture>(t.effects), isTrue);
@@ -237,7 +260,7 @@ void main() {
     test('listening + Tick max utterance → responding', () {
       final clock = FakeClock();
       final m = _machine(clock: clock);
-      _apply(m, const WakeWord(0.9));
+      _engageAndListen(m);
       clock.advance(16 * 1000);
       final t = m.handle(const Tick());
       expect(t.to, isA<Responding>());
@@ -246,7 +269,7 @@ void main() {
 
     test('listening + TranscriptReady non-empty → responding', () {
       final m = _machine();
-      _apply(m, const WakeWord(0.9));
+      _engageAndListen(m);
       _apply(m, const SpeechEnd(500));
       final t = m.handle(const TranscriptReady('hello'));
       expect(t.to, isA<Responding>());
@@ -256,18 +279,19 @@ void main() {
 
     test('listening + TranscriptReady empty → engaged', () {
       final m = _machine();
-      _apply(m, const WakeWord(0.9));
+      _engageAndListen(m);
       _apply(m, const SpeechEnd(500));
       final t = m.handle(const TranscriptReady('  '));
       expect(t.to, isA<Engaged>());
-      expect(_hasEffectType<PlayErrorTone>(t.effects), isTrue);
+      expect(_hasEffectType<OpenFollowUpWindow>(t.effects), isTrue);
+      expect(_hasEffectType<PlayErrorTone>(t.effects), isFalse);
       expect(_hasEffectType<StopListening>(t.effects), isTrue);
       expect(m.context.turnId, isNull);
     });
 
     test('responding + ResponseReady speaks', () {
       final m = _machine();
-      _apply(m, const WakeWord(0.9));
+      _engageAndListen(m);
       _apply(m, const SpeechEnd(500));
       _apply(m, const TranscriptReady('hello'));
       final t = m.handle(
@@ -279,7 +303,7 @@ void main() {
 
     test('responding + PlaybackEnded → engaged', () {
       final m = _machine();
-      _apply(m, const WakeWord(0.9));
+      _engageAndListen(m);
       _apply(m, const SpeechEnd(500));
       _apply(m, const TranscriptReady('hello'));
       _apply(m, const ResponseReady('hi', 'http://127.0.0.1/a.wav'));
@@ -293,7 +317,7 @@ void main() {
     test('responding + Tick orchestration timeout → engaged', () {
       final clock = FakeClock();
       final m = _machine(clock: clock);
-      _apply(m, const WakeWord(0.9));
+      _engageAndListen(m);
       _apply(m, const SpeechEnd(500));
       _apply(m, const TranscriptReady('hello'));
       clock.advance(16 * 1000);
@@ -338,11 +362,11 @@ void main() {
       expect(m.context.sessionOpen, isFalse);
     });
 
-    test('wake word from empty room', () {
+    test('wake word from empty room is ignored until face engage', () {
       final m = _machine();
       _apply(m, const WakeWord(0.9));
-      expect(m.state, isA<Listening>());
-      expect(m.context.sessionOpen, isTrue);
+      expect(m.state, isA<Ambient>());
+      expect(m.context.sessionOpen, isFalse);
     });
 
     test('vision degraded lowers fps', () {

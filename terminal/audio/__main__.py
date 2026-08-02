@@ -125,7 +125,8 @@ async def _main() -> None:
                                 np.float32,
                             )
                             rms = float(np.sqrt(np.mean(np.square(audio / 32768.0))))
-                            if rms > 0.02:
+                            # Webcam mic is quiet; 0.025 catches speech without idle hiss.
+                            if rms > 0.025:
                                 score = float(force_wake_score)
                                 wake.mark_fired()
                         if score is not None:

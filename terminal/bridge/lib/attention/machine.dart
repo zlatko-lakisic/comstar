@@ -17,6 +17,8 @@ class MachineContext {
     this.directAgentInFlight = false,
     this.playing = false,
     this.followUpOpen = false,
+    this.followUpListening = false,
+    this.followUpOpenedAtMs,
     this.absentFrames = 0,
     this.personPresent = false,
     this.gazeDetected = false,
@@ -38,6 +40,10 @@ class MachineContext {
   bool directAgentInFlight;
   bool playing;
   bool followUpOpen;
+  /// Mic stream already running for the post-speak follow-up window.
+  bool followUpListening;
+  /// When the follow-up window opened (ignore echo for a short settle).
+  int? followUpOpenedAtMs;
   int absentFrames;
   bool personPresent;
   bool gazeDetected;
@@ -53,6 +59,11 @@ class MachineContext {
   bool get identityExpired =>
       identityExpiresAtMs == null || clock.nowMs >= identityExpiresAtMs!;
 
+  /// Wait out HDMI TTS echo before treating mic energy as user speech.
+  bool get followUpArmed =>
+      followUpOpenedAtMs != null &&
+      clock.nowMs - followUpOpenedAtMs! >= 1500;
+
   MachineContext copyForTransition() => MachineContext(
         config: config,
         clock: clock,
@@ -63,6 +74,8 @@ class MachineContext {
         directAgentInFlight: directAgentInFlight,
         playing: playing,
         followUpOpen: followUpOpen,
+        followUpListening: followUpListening,
+        followUpOpenedAtMs: followUpOpenedAtMs,
         absentFrames: absentFrames,
         personPresent: personPresent,
         gazeDetected: gazeDetected,
@@ -168,14 +181,10 @@ class AttentionMachine {
       case PersonAbsent():
         context.personPresent = false;
         context.absentFrames++;
-      case WakeWord(:final score):
-        if (score >= context.config.audio.wakewordThreshold) {
-          _enterListening(
-            effects,
-            openGuestSession: true,
-            userid: 'guest',
-          );
-        }
+      case WakeWord():
+        // Prefer face engagement before opening a guest listen session.
+        // Energy/force wake must not race Ambient → guest Listening.
+        break;
       default:
         break;
     }
@@ -208,14 +217,9 @@ class AttentionMachine {
           case 'restricted' || 'ignore':
             break;
         }
-      case WakeWord(:final score):
-        if (score >= context.config.audio.wakewordThreshold) {
-          _enterListening(
-            effects,
-            openGuestSession: true,
-            userid: 'guest',
-          );
-        }
+      case WakeWord():
+        // Same as Ambient — wait until Engaged (known face) before listening.
+        break;
       default:
         break;
     }
@@ -234,13 +238,40 @@ class AttentionMachine {
           _cacheIdentity(userid);
         }
       case WakeWord():
+        // Ignore mic triggers while we are still playing (HDMI echo of TTS).
+        if (context.playing) {
+          break;
+        }
+        // Follow-up already streams the mic — wait for VAD SpeechStart.
+        // Energy/force wake false-triggers on room noise right after arming.
+        if (context.followUpListening) {
+          break;
+        }
         _enterListening(effects);
       case SpeechStart():
+        if (context.playing) {
+          break;
+        }
         if (context.followUpOpen ||
             (context.config.attention.faceAttentionTrigger &&
                 context.gazeDetected)) {
-          _enterListening(effects);
+          if (context.followUpListening) {
+            if (!context.followUpArmed) {
+              break;
+            }
+            _promoteFollowUpListening(effects);
+          } else {
+            _enterListening(effects);
+          }
         }
+      case PlaybackEnded():
+        // Greeter (and any Engaged-time speak) finishes here — open follow-up
+        // so the user can talk without a wake word for a few seconds.
+        context.playing = false;
+        context.followUpOpen = true;
+        context.followUpOpenedAtMs = context.clock.nowMs;
+        // Keep wake muted during settle — OpenFollowUpWindow re-enables it.
+        effects.add(const OpenFollowUpWindow());
       case Tick():
         if (context.identityExpired && !context.personPresent) {
           _returnAmbient(effects, closeSession: true);
@@ -264,12 +295,26 @@ class AttentionMachine {
           effects.add(FinalizeCapture());
           effects.add(CallStt(context.turnId!));
         }
+      case PlaybackEnded():
+        // TTS finished after an echo/false wake pulled us into Listening.
+        // Drop the bad turn and open a real follow-up window.
+        context.playing = false;
+        context.sttPending = false;
+        _leaveListeningToEngaged(effects);
+        effects.add(const StopListening());
+        context.followUpOpen = true;
+        context.followUpOpenedAtMs = context.clock.nowMs;
+        effects.add(const OpenFollowUpWindow());
       case TranscriptReady(:final text):
         context.sttPending = false;
         if (text.trim().isEmpty) {
+          // Missed / too-short capture — keep the conversation open so the
+          // user can speak again without waiting for another face engage.
           _leaveListeningToEngaged(effects);
-          effects.add(const PlayErrorTone());
           effects.add(const StopListening());
+          context.followUpOpen = true;
+          context.followUpOpenedAtMs = context.clock.nowMs;
+          effects.add(const OpenFollowUpWindow());
         } else {
           context.state = const Responding();
           context.respondingStartedAtMs = context.clock.nowMs;
@@ -315,12 +360,9 @@ class AttentionMachine {
       case PlaybackEnded():
         context.playing = false;
         context.followUpOpen = true;
+        context.followUpOpenedAtMs = context.clock.nowMs;
         _leaveRespondingToEngaged(effects);
         effects.add(const OpenFollowUpWindow());
-        if (context.halfDuplex) {
-          context.wakeEnabled = true;
-          effects.add(const EnableWake(true));
-        }
       case Tick():
         if (context.directAgentInFlight) {
           final elapsedMs =
@@ -369,6 +411,11 @@ class AttentionMachine {
     context.engagedEnteredAtMs = context.clock.nowMs;
     _cacheIdentity(guest ? null : userid);
     context.sessionOpen = true;
+    // Block wake/VAD until greeter TTS finishes (HDMI echo otherwise
+    // pulls us into Listening and swallows speak.ended).
+    if (!guest) {
+      context.playing = true;
+    }
     effects.add(OpenSession(userid: userid, guest: guest));
     if (!guest) {
       effects.add(RunGreeter(userid));
@@ -386,6 +433,7 @@ class AttentionMachine {
     context.listeningStartedAtMs = context.clock.nowMs;
     context.sttPending = false;
     context.followUpOpen = false;
+    context.followUpListening = false;
 
     if (openGuestSession) {
       context.sessionOpen = true;
@@ -409,10 +457,36 @@ class AttentionMachine {
     effects.add(StartListening(context.turnId!));
   }
 
+  /// Follow-up window already started the mic — flip to Listening without
+  /// clearing PCM / restarting the streamer.
+  void _promoteFollowUpListening(List<Effect> effects) {
+    context.state = const Listening();
+    context.sttPending = false;
+    context.followUpOpen = false;
+    context.followUpListening = false;
+    context.listeningStartedAtMs = context.clock.nowMs;
+    if (context.turnId == null) {
+      context.turnId = _uuid.v4();
+    }
+    if (context.halfDuplex) {
+      context.wakeEnabled = false;
+      effects.add(const EnableWake(false));
+    }
+    effects.add(const PromoteListening());
+    effects.add(
+      EmitState(
+        context.state.name,
+        userid: context.cachedUserid,
+        displayName: context.cachedUserid,
+      ),
+    );
+  }
+
   void _leaveListeningToEngaged(List<Effect> effects) {
     context.state = const Engaged();
     context.turnId = null;
     context.sttPending = false;
+    context.followUpListening = false;
     if (context.halfDuplex) {
       context.wakeEnabled = true;
       effects.add(const EnableWake(true));

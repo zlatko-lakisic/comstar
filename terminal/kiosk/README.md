@@ -1,54 +1,42 @@
-# COMSTAR Kiosk
+# terminal/kiosk
 
-Phase 1 kiosk shell: WebSocket client to the bridge, HTMLAudioElement playback, and a
-full-bleed `#avatar` container for a future TalkingHead GLB.
+The avatar renderer. Chromium in kiosk mode on the Pi, driven entirely by
+bridge messages over the local WebSocket (`docs/CONTRACTS.md` §1).
 
-## Run locally
+```
+kiosk/
+├── index.html          production entry point (portrait-friendly)
+├── debug.html          standalone harness, no bridge required
+├── avatar.js           Three.js scene, GLB head, starburst, gaze, analyser
+├── bridge_client.js    envelope + reconnect
+├── health_chart.js     CPU/mem sparkline
+└── assets/
+    ├── starburst.svg
+    ├── reference-head.png
+    ├── comstar-head.glb   optional — drop here when ready
+    └── vendor/            vendored three@0.169 (offline-safe)
+```
+
+## Portrait panel
+
+The Pi compositor output is rotated via `scripts/set-portrait.sh` (default
+transform `90`). `kiosk-launch.sh` applies it before Chromium starts. Override
+with `COMSTAR_DISPLAY_TRANSFORM=270` if the image is upside-down.
+
+## Run it right now, with no model
 
 ```bash
 cd terminal/kiosk
-npm start
+python3 -m http.server 5173
 ```
 
-Serves on **http://127.0.0.1:5173/** (via `npx serve`).
+Open `http://localhost:5173/debug.html`. Without `assets/comstar-head.glb` the
+console logs `glb_load_failed` and you get the starburst alone — that is the
+intended fallback.
 
-## Point Chromium at it
+Must be served over HTTP (ES modules).
 
-**Desktop / dev (Mac):**
+## Adding the head
 
-```bash
-open "http://127.0.0.1:5173/?bridge=ws://127.0.0.1:8777/kiosk"
-```
-
-**Pi panel (production or LAN dev):**
-
-```bash
-chromium-browser --kiosk --noerrdialogs \
-  "http://127.0.0.1:5173/?bridge=ws://127.0.0.1:8777/kiosk"
-```
-
-When the bridge runs on another host (see `docs/DEV_LOOP.md` Loop A), set `bridge` to
-that host, e.g.:
-
-```
-http://comstar-dev.lan:5173/?bridge=ws://comstar-dev.lan:8777/kiosk
-```
-
-## Bridge messages
-
-| Inbound (bridge → kiosk) | Action |
-|---|---|
-| `speak` | Play `data.audioUrl` via HTMLAudioElement; emit `speak.started` / `speak.ended` |
-| `speak.cancel` | Stop playback immediately |
-| `state`, `listening`, `thinking`, `config` | Logged (visuals in M7) |
-
-| Outbound (kiosk → bridge) | When |
-|---|---|
-| `ready` | WebSocket open |
-| `speak.started` | Audio playback begins |
-| `speak.ended` | Playback finished or cancelled |
-
-## Systemd
-
-See `deploy/systemd/comstar-kiosk.service`. For hot reload during development, point
-Chromium at a dev server on your Mac instead of the local `file://` URL.
+Drop your GLB at `assets/comstar-head.glb`. Nothing else changes. Aim for
+30k–50k triangles and 1024/2048 textures. Face should point down `+Z`.

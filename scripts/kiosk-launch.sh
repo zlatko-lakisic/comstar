@@ -30,6 +30,13 @@ for _ in $(seq 1 40); do
   sleep 0.5
 done
 
+# Portrait panel: rotate compositor output before Chromium goes fullscreen.
+# Override with COMSTAR_DISPLAY_TRANSFORM=270|normal if the panel is flipped.
+PORTRAIT_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/set-portrait.sh"
+if [[ -x "$PORTRAIT_SCRIPT" ]]; then
+  "$PORTRAIT_SCRIPT" "${COMSTAR_DISPLAY_TRANSFORM:-90}" || true
+fi
+
 mkdir -p "$PROFILE"
 # Avoid crash-restore interstitial / blank session restore.
 if [[ -f "$PROFILE/Default/Preferences" ]]; then

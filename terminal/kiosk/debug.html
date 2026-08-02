@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>COMSTAR avatar — debug</title>
+<style>
+  html,body{margin:0;background:#0a1018;color:#cfe6ff;
+            font:14px/1.5 system-ui,-apple-system,sans-serif}
+  .wrap{display:grid;grid-template-columns:1fr 280px;height:100vh}
+  #stage{display:block;width:100%;height:100%}
+  .panel{padding:20px;border-left:1px solid #1d2b3a;overflow:auto}
+  h2{font-size:13px;font-weight:500;text-transform:uppercase;letter-spacing:.08em;
+     color:#5f88ad;margin:24px 0 10px}
+  h2:first-child{margin-top:0}
+  button{display:block;width:100%;margin-bottom:6px;padding:8px 10px;
+         background:transparent;color:#cfe6ff;border:1px solid #23384c;
+         border-radius:6px;font-size:13px;cursor:pointer}
+  button:hover{background:#12202e}
+  button.on{border-color:#5aa9e6;color:#9fd4ff}
+  input[type=range]{width:100%}
+  .row{display:flex;justify-content:space-between;font-size:12px;color:#5f88ad;
+       padding:3px 0;font-family:ui-monospace,Menlo,monospace}
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "./assets/vendor/three.module.js",
+    "three/addons/": "./assets/vendor/"
+  }
+}
+</script>
+</head>
+<body>
+<div class="wrap">
+  <canvas id="stage"></canvas>
+  <div class="panel">
+    <h2>State</h2>
+    <div id="states"></div>
+
+    <h2>Gaze</h2>
+    <input type="range" id="gx" min="-1" max="1" step="0.01" value="0">
+    <input type="range" id="gy" min="-1" max="1" step="0.01" value="0">
+
+    <h2>Mic level</h2>
+    <input type="range" id="mic" min="0" max="1" step="0.01" value="0">
+
+    <h2>Speak</h2>
+    <button id="speak">Synthetic utterance</button>
+    <button id="cancel">Cancel</button>
+
+    <h2>Readout</h2>
+    <div id="readout"></div>
+  </div>
+</div>
+
+<script type="module">
+import { ComstarAvatar } from './avatar.js';
+
+const avatar = new ComstarAvatar(document.getElementById('stage'), {
+  onEvent(type, data) {
+    console.info('[avatar]', type, data || '');
+  },
+});
+
+const states = ['ambient', 'noticed', 'engaged', 'listening', 'responding'];
+const box = document.getElementById('states');
+for (const s of states) {
+  const b = document.createElement('button');
+  b.textContent = s;
+  b.addEventListener('click', () => {
+    avatar.setState(s);
+    [...box.children].forEach((el) => el.classList.toggle('on', el === b));
+  });
+  box.appendChild(b);
+}
+box.children[0].classList.add('on');
+
+document.getElementById('gx').addEventListener('input', (e) => {
+  avatar.setGaze(+e.target.value, +document.getElementById('gy').value);
+});
+document.getElementById('gy').addEventListener('input', (e) => {
+  avatar.setGaze(+document.getElementById('gx').value, +e.target.value);
+});
+document.getElementById('mic').addEventListener('input', (e) => {
+  avatar.setMicLevel(+e.target.value);
+});
+
+document.getElementById('speak').addEventListener('click', async () => {
+  // Tiny silent-ish tone via data URI is awkward; use oscillator wav blob.
+  const ctx = new AudioContext();
+  const dur = 2.2;
+  const rate = 22050;
+  const samples = Math.floor(rate * dur);
+  const buf = ctx.createBuffer(1, samples, rate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < samples; i++) {
+    const t = i / rate;
+    const env = Math.min(1, t * 4) * Math.min(1, (dur - t) * 4);
+    data[i] = Math.sin(2 * Math.PI * 180 * t) * 0.25 * env
+      + Math.sin(2 * Math.PI * 240 * t) * 0.12 * env;
+  }
+  const wav = audioBufferToWav(buf);
+  const url = URL.createObjectURL(new Blob([wav], { type: 'audio/wav' }));
+  avatar.setState('responding');
+  avatar.speak(url);
+});
+
+document.getElementById('cancel').addEventListener('click', () => avatar.cancelSpeak());
+
+const readout = document.getElementById('readout');
+setInterval(() => {
+  const s = avatar.stats();
+  readout.innerHTML =
+    `<div class="row"><span>fps</span><span>${s.fps}</span></div>` +
+    `<div class="row"><span>head</span><span>${s.headLoaded ? 'ok' : 'none'}</span></div>` +
+    `<div class="row"><span>amp</span><span>${avatar.amplitude.toFixed(2)}</span></div>` +
+    `<div class="row"><span>state</span><span>${avatar.state}</span></div>`;
+}, 200);
+
+function audioBufferToWav(buffer) {
+  const numChan = buffer.numberOfChannels;
+  const sampleRate = buffer.sampleRate;
+  const format = 1;
+  const bitDepth = 16;
+  const samples = buffer.length;
+  const blockAlign = (numChan * bitDepth) / 8;
+  const byteRate = sampleRate * blockAlign;
+  const dataSize = samples * blockAlign;
+  const ab = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(ab);
+  const writeStr = (o, s) => {
+    for (let i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i));
+  };
+  writeStr(0, 'RIFF');
+  view.setUint32(4, 36 + dataSize, true);
+  writeStr(8, 'WAVE');
+  writeStr(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, format, true);
+  view.setUint16(22, numChan, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, byteRate, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, bitDepth, true);
+  writeStr(36, 'data');
+  view.setUint32(40, dataSize, true);
+  let offset = 44;
+  const ch0 = buffer.getChannelData(0);
+  for (let i = 0; i < samples; i++) {
+    const s = Math.max(-1, Math.min(1, ch0[i]));
+    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+    offset += 2;
+  }
+  return ab;
+}
+</script>
+</body>
+</html>
