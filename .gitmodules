@@ -1,0 +1,6 @@
+[submodule "vendor/agentic-orchestration"]
+	path = vendor/agentic-orchestration
+	url = https://github.com/zlatko-lakisic/agentic-orchestration.git
+[submodule "vendor/agentic-orchestration-reach"]
+	path = vendor/agentic-orchestration-reach
+	url = https://github.com/zlatko-lakisic/agentic-orchestration-reach.git
