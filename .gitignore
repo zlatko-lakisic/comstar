@@ -12,3 +12,4 @@ __pycache__
 .DS_Store
 spike/.dart_tool
 .venv-stt
+handoffs/**/*.md
