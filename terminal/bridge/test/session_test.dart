@@ -129,7 +129,7 @@ void main() {
       await session.directVoice('hello');
 
       expect(fake.lastMcpIds, contains('home_assistant'));
-      expect(fake.lastMcpIds, contains('media_audio_transcribe'));
+      expect(fake.lastMcpIds, equals(['home_assistant']));
     });
 
     test('identity switch closes prior session', () async {

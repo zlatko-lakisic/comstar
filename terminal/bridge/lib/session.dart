@@ -101,12 +101,10 @@ class ComstarSession {
   static const voiceAgentId = 'client.voice_responder';
   static const greeterAgentId = 'client.greeter';
 
-  /// Hosted MCP ids that exist on the live AO catalog at 10.0.10.16 (2026-08-02).
-  /// Do not list catalog-missing ids (`memory`, `time`, `math`, `vision`) — AO rejects the turn.
-  static const fullMcpProviders = [
-    'home_assistant',
-    'media_audio_transcribe',
-  ];
+  /// Hosted MCP ids for known-user voice turns.
+  ///
+  /// Do not list catalog-missing ids (`memory`, `time`, `math`, `vision`).
+  static const fullMcpProviders = <String>['home_assistant'];
 
   static const guestMcpProviders = <String>[
     // Restricted: no home_assistant / memory. Empty until tunnelled terminal MCP ships.
