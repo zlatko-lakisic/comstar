@@ -17,6 +17,4 @@ system_prompt: |
 
 model: qwen2.5:14b-instruct
 
-mcp_providers:
-  - memory
-  - time
+mcp_providers: []

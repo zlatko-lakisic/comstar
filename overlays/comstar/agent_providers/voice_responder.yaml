@@ -24,9 +24,4 @@ system_prompt: |
 model: qwen2.5:14b-instruct
 
 mcp_providers:
-  - client.terminal
-  - vision
-  - memory
   - home_assistant
-  - time
-  - math

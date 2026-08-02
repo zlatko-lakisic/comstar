@@ -215,6 +215,9 @@ Same host (`10.0.10.16`) runs multiple services:
 | Hardware | NVIDIA RTX 4000 SFF Ada (~20 GB VRAM) |
 | Reach probe | `spike/reach_hello.dart` → `RESULT: {ok: true, text: Hello., …}` |
 | Flags | session overlay + MCP tunnel confirmed via Reach (`overlay=true tunnel=true`) |
+| Live COMSTAR overlays (2026-08-02) | `client.greeter` → “Welcome, Zlatko!” (~0.85s); `client.voice_responder` → spoken confirm (~1.0s); guest greeter OK |
+| Hosted MCP catalog (known ids) | `fetch_url`, `filesystem_local`, `home_assistant`, `media_audio_transcribe`, `media_understand`, `media_video_analyze` — **no** `memory` / `time` / `math` / `vision` on this host |
+| STT via AO | `media_audio_transcribe` is callable as an MCP id on voice turns (probe passed) |
 
 ### Modules verified against live traffic
 

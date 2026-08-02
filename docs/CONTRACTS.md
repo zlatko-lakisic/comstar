@@ -180,6 +180,11 @@ POST /v1/vision/face/list
 
 **Status:** VERIFIED — AO v1.27.4 at `http://10.0.10.16:8765` with overlay +
 MCP tunnel confirmed 2026-08-02 (`spike/reach_hello.dart` returns Hello).
+COMSTAR overlays live-tested the same day: greeter ~0.85s (“Welcome, Zlatko!”),
+voice_responder ~1.0s. Host MCP catalog ids: `fetch_url`, `filesystem_local`,
+`home_assistant`, `media_audio_transcribe`, `media_understand`,
+`media_video_analyze`. Do **not** request `memory` / `time` / `math` / `vision`
+on this host — AO rejects the turn.
 
 ### Connection
 

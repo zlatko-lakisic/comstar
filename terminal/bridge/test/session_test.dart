@@ -116,21 +116,20 @@ void main() {
       expect(fake.lastConfig!.headers['x-agentic-user-name'], 'guest');
     });
 
-    test('guest MCP list excludes home_assistant and memory', () async {
+    test('guest MCP list excludes home_assistant', () async {
       await session.open(userid: 'guest', guest: true);
       await session.directVoice('hello');
 
       expect(fake.lastMcpIds, isNot(contains('home_assistant')));
-      expect(fake.lastMcpIds, isNot(contains('memory')));
-      expect(fake.lastMcpIds, contains('vision'));
+      expect(fake.lastMcpIds, isEmpty);
     });
 
-    test('known user MCP list includes home_assistant and memory', () async {
+    test('known user MCP list includes home_assistant', () async {
       await session.open(userid: 'zlatko', guest: false);
       await session.directVoice('hello');
 
       expect(fake.lastMcpIds, contains('home_assistant'));
-      expect(fake.lastMcpIds, contains('memory'));
+      expect(fake.lastMcpIds, contains('media_audio_transcribe'));
     });
 
     test('identity switch closes prior session', () async {
