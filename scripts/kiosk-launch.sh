@@ -5,10 +5,23 @@ set -euo pipefail
 export DISPLAY="${DISPLAY:-:0}"
 export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=${XDG_RUNTIME_DIR}/bus}"
+export XDG_SESSION_TYPE="${XDG_SESSION_TYPE:-wayland}"
+# Invisible cursor for kiosk (theme installed on device; CSS also sets cursor:none).
+export XCURSOR_THEME="${XCURSOR_THEME:-comstar-none}"
+export XCURSOR_SIZE="${XCURSOR_SIZE:-24}"
 
 URL="${COMSTAR_KIOSK_URL:-http://127.0.0.1:8776/kiosk/}"
 PROFILE="${COMSTAR_KIOSK_PROFILE:-$HOME/.config/comstar-kiosk-chromium}"
 CHROME="${COMSTAR_CHROMIUM:-/usr/bin/chromium}"
+
+# Wait for user labwc (not the LightDM greeter).
+for _ in $(seq 1 60); do
+  if pgrep -u "$(id -u)" -x labwc >/dev/null && pgrep -af 'labwc' | grep -vq greeter; then
+    break
+  fi
+  sleep 0.5
+done
 
 for _ in $(seq 1 40); do
   if curl -fsS -m 1 "$URL" >/dev/null 2>&1; then
@@ -17,14 +30,36 @@ for _ in $(seq 1 40); do
   sleep 0.5
 done
 
+mkdir -p "$PROFILE"
+# Avoid crash-restore interstitial / blank session restore.
+if [[ -f "$PROFILE/Default/Preferences" ]]; then
+  python3 - <<PY
+import json
+from pathlib import Path
+p = Path("$PROFILE") / "Default" / "Preferences"
+try:
+    d = json.loads(p.read_text())
+    d.setdefault("profile", {})["exit_type"] = "Normal"
+    p.write_text(json.dumps(d))
+except Exception:
+    pass
+PY
+fi
+
 exec "$CHROME" \
   --ozone-platform=wayland \
+  --enable-features=UseOzonePlatform \
   --user-data-dir="$PROFILE" \
+  --password-store=basic \
   --autoplay-policy=no-user-gesture-required \
   --disable-features=TranslateUI \
-  --kiosk \
-  --noerrdialogs \
+  --disable-extensions \
+  --disable-component-extensions-with-background-pages \
   --disable-session-crashed-bubble \
+  --hide-crash-restore-bubble \
+  --noerrdialogs \
   --no-first-run \
   --check-for-update-interval=31536000 \
+  --kiosk \
+  --start-maximized \
   "$URL"

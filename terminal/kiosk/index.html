@@ -9,8 +9,11 @@
         color-scheme: dark;
         font-family: system-ui, sans-serif;
       }
-      * {
+      *,
+      *::before,
+      *::after {
         box-sizing: border-box;
+        cursor: none !important;
       }
       html,
       body {
@@ -20,6 +23,7 @@
         overflow: hidden;
         background: #0b0f14;
         color: #e8eef5;
+        cursor: none;
       }
       /* Full-bleed TalkingHead mount point (GLB lands here in M7). */
       #avatar {
@@ -68,10 +72,28 @@
         font-size: 0.8rem;
         opacity: 0.65;
       }
+      .health {
+        position: fixed;
+        top: 0.75rem;
+        right: 0.75rem;
+        width: 168px;
+        height: 56px;
+        z-index: 5;
+        pointer-events: none;
+        opacity: 0.92;
+      }
+      .health canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
     </style>
   </head>
   <body>
     <div id="avatar" aria-label="COMSTAR avatar"></div>
+    <div class="health" aria-hidden="true">
+      <canvas id="health-chart" width="168" height="56"></canvas>
+    </div>
     <div class="hud">
       <h1>COMSTAR</h1>
       <p class="status" id="connection-status" data-state="connecting">Connecting…</p>
@@ -79,6 +101,7 @@
     </div>
     <script src="./bridge_client.js"></script>
     <script src="./avatar.js"></script>
+    <script src="./health_chart.js"></script>
     <script>
       (function () {
         const statusEl = document.getElementById('connection-status');
@@ -86,6 +109,13 @@
         const avatarRoot = document.getElementById('avatar');
         const params = new URLSearchParams(window.location.search);
         const bridgeUrl = params.get('bridge') ?? 'ws://127.0.0.1:8777/kiosk';
+
+        const healthChart =
+          typeof ComstarHealthChart === 'function'
+            ? new ComstarHealthChart(document.getElementById('health-chart'), {
+                maxPoints: 60,
+              })
+            : null;
 
         // Boot beacon so operators can see JS executed (hits bridge static server).
         try {
@@ -115,7 +145,14 @@
                   ? 'Connecting…'
                   : 'Disconnected — reconnecting';
           },
-          onEnvelope: (envelope) => avatar.handle(envelope),
+          onEnvelope: (envelope) => {
+            if (envelope.type === 'health' && healthChart) {
+              const d = envelope.data || {};
+              healthChart.push(d.cpu, d.mem, d.ts);
+              return;
+            }
+            avatar.handle(envelope);
+          },
           onOpen: () => {
             bridge.send('ready', {
               avatarLoaded: avatar.loaded,

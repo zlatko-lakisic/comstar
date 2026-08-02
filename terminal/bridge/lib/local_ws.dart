@@ -294,6 +294,7 @@ class LocalWs {
       'thinking',
       'error',
       'config',
+      'health',
       'listen.start',
       'listen.stop',
       'wake.enable',

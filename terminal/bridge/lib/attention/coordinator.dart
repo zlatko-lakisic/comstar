@@ -427,9 +427,11 @@ class AttentionCoordinator {
   }
 
   Future<void> _maybePlayLocal(String audioUrl) async {
-    // Bring-up: play on Pi speakers when enabled, or when no kiosk is connected.
-    final force = Platform.environment['COMSTAR_LOCAL_SPEAKER'] == '1';
-    if (!force && ws.hasRole('kiosk')) return;
+    // Prefer kiosk playback. Local paplay is fallback only — never both
+    // (dual path echoes on the same HDMI sink).
+    if (ws.hasRole('kiosk')) return;
+    final allowLocal = Platform.environment['COMSTAR_LOCAL_SPEAKER'] == '1';
+    if (!allowLocal) return;
     final path = audioServer.filePathForUrl(audioUrl);
     if (path == null) return;
     try {

@@ -8,8 +8,8 @@ Type=simple
 WorkingDirectory=/opt/comstar/src/terminal/audio
 Environment=COMSTAR_BRIDGE=ws://127.0.0.1:8778/audio
 Environment=COMSTAR_WAKEWORD_MODEL=/opt/comstar/src/models/hey_comstar.onnx
-# Bring-up bypass until hey_comstar.onnx is trained (energy-gated).
-Environment=COMSTAR_FORCE_WAKE_SCORE=0.99
+# Wake-word model not trained yet. Do not enable COMSTAR_FORCE_WAKE_SCORE
+# here — energy force-wake races face recognition and opens silent guest sessions.
 Environment=COMSTAR_LOG=info
 ExecStart=/opt/comstar/src/terminal/audio/.venv/bin/python __main__.py
 Restart=on-failure
