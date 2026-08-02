@@ -1,0 +1,300 @@
+# COMSTAR — Hardware & Environment Baselines
+
+Captured during bring-up on **2026-08-01 / 2026-08-02**.  
+Companion docs: `docs/CONTRACTS.md`, `docs/IMPLEMENTATION_PLAN.md` (M0.5), `docs/DEV_LOOP.md`.
+
+Do **not** store passwords or tokens in this file. SSH access should use keys (see §Access).
+
+---
+
+## 1. Terminal board
+
+| Field | Value |
+|---|---|
+| Role | COMSTAR terminal (Pi side of thin-client / fat-brain split) |
+| Hostname | `comstar-ai` |
+| Model | **Raspberry Pi 4 Model B Rev 1.5** |
+| Revision | `c03115` |
+| Serial | `10000000bf83d719` |
+| Arch | `aarch64` / `arm64` |
+| RAM | **4 GB** class — ~3.7 GiB usable (`MemTotal` ≈ 3882924 kB) |
+| Swap | 511 MiB |
+| Storage | microSD `/dev/mmcblk0p2` — **117 GB**, ~17 GB used / **94 GB free** |
+| GPU/ARM split (vcgencmd) | `arm=948M`, `gpu=76M` |
+| Idle temp (post-upgrade) | ~56–59 °C |
+| Throttle flags | `throttled=0x0` (clean) |
+
+**Implication for COMSTAR:** 4 GB meets the README minimum; 8 GB is recommended if the avatar renders locally. Watch M7 fps — may need `avatar.render: streamed` if WebGL cannot hold ≥24 fps.
+
+---
+
+## 2. Operating system & firmware (after full upgrade)
+
+| Field | Value |
+|---|---|
+| Distro | Debian GNU/Linux **12 (bookworm)** — Raspberry Pi OS desktop variant |
+| Kernel (running) | **`6.12.96+rpt-rpi-v8`** (`1:6.12.96-1+rpt1`, 2026-07-24) |
+| Firmware (start.elf family) | May 21 2026 — `288930ab…` |
+| Bootloader EEPROM | **Sun 17 May 2026** (`1779045198`) — up to date |
+| VL805 (USB) firmware | `000138c0` — up to date |
+| EEPROM release channel | `default` (`bootloader-2711`) |
+| Desktop | **LightDM** + **labwc** (Wayland); session user `md-admin` |
+| Wayland socket | `/run/user/1000/wayland-0` |
+| Timezone | `US/Eastern`; NTP active / clock synchronized |
+| User linger (systemd --user) | **`Linger=no`** — must enable before relying on user units after logout |
+
+### Upgrade performed (2026-08-01 evening)
+
+1. `apt-get update` + `full-upgrade` — **419 packages** upgraded, 59 new, 3 removed (~940 MB download).
+2. Kernel moved **6.6.62 → 6.12.96**.
+3. `rpi-eeprom-update -a` applied pending bootloader update (Jan 2023 → May 2026).
+4. Rebooted; verified clean apt state (`0` upgradable).
+5. Purged old `linux-image/headers` **6.6.62** packages.
+6. Stayed on Bookworm (no dist-upgrade to a new major release — correct for current Raspberry Pi OS).
+
+Post-upgrade spot checks: C525 camera + mic still enumerate; CPAI reachable; ethernet still preferred default route.
+
+---
+
+## 3. Access
+
+| Field | Value |
+|---|---|
+| SSH user | `md-admin` |
+| Ethernet IP | **`192.168.89.34/24`** (`end0`) — preferred management path |
+| Wi-Fi IP | `192.168.90.102/24` (`wlan0`) — secondary |
+| Groups | `sudo`, `audio`, `video`, `render`, `input`, `gpio`, `i2c`, `spi`, `netdev`, … |
+| Passwordless sudo | yes (for `md-admin`) |
+| Password auth | currently enabled — **replace with SSH key** for DEV_LOOP (`~/.ssh/config` Host `comstar`, `ControlMaster`, forwards 9222/8181/5678/8779) |
+
+Suggested `/etc/hosts` (Mac + Pi) when ready:
+
+```
+192.168.89.34   comstar.lan comstar
+10.0.10.16      ai-server.lan ai-server
+```
+
+---
+
+## 4. Network
+
+### Interfaces & routing (intentional)
+
+| Interface | Address | NM connection | `ipv4.route-metric` | Role |
+|---|---|---|---|---|
+| `end0` (ethernet) | `192.168.89.34/24` | `Wired connection 1` | **100** | **Primary default gateway** → `192.168.89.1` |
+| `wlan0` (Wi-Fi) | `192.168.90.102/24` | `preconfigured` | **600** | Backup default only; local `.90` access |
+
+Changed on 2026-08-01: Wi-Fi had been metric `100` and ethernet `400`, so all internet/AI traffic preferred Wi-Fi. Metrics were flipped and persist in NetworkManager profiles.
+
+### Observed topology
+
+```
+MacBook
+  en7  192.168.89.29   ──┐
+  en0  192.168.90.192  ──┼── LAN
+                         │
+Pi comstar-ai            │
+  end0 192.168.89.34  ───┤── gateway 192.168.89.1
+  wlan0 192.168.90.102 ──┘
+                         │
+CodeProject.AI           │
+  10.0.10.16:32168  ◄────┘  (routed via .89.1 from Pi ethernet)
+```
+
+DNS on Pi: NetworkManager → `10.0.10.10`, search `mostardesigns.com`.  
+`ai-server.lan` is **not** in `/etc/hosts` yet — use `10.0.10.16` or add the alias above.
+
+Nearby on `.89` (not COMSTAR AI services): Axis / camera-style hosts at `.20`, `.30`, `.31` (HTTP).
+
+---
+
+## 5. Peripherals
+
+### Display
+
+| Field | Value |
+|---|---|
+| HDMI-A-1 | **connected**, mode **1024×768@60** |
+| HDMI-A-2 | disconnected |
+| Audio via HDMI | `vc4hdmi0` / `vc4hdmi1` ALSA cards present |
+| Analog out | `bcm2835 Headphones` |
+
+### Camera — Logitech HD Webcam C525
+
+| Field | Value |
+|---|---|
+| USB ID | `046d:0826` |
+| Driver | `uvcvideo` |
+| Nodes | `/dev/video0` (capture), `/dev/video1` (metadata), `/dev/media4` |
+| Formats | **YUYV** and **MJPG**; discrete sizes include 640×480, 960×720, 1280×720, 1280×960 |
+| Verified | JPEG grab via ffmpeg from `/dev/video0` at 640×480 — works before and after OS upgrade |
+| CSI / libcamera | No CSI camera; `libcamera-hello --list-cameras` → “No cameras available!” (expected) |
+
+**COMSTAR note:** Prefer **MJPG** for the vision poll loop (lower USB bandwidth than YUYV). Do not spawn a new process per frame (M2.1).
+
+### Microphone — C525 built-in USB audio
+
+| Field | Value |
+|---|---|
+| ALSA | `card 3: C525`, device `0` → `plughw:CARD=C525,DEV=0` / `hw:3,0` |
+| PipeWire source | `alsa_input.usb-046d_HD_Webcam_C525_8B309B50-00.mono-fallback` (**default source**) |
+| Verified | 16 kHz mono S16_LE capture — live levels (e.g. peak ~42% FS in room test) |
+
+**COMSTAR note:** Adequate for bring-up and close-range tests. README / M4 warn that webcam mics fail room-distance wake-word UAT; plan a ReSpeaker (or similar) if 3 m / TV-on tests fail. Do not “fix” that by dropping the wake threshold into false-accept territory.
+
+### Playback
+
+PipeWire default sink: built-in / mailbox stereo fallback (headphones path observed). `speaker-test` ran successfully during bring-up. Final sink choice (HDMI vs 3.5 mm vs USB speakers) still open — ties to CONTRACTS §6 audio-routing ADR in M0.6.
+
+---
+
+## 6. Software on the Pi
+
+### Present (post-upgrade)
+
+| Tool | Version / notes |
+|---|---|
+| Python | **3.11.2** |
+| Chromium | **150.0.7871.181** (Debian/Raspberry Pi build) |
+| ffmpeg | **5.1.9** (+rpt) |
+| v4l2-ctl | present |
+| arecord / aplay | ALSA 1.2.x |
+| git, curl | present |
+| PipeWire | active (Pulse compatibility socket) |
+| Mesa / DRI | `/dev/dri/card0`, `card1`, `renderD128` |
+
+### Missing (needed before M1 / DEV_LOOP)
+
+| Tool | Why |
+|---|---|
+| **Dart ^3.5** | `comstar-bridge` |
+| **Node.js / npm** | kiosk tooling / vite-style hot reload |
+| **jq** | `make logs` pipeline |
+| Audio Python stack | `sounddevice` / openWakeWord / Silero / etc. (install in venv at M4) |
+| `/opt/comstar` | deploy root not created yet |
+| COMSTAR systemd units | not installed yet |
+
+### Desktop / GPU caveat
+
+Headless Chromium GL probes failed during bring-up (common without a proper kiosk session). Real WebGL/TalkingHead fps must be measured under the labwc + HDMI kiosk path (M0.4 / M7.4).
+
+---
+
+## 7. AI server — CodeProject.AI
+
+| Field | Value |
+|---|---|
+| Host | **`10.0.10.16`** |
+| Port | **`32168`** |
+| Product | CodeProject.AI Server |
+| Version | **2.9.7** (UI assets also report 2.9.3 paths); Windows x64 package lineage `CodeProject.AI-Server-win-x64-2.9.6.zip` |
+| Hostname (server) | `codeproject-ai-server` |
+| Reachability | Pi (~0.4 ms via ethernet after route fix) and Mac (~0.5 ms) |
+| Config URL for COMSTAR | `http://10.0.10.16:32168` |
+
+### Modules verified against live traffic
+
+| Module | ID | Device | Notes |
+|---|---|---|---|
+| Object Detection (YOLOv8) | `ObjectDetectionYOLOv8` | **GPU** | Pi cam frame → `person` ~0.95 (+ `tv`); inference **~48–65 ms** |
+| Face Processing | `FaceProcessing` | **GPU** | list + recognize both report GPU |
+
+### API shapes observed (feeds CONTRACTS §3)
+
+**Detection** (`POST /v1/vision/detection`) — success with `predictions[{label,confidence,x_min,y_min,x_max,y_max}]`, plus `inferenceMs`, `inferenceDevice`.
+
+**Face list** (`POST /v1/vision/face/list`):
+
+```json
+{"success": true, "faces": [], ...}
+```
+
+No faces enrolled yet.
+
+**Face recognize miss** (unregistered face in frame) — **answers the open CONTRACTS question:**
+
+```json
+{
+  "success": true,
+  "message": "No known faces",
+  "count": 1,
+  "predictions": [
+    {"confidence": 0, "userid": "unknown", "x_min": …, "y_min": …, "x_max": …, "y_max": …}
+  ],
+  "inferenceDevice": "GPU",
+  …
+}
+```
+
+So a miss is **`userid: "unknown"`** (with a box), not an empty `predictions` array. Still handle empty arrays defensively.
+
+### Not verified on this host yet
+
+- AO / `agentic-orchestration` daemon, session overlay flags, Reach tunnel  
+- faster-whisper / STT HTTP endpoint  
+- Piper TTS (may run on Pi)  
+- GPU contention under house-camera load (M0.2)  
+- Face enrollment end-to-end (register → recognize hit fixture)
+
+---
+
+## 8. Mac developer machine (context)
+
+Observed during the same bring-up:
+
+| Field | Value |
+|---|---|
+| Ethernet | `192.168.89.29` (`en7`) — default route via `192.168.89.1` |
+| Wi-Fi | `192.168.90.192` (`en0`) |
+| Role | Cursor / editor; intended host for Loop B bridge-dev and kiosk-dev |
+
+---
+
+## 9. Session changelog (what we did)
+
+Ordered summary of operator actions during this bring-up:
+
+1. Saved project docs: `README.md`, hero `docs/comstar-banner.png`, `docs/CONTRACTS.md`, `docs/IMPLEMENTATION_PLAN.md`, `docs/DEV_LOOP.md`.
+2. Interrogated Pi at `md-admin@192.168.89.34` for COMSTAR readiness.
+3. Confirmed **Logitech C525** video + mic after USB attach (capture tests passed).
+4. Located and verified **CodeProject.AI** at **`10.0.10.16:32168`** (YOLOv8 + Face on GPU; miss shape documented).
+5. Set **ethernet as preferred default gateway** (NM metrics 100 / 600).
+6. Full **OS + firmware upgrade** (apt full-upgrade, EEPROM, reboot onto 6.12.96, purge old kernels).
+7. Wrote this baseline document.
+
+---
+
+## 10. Readiness vs COMSTAR plan
+
+| Area | Status |
+|---|---|
+| Pi 4 + Bookworm 64-bit + desktop/kiosk path | Ready |
+| Camera (UVC) | Ready (C525 / `/dev/video0`) |
+| Mic capture | Ready for bring-up (C525); room-distance TBD |
+| HDMI panel | Ready (1024×768) |
+| Ethernet preferred routing | Ready |
+| CodeProject.AI vision | Ready at `10.0.10.16:32168` |
+| Dart / Node / jq / deploy root | **Not installed** |
+| systemd linger | **Not enabled** |
+| AO Reach + STT | **Not verified** |
+| Audio routing ADR (kiosk vs ALSA sink) | **Open** (M0.6) |
+| TalkingHead on-device fps | **Not measured** |
+| Face enrollment | **None yet** |
+
+**Can develop on Mac and test on Pi:** yes — follow `docs/DEV_LOOP.md` (bridge on Mac, peripherals on Pi). Remote debug via SSH tunnels is supported once keys + Makefile exist (M1.7).
+
+---
+
+## 11. Recommended next bootstrap (not done yet)
+
+1. SSH key + `~/.ssh/config` Host `comstar` (no password in scripts).  
+2. `sudo loginctl enable-linger md-admin`.  
+3. Install Dart ^3.5, Node/npm, jq.  
+4. Add `ai-server.lan` → `10.0.10.16` on Mac and Pi.  
+5. Run M0 probe script `scripts/verify_cpai.sh` and commit fixtures under `docs/fixtures/`.  
+6. Close audio-routing ADR; measure Chromium WebGL on the HDMI panel.
+
+---
+
+*Last updated: 2026-08-02 (post OS/firmware upgrade and CPAI/camera verification).*
