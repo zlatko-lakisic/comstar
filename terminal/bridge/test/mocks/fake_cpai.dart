@@ -28,14 +28,18 @@ class FakeCpaiServer {
   late Uri baseUri;
   int _detectionCalls = 0;
   int _recognizeCalls = 0;
+  int? _boundPort;
 
   int get detectionCalls => _detectionCalls;
   int get recognizeCalls => _recognizeCalls;
+  int? get port => _boundPort;
 
   Future<void> start({String host = '127.0.0.1', int port = 0}) async {
-    _server = await HttpServer.bind(host, port);
-    final effectivePort = _server!.port;
-    baseUri = Uri.parse('http://$host:$effectivePort');
+    final bindPort = port == 0 ? (_boundPort ?? 0) : port;
+    _server = await HttpServer.bind(host, bindPort);
+    _boundPort = _server!.port;
+
+    baseUri = Uri.parse('http://$host:$_boundPort');
 
     _server!.listen((request) async {
       if (detectionLatency > Duration.zero) {

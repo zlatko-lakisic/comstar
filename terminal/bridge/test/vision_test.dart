@@ -65,7 +65,10 @@ void main() {
     test('500 returns empty not throw', () async {
       await server.stop();
       server = FakeCpaiServer(
-        detectionFixture: const {'success': true, 'predictions': []},
+        detectionFixture: const <String, dynamic>{
+          'success': true,
+          'predictions': <dynamic>[],
+        },
         detectionStatusCode: 500,
       );
       await server.start();
@@ -112,21 +115,22 @@ void main() {
 
       await client.detectPerson(fakeJpegFrame());
       expect(client.isDegraded, isTrue);
+      await Future<void>.delayed(Duration.zero);
       expect(degradedEvents, [true]);
 
+      await server.stop();
+      final port = server.port!;
       server = FakeCpaiServer(
-        detectionFixture: loadFixture('../../docs/fixtures/cpai_detection.json'),
+        detectionFixture:
+            loadFixture('../../docs/fixtures/cpai_detection.json'),
       );
-      await server.start();
-      client.dispose();
-      client = CpaiClient(config: _visionConfig(server.baseUri.toString()));
-      final recovered = <bool>[];
-      client.degradedStream.listen(recovered.add);
+      await server.start(port: port);
 
       await client.detectPerson(fakeJpegFrame());
       expect(client.consecutiveFailures, 0);
       expect(client.isDegraded, isFalse);
-      expect(recovered, [false]);
+      await Future<void>.delayed(Duration.zero);
+      expect(degradedEvents, [true, false]);
     });
   });
 }

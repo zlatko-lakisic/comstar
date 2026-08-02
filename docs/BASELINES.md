@@ -181,7 +181,18 @@ Headless Chromium GL probes failed during bring-up (common without a proper kios
 
 ---
 
-## 7. AI server — CodeProject.AI
+## 7. AI server — CodeProject.AI + AO
+
+Same host (`10.0.10.16`) runs multiple services:
+
+| Service | URL | Status |
+|---|---|---|
+| CodeProject.AI | `http://10.0.10.16:32168` | **VERIFIED** — YOLO + Face on GPU |
+| agentic-orchestration | `http://10.0.10.16:8765` | **VERIFIED** — v1.27.4, overlay+tunnel, Reach hello |
+| Ollama | `http://10.0.10.16:11434` | up (`qwen2.5:14b` present) |
+| STT (faster-whisper) | unknown | **NOT FOUND** on scanned ports — blocker for live M6 |
+
+### CodeProject.AI
 
 | Field | Value |
 |---|---|
@@ -192,6 +203,17 @@ Headless Chromium GL probes failed during bring-up (common without a proper kios
 | Hostname (server) | `codeproject-ai-server` |
 | Reachability | Pi (~0.4 ms via ethernet after route fix) and Mac (~0.5 ms) |
 | Config URL for COMSTAR | `http://10.0.10.16:32168` |
+| Detection p50 / p95 (idle, 20 samples) | **20 ms / 41 ms** (`docs/fixtures/cpai_detection_timing.json`) |
+
+### agentic-orchestration
+
+| Field | Value |
+|---|---|
+| Base URL | `http://10.0.10.16:8765` |
+| Version | **1.27.4** |
+| Hardware | NVIDIA RTX 4000 SFF Ada (~20 GB VRAM) |
+| Reach probe | `spike/reach_hello.dart` → `RESULT: {ok: true, text: Hello., …}` |
+| Flags | session overlay + MCP tunnel confirmed via Reach (`overlay=true tunnel=true`) |
 
 ### Modules verified against live traffic
 

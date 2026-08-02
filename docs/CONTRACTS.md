@@ -99,9 +99,9 @@ must time out at `tts_total + 5s` and return to Ambient rather than hang.
 
 **Base:** `http://<ai-server>:32168`. Multipart form posts.
 
-**Status:** SPEC — must be moved to VERIFIED in milestone M0 by running the
-`scripts/verify_cpai.sh` probe against the live server and pasting real responses
-into this file.
+**Status:** VERIFIED — face miss returns `userid: "unknown"` in predictions
+(2026-08-02, fixture `docs/fixtures/cpai_recognize_miss_person.json`). Empty
+predictions or `success: false` also treated as miss.
 
 ### Object detection
 
@@ -144,9 +144,10 @@ POST /v1/vision/face/recognize
 }
 ```
 
-`userid == "unknown"` (or an empty predictions array) means no match. **Both cases
-must be handled** — do not assume which one the module returns; M0 determines it
-empirically and this line gets updated with the answer.
+`userid == "unknown"` (or an empty predictions array, or `success: false`) means
+no match. **All three cases must be handled** — M0 confirmed the live module
+returns `userid: "unknown"` when a face is present but not enrolled (see fixture
+above).
 
 ### Face registration
 
@@ -177,8 +178,8 @@ POST /v1/vision/face/list
 
 ## 4. Bridge → AO via `ao_reach`
 
-**Status:** SPEC — signatures below are taken from the `ao_reach` README and must
-be confirmed against the pinned tag in M0.
+**Status:** VERIFIED — AO v1.27.4 at `http://10.0.10.16:8765` with overlay +
+MCP tunnel confirmed 2026-08-02 (`spike/reach_hello.dart` returns Hello).
 
 ### Connection
 
@@ -261,16 +262,12 @@ Reachable only from the Pi, exposed to the orchestrator over
 
 ## 6. Audio routing decision
 
-**Open question, must be closed in M0.** Two options:
+**Status:** Resolved 2026-08-02 — **(a) Kiosk is the audio sink.** See
+`docs/adr/0001-audio-routing.md`.
 
-- **(a) Kiosk is the audio sink.** TTS audio goes bridge → kiosk, played by the
-  browser, lip-sync trivially in sync because it's one clock.
-- **(b) Audio process is the sink.** Bridge → audio process, played via ALSA. Lower
-  latency, but lip-sync needs a separate timing channel to the kiosk and will drift.
-
-Default recommendation is **(a)**, accepting ~100 ms extra latency for guaranteed
-sync. Option (b) only if Chromium audio on the Pi proves unreliable. Whichever is
-chosen, delete the other from this document and from the message tables above.
+- TTS audio goes bridge → kiosk via loopback HTTP `audioUrl`; played by Chromium.
+- Lip-sync stays on one clock; follow-up window opens on kiosk `speak.ended`.
+- Bridge → audio `play` is **not used** in Phase 1 (reserved in §2 only).
 
 ---
 
@@ -355,3 +352,13 @@ this and nothing more.
    `PersonDetected` alone.
 6. No transition takes longer than 50 ms of wall clock inside the state machine
    itself — all I/O is dispatched, never awaited, inside a transition.
+
+---
+
+## 9. Kiosk avatar (TalkingHead)
+
+**Status:** SPEC — not yet verified on Pi Chromium.
+
+TalkingHead integration (GLB load, viseme lip-sync, `speak.started` /
+`speak.ended` timing) is planned for M7. Desktop Chrome smoke test pending M0.4;
+this section will move to VERIFIED with measured fps and a sample viseme map.

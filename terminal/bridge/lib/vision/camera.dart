@@ -139,9 +139,12 @@ class FfmpegCamera implements Camera {
       },
     );
 
-    _process!.exitCode.then((code) {
+    unawaited(_process!.exitCode.then((code) {
       if (code != 0 && !_disposed) unawaited(_start(targetFps));
-    });
+    }));
+  }
+
+  void _emitJpegs(List<int> data, BytesBuilder buffer) {
     var i = 0;
     while (i < data.length - 1) {
       if (data[i] == 0xFF && data[i + 1] == 0xD8) {
@@ -191,4 +194,14 @@ class FfmpegCamera implements Camera {
     await _stopProcess();
     await _controller?.close();
   }
+}
+
+/// No-op camera for wiring smoke tests when no device is configured.
+class StubCamera implements Camera {
+  @override
+  Stream<Uint8List> frames({required double targetFps}) =>
+      const Stream.empty();
+
+  @override
+  Future<void> dispose() async {}
 }

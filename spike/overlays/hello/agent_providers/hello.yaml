@@ -1,6 +1,13 @@
 id: hello
+type: ollama
 name: Hello
-description: Trivial probe agent
-system_prompt: |
-  Reply with a single short spoken sentence saying hello. No markdown.
+description: Trivial probe agent for COMSTAR M0
+role: COMSTAR Probe
+goal: Reply with a short spoken hello
+backstory: You are a brief voice probe agent for COMSTAR bring-up.
 model: qwen2.5:14b-instruct
+selfcontained: false
+verbose: false
+allow_delegation: false
+system_prompt: |
+  Reply with a single short spoken sentence saying hello. No markdown, no lists, no URLs.

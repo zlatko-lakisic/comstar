@@ -3,11 +3,19 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:args/args.dart';
+import 'package:comstar_bridge/attention/clock.dart';
+import 'package:comstar_bridge/attention/coordinator.dart';
 import 'package:comstar_bridge/config.dart';
+import 'package:comstar_bridge/http_audio_server.dart';
 import 'package:comstar_bridge/local_ws.dart';
 import 'package:comstar_bridge/log.dart';
+import 'package:comstar_bridge/session.dart';
+import 'package:comstar_bridge/stt.dart';
+import 'package:comstar_bridge/tts.dart';
 import 'package:comstar_bridge/vision/camera.dart';
 import 'package:comstar_bridge/vision/cpai_client.dart';
+import 'package:comstar_bridge/vision/identity.dart';
+import 'package:comstar_bridge/vision/vision_poller.dart';
 
 Future<void> main(List<String> arguments) async {
   final parser = ArgParser()
@@ -55,12 +63,71 @@ Future<void> main(List<String> arguments) async {
     exit(1);
   }
 
-  final ws = LocalWs(config: config);
+  final session = ComstarSession(config: config);
+  final stt = HttpSttClient();
+  final tts = createTtsEngine(
+    engine: config.avatar.tts,
+    piperVoice: config.avatar.piperVoice,
+  );
+  final audioServer = HttpAudioServer();
+
+  AttentionCoordinator? coordinator;
+  VisionPoller? visionPoller;
+
+  final ws = LocalWs(
+    config: config,
+    onMessage: (role, envelope, channel) {
+      coordinator?.handleWsMessage(role, envelope);
+      if (role == 'audio') {
+        coordinator?.attachAudioChannel(channel);
+      }
+    },
+    onBinary: (role, data, channel) {
+      if (role == 'audio') {
+        coordinator?.handleBinaryAudio(Uint8List.fromList(data));
+      }
+    },
+  );
   await ws.start();
+
+  coordinator = AttentionCoordinator(
+    config: config,
+    ws: ws,
+    session: session,
+    stt: stt,
+    tts: tts,
+    audioServer: audioServer,
+  );
+
+  final visionEnabled = Platform.environment['COMSTAR_VISION'] == '1';
+  if (visionEnabled) {
+    final cameraInput = Platform.environment['COMSTAR_CAMERA_INPUT'];
+    final camera = cameraInput != null && cameraInput.isNotEmpty
+        ? FfmpegCamera(input: cameraInput)
+        : StubCamera();
+    final cpaiClient = CpaiClient(config: config.vision);
+    final identity = IdentityResolver(
+      config: config.vision,
+      clock: SystemClock(),
+    );
+    visionPoller = VisionPoller(
+      camera: camera,
+      client: cpaiClient,
+      identity: identity,
+      config: config.vision,
+      clock: SystemClock(),
+    );
+    logInfo('vision_enabled', 'Vision poller starting', data: {
+      'camera': cameraInput ?? 'stub',
+    });
+  }
+
+  await coordinator.start(visionPoller: visionPoller);
 
   logInfo('bridge_started', 'COMSTAR bridge running', data: {
     'config': configPath,
     'dev_lan': config.devLanBindingEnabled,
+    'vision': visionEnabled,
   });
 
   final completer = Completer<void>();
@@ -70,6 +137,9 @@ Future<void> main(List<String> arguments) async {
     if (stopping) return;
     stopping = true;
     logInfo('shutdown', 'SIGTERM received, draining');
+    await coordinator?.stop();
+    stt.dispose();
+    await visionPoller?.dispose();
     await ws.stop();
     if (!completer.isCompleted) completer.complete();
   }

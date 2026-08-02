@@ -110,6 +110,12 @@ class BridgeClient:
             return
         await self._ws.send(wrap_message(msg_type, data, turn_id=turn_id))
 
+    async def send_binary(self, data: bytes) -> None:
+        if self._ws is None:
+            log_warn("ws_send_skipped", "Not connected", data={"type": "binary"})
+            return
+        await self._ws.send(data)
+
     async def stop(self) -> None:
         self._stop.set()
         if self._ws is not None:

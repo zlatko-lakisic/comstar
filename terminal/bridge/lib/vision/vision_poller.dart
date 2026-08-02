@@ -57,7 +57,7 @@ class VisionPoller {
   final Clock clock;
   final int absentFrameThreshold;
 
-  final _events = StreamController<VisionEvent>.broadcast();
+  final _events = StreamController<VisionEvent>.broadcast(sync: true);
   StreamSubscription<Uint8List>? _frameSub;
   StreamSubscription<bool>? _degradedSub;
   late double _targetFps;
@@ -79,10 +79,10 @@ class VisionPoller {
 
     _degradedSub = client.degradedStream.listen((degraded) {
       if (degraded) {
-        _events.add(const VisionDegraded());
+        _emit(const VisionDegraded());
         setTargetFps(config.ambientFps);
       } else {
-        _events.add(const VisionRecovered());
+        _emit(const VisionRecovered());
       }
     });
 
@@ -100,10 +100,15 @@ class VisionPoller {
     _degradedSub = null;
   }
 
-  Future<void> pollOnce(Uint8List frame) => _onFrame(frame);
+  Future<void> pollOnce(Uint8List frame) => _processFrame(frame);
 
   Future<void> _onFrame(Uint8List frame) async {
     if (!_running || _busy) return;
+    await _processFrame(frame);
+  }
+
+  Future<void> _processFrame(Uint8List frame) async {
+    if (_busy) return;
     _busy = true;
     try {
       final detections = await client.detectPerson(frame);
@@ -118,7 +123,7 @@ class VisionPoller {
         final best = person.reduce(
           (a, b) => a.confidence >= b.confidence ? a : b,
         );
-        _events.add(VisionPersonDetected(best.confidence));
+        _emit(VisionPersonDetected(best.confidence));
 
         if (_personPresent && identity.needsRecognition) {
           await _recognize(frame);
@@ -127,7 +132,7 @@ class VisionPoller {
         _personPresent = false;
         _absentFrames++;
         if (_absentFrames >= absentFrameThreshold) {
-          _events.add(const VisionPersonAbsent());
+          _emit(const VisionPersonAbsent());
         }
       }
     } finally {
@@ -140,7 +145,7 @@ class VisionPoller {
     if (matches.isEmpty) {
       final vote = identity.recordUnknown();
       if (vote is IdentityVoteUnknown) {
-        _events.add(const VisionFaceUnknown());
+        _emit(const VisionFaceUnknown());
       }
       return;
     }
@@ -152,7 +157,7 @@ class VisionPoller {
     if (!best.isKnown) {
       final vote = identity.recordUnknown();
       if (vote is IdentityVoteUnknown) {
-        _events.add(const VisionFaceUnknown());
+        _emit(const VisionFaceUnknown());
       }
       return;
     }
@@ -160,11 +165,17 @@ class VisionPoller {
     final vote = identity.recordMatch(best.userid, best.confidence);
     switch (vote) {
       case IdentityVoteRecognized(:final userid, :final confidence):
-        _events.add(VisionFaceRecognized(userid, confidence));
+        _emit(VisionFaceRecognized(userid, confidence));
       case IdentityVoteUnknown():
-        _events.add(const VisionFaceUnknown());
+        _emit(const VisionFaceUnknown());
       case IdentityVotePending():
         break;
+    }
+  }
+
+  void _emit(VisionEvent event) {
+    if (!_events.isClosed) {
+      _events.add(event);
     }
   }
 

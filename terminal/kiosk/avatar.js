@@ -1,10 +1,30 @@
-const SPEAK_STUB_MS = 1500;
-
+/**
+ * Avatar / speak handler.
+ * Phase 1: play bridge audioUrl via HTMLAudioElement and emit speak.started/ended
+ * for follow-up window timing. TalkingHead GLB lip-sync lands when a model is present.
+ */
 export class Avatar {
   constructor({ onSpeakStarted, onSpeakEnded } = {}) {
     this.onSpeakStarted = onSpeakStarted ?? (() => {});
     this.onSpeakEnded = onSpeakEnded ?? (() => {});
-    this._speakTimer = null;
+    this._audio = null;
+    this._fallbackTimer = null;
+    this.loaded = true;
+    this.webglVendor = this._detectWebgl();
+  }
+
+  _detectWebgl() {
+    try {
+      const c = document.createElement('canvas');
+      const gl = c.getContext('webgl') || c.getContext('experimental-webgl');
+      if (!gl) return 'none';
+      const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+      return dbg
+        ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)
+        : 'webgl';
+    } catch (_) {
+      return 'error';
+    }
   }
 
   handle(envelope) {
@@ -16,8 +36,6 @@ export class Avatar {
         this._cancel();
         break;
       case 'config':
-        console.info('[avatar] config received', envelope.data);
-        break;
       case 'state':
       case 'listening':
       case 'thinking':
@@ -29,21 +47,50 @@ export class Avatar {
     }
   }
 
-  _speak(data) {
-    this._cancel();
-    console.info('[avatar] speak stub', data);
+  async _speak(data) {
+    this._cancel(false);
+    const url = data.audioUrl;
     this.onSpeakStarted();
-    this._speakTimer = setTimeout(() => {
-      this._speakTimer = null;
+
+    if (!url) {
+      this._fallbackTimer = setTimeout(() => {
+        this._fallbackTimer = null;
+        this.onSpeakEnded();
+      }, 1200);
+      return;
+    }
+
+    try {
+      const audio = new Audio(url);
+      this._audio = audio;
+      audio.onended = () => {
+        this._audio = null;
+        this.onSpeakEnded();
+      };
+      audio.onerror = () => {
+        this._audio = null;
+        this.onSpeakEnded();
+      };
+      await audio.play();
+    } catch (err) {
+      console.warn('[avatar] play failed', err);
+      this._audio = null;
       this.onSpeakEnded();
-    }, SPEAK_STUB_MS);
+    }
   }
 
-  _cancel() {
-    if (this._speakTimer) {
-      clearTimeout(this._speakTimer);
-      this._speakTimer = null;
-      this.onSpeakEnded();
+  _cancel(emitEnded = true) {
+    if (this._fallbackTimer) {
+      clearTimeout(this._fallbackTimer);
+      this._fallbackTimer = null;
+    }
+    if (this._audio) {
+      try {
+        this._audio.pause();
+        this._audio.src = '';
+      } catch (_) {}
+      this._audio = null;
+      if (emitEnded) this.onSpeakEnded();
     }
   }
 }

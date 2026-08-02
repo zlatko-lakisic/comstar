@@ -16,22 +16,34 @@ typedef MessageHandler = void Function(
   WebSocketChannel channel,
 );
 
+typedef BinaryHandler = void Function(
+  String clientRole,
+  List<int> data,
+  WebSocketChannel channel,
+);
+
 class LocalWs {
   LocalWs({
     required this.config,
     this.kioskPort = 8777,
     this.audioPort = 8778,
     this.onMessage,
+    this.onBinary,
   });
 
   final ComstarConfig config;
   final int kioskPort;
   final int audioPort;
   final MessageHandler? onMessage;
+  final BinaryHandler? onBinary;
 
   HttpServer? _kioskServer;
   HttpServer? _audioServer;
   final _clients = <WebSocketChannel>[];
+  final _clientsByRole = <String, List<WebSocketChannel>>{
+    'kiosk': [],
+    'audio': [],
+  };
   bool _stopping = false;
 
   InternetAddress get bindAddress =>
@@ -118,8 +130,21 @@ class LocalWs {
     };
   }
 
+  void sendToRole(String role, Envelope envelope) {
+    for (final channel in List<WebSocketChannel>.from(
+      _clientsByRole[role] ?? const [],
+    )) {
+      try {
+        channel.sink.add(envelope.encode());
+      } on Object catch (e) {
+        logWarn('ws_send_failed', e.toString(), data: {'role': role});
+      }
+    }
+  }
+
   void _handleConnection(WebSocketChannel channel, String role) {
     _clients.add(channel);
+    _clientsByRole.putIfAbsent(role, () => []).add(channel);
     var authenticated = !config.devLanBindingEnabled;
     Timer? heartbeat;
 
@@ -138,6 +163,10 @@ class LocalWs {
 
     channel.stream.listen(
       (raw) {
+        if (raw is List<int>) {
+          onBinary?.call(role, raw, channel);
+          return;
+        }
         if (raw is! String) return;
 
         final envelope = Envelope.decode(raw);
@@ -191,11 +220,13 @@ class LocalWs {
       onDone: () {
         heartbeat?.cancel();
         _clients.remove(channel);
+        _clientsByRole[role]?.remove(channel);
         logInfo('ws_disconnect', 'Client disconnected', data: {'role': role});
       },
       onError: (Object error) {
         heartbeat?.cancel();
         _clients.remove(channel);
+        _clientsByRole[role]?.remove(channel);
         logWarn('ws_error', error.toString(), data: {'role': role});
       },
       cancelOnError: true,

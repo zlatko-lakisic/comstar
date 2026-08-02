@@ -1,18 +1,113 @@
-"""COMSTAR audio process — M1 skeleton (connect + hello + reconnect)."""
+"""COMSTAR audio process — capture, wake word stub, VAD, PCM streaming."""
 
 from __future__ import annotations
 
 import asyncio
+import os
 import signal
+from typing import Any
 
 from bridge_client import BridgeClient
-from log import log_info
+from capture import AudioCapture
+from log import log_info, log_warn
+from stream import PcmStreamer
+from vad import VadEngine
+from wakeword import WakeWordEngine
 
 
 async def _main() -> None:
+    wakeword_model = os.environ.get(
+        "COMSTAR_WAKEWORD_MODEL",
+        "./models/hey_comstar.onnx",
+    )
+    wakeword_threshold = float(os.environ.get("COMSTAR_WAKEWORD_THRESHOLD", "0.55"))
+    vad_silence_ms = int(os.environ.get("COMSTAR_VAD_SILENCE_MS", "700"))
+
     client = BridgeClient()
     loop = asyncio.get_running_loop()
     stop_event = asyncio.Event()
+    level_task: asyncio.Task[None] | None = None
+    wake_enabled = True
+    capture: AudioCapture | None = None
+    streamer: PcmStreamer | None = None
+    wake: WakeWordEngine | None = None
+    vad: VadEngine | None = None
+
+    async def send_envelope(
+        msg_type: str,
+        data: dict[str, Any],
+        turn_id: str | None = None,
+    ) -> None:
+        await client.send(msg_type, data, turn_id=turn_id)
+
+    async def send_binary(data: bytes) -> None:
+        await client.send_binary(data)
+
+    try:
+        capture = AudioCapture(on_level=lambda _rms: None)
+        capture.start()
+        vad = VadEngine(silence_ms=vad_silence_ms)
+        wake = WakeWordEngine(wakeword_model, threshold=wakeword_threshold)
+        streamer = PcmStreamer(
+            capture=capture,
+            send_binary=send_binary,
+            send_envelope=send_envelope,
+            vad=vad,
+        )
+        log_info(
+            "audio_started",
+            "Audio capture running",
+            data={
+                "wakeword_available": wake.available,
+                "vad": "silero" if vad.using_silero else "energy",
+            },
+        )
+    except Exception as exc:  # noqa: BLE001
+        log_warn("audio_capture_unavailable", str(exc))
+
+    async def on_message(envelope: dict[str, Any]) -> None:
+        nonlocal wake_enabled, level_task
+        msg_type = envelope.get("type")
+        data = envelope.get("data") or {}
+        turn_id = envelope.get("turn_id")
+
+        if msg_type == "listen.start":
+            if streamer is not None:
+                tid = data.get("turn_id") or turn_id or "unknown"
+                await streamer.start(str(tid))
+        elif msg_type == "listen.stop":
+            if streamer is not None:
+                await streamer.stop()
+        elif msg_type == "wake.enable":
+            wake_enabled = bool(data.get("enabled", True))
+            if wake is not None:
+                wake.set_enabled(wake_enabled)
+
+    client.on_message = on_message
+
+    if capture is not None:
+        last_holder = {"rms": 0.0}
+
+        def _on_level(rms: float) -> None:
+            last_holder["rms"] = rms
+
+        capture.on_level = _on_level
+
+        async def emit_levels() -> None:
+            while not stop_event.is_set():
+                await client.send("level", {"rms": last_holder["rms"]})
+                if wake_enabled and wake is not None and capture is not None:
+                    pcm = capture.snapshot()
+                    if len(pcm) >= 3200:
+                        score = wake.process(pcm[-3200:])
+                        if score is not None:
+                            await client.send(
+                                "wake",
+                                {"score": score, "model": "hey_comstar"},
+                            )
+                await asyncio.sleep(0.1)
+
+        level_task = asyncio.create_task(emit_levels())
 
     def _shutdown() -> None:
         log_info("shutdown", "SIGTERM received, stopping")
@@ -23,6 +118,16 @@ async def _main() -> None:
 
     runner = asyncio.create_task(client.run())
     await stop_event.wait()
+    if level_task is not None:
+        level_task.cancel()
+        try:
+            await level_task
+        except asyncio.CancelledError:
+            pass
+    if streamer is not None:
+        await streamer.stop()
+    if capture is not None:
+        capture.stop()
     await client.stop()
     runner.cancel()
     try:

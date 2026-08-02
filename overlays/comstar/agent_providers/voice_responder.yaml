@@ -1,6 +1,14 @@
 id: client.voice_responder
 name: COMSTAR Voice Responder
 description: Conversational agent for spoken answers at the terminal.
+role: COMSTAR Voice Responder
+goal: Answer household questions in short spoken sentences
+backstory: You speak to someone standing in a room. Keep it natural and brief.
+type: ollama
+ollama_host: workflow
+selfcontained: true
+verbose: false
+allow_delegation: false
 
 system_prompt: |
   You are COMSTAR, a voice assistant in a home hallway terminal.
@@ -13,7 +21,7 @@ system_prompt: |
   - Target about 40 words unless the user explicitly asks for detail.
   - Do not mention that you are an AI unless asked.
 
-model: default
+model: qwen2.5:14b-instruct
 
 mcp_providers:
   - client.terminal

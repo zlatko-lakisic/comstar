@@ -1,7 +1,10 @@
 import 'package:comstar_bridge/attention/effects.dart';
 import 'package:comstar_bridge/log.dart';
 
-/// Dispatches attention machine effects to subsystems (stubbed for M3).
+/// Dispatches attention machine effects to subsystems.
+///
+/// [AttentionCoordinator] calls [dispatch] for logging/tracking, then executes
+/// service I/O (session, STT, TTS, WebSocket) in its own effect handler.
 class EffectRunner {
   EffectRunner({
     this.onSetVisionFps,

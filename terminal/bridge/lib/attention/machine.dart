@@ -273,6 +273,8 @@ class AttentionMachine {
           context.state = const Responding();
           context.respondingStartedAtMs = context.clock.nowMs;
           context.directAgentInFlight = true;
+          context.wakeEnabled = true;
+          effects.add(const EnableWake(true));
           effects.add(const SetThinking(true));
           effects.add(CallDirectAgent(text, context.turnId!));
         }
@@ -283,6 +285,8 @@ class AttentionMachine {
         if (elapsedMs > maxMs) {
           context.state = const Responding();
           context.respondingStartedAtMs = context.clock.nowMs;
+          context.wakeEnabled = true;
+          effects.add(const EnableWake(true));
           effects.add(FinalizeCapture());
           effects.add(CallStt(context.turnId!));
         }

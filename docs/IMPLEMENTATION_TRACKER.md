@@ -18,25 +18,28 @@
 
 | Field | Value |
 |---|---|
-| Active milestone | **M0 — Ground truth** |
-| Overall Phase 1 | ~8% (bring-up / partial M0 only) |
+| Active milestone | **M4 / M6 / M7 remaining** (M0≈90%, M1–M3 done, M5 session code + AO hello verified) |
+| Overall Phase 1 | ~45% |
 | Last updated | 2026-08-02 |
-| Board | `comstar-ai` Pi 4B 4GB @ `192.168.89.34` |
+| Board | `comstar-ai` Pi 4B 4GB @ `192.168.89.34` (Dart 3.5.4, Node 18, jq, linger on) |
 | Vision backend | CodeProject.AI `10.0.10.16:32168` (GPU YOLO + Face) |
-| Product code | none yet (correct for M0) |
+| AO Reach | `10.0.10.16:8765` v1.27.4 — `spike/reach_hello.dart` → `Hello.` |
+| Product code | bridge (vision+attention+session+stt/tts), audio bring-up, kiosk audio playback |
+| Tests | **56** Dart + **2** Python — green on Mac and Pi |
 
-### Open blockers / gaps (from BASELINES)
+### Open blockers / gaps
 
 | ID | Item | Blocks | Owner note |
 |---|---|---|---|
-| B1 | Dart ^3.5, Node/npm, jq not on Pi | M1 deploy / DEV_LOOP | Install during M1 bootstrap |
-| B2 | `loginctl linger` disabled for `md-admin` | M1 systemd user units | `enable-linger` |
-| B3 | AO Reach + daemon flags not verified | M0.3, M5+ | Highest-risk unknown |
-| B4 | faster-whisper endpoint not found | M6 | Locate or deploy |
-| B5 | Audio routing ADR open (kiosk vs ALSA) | M0.6, M4.6, M7 | Prefer kiosk sink |
-| B6 | No faces enrolled | M2 UAT, M8 | `scripts/enroll_face.sh` later |
-| B7 | SSH keys / DEV_LOOP Makefile not set up | iteration speed | M1.7 |
-| B8 | C525 mic may fail room-distance wake UAT | M4 exit | ReSpeaker if needed |
+| B1 | ~~Dart/Node/jq missing on Pi~~ | — | **Resolved** — Dart 3.5.4, Node 18, jq installed |
+| B2 | ~~linger disabled~~ | — | **Resolved** — `loginctl enable-linger md-admin` |
+| B3 | ~~AO Reach not verified~~ | — | **Resolved** — overlay+tunnel+directAgent |
+| B4 | faster-whisper / STT HTTP not found on LAN | M6 live STT | Deploy or expose STT; set `COMSTAR_STT_URL` |
+| B5 | ~~Audio routing ADR~~ | — | **Resolved** — kiosk sink (ADR 0001) |
+| B6 | No faces enrolled | M8 greet-by-name | `scripts/enroll_face.sh` ready |
+| B7 | SSH keys / full Makefile DEV_LOOP | iteration speed | password SSH works; keys still preferred |
+| B8 | Wake word model not trained | M4 exit | stub never fires; `train_wakeword.py` placeholder |
+| B9 | TalkingHead GLB not integrated | M7 lip-sync | kiosk plays `audioUrl`; GLB next |
 
 ---
 
@@ -44,13 +47,13 @@
 
 | # | Name | Effort | Status | Progress | Gate |
 |---|---|---|---|---|---|
-| M0 | Ground truth | 6h | `in_progress` | partial | verify services; no product code |
-| M1 | Skeleton & config | 8h (+3h DEV_LOOP) | `not_started` | 0% | three processes + make doctor |
-| M2 | Vision client | 10h | `not_started` | 0% | offline tests + live recognize |
-| M3 | Attention state machine | 12h (+4h console) | `not_started` | 0% | 100% branch coverage |
-| M4 | Audio pipeline | 14h | `not_started` | 0% | wake ROC + hardware UAT |
-| M5 | AO Reach session | 12h | `not_started` | 0% | text turn + no overlay leak |
-| M6 | Voice round trip | 10h | `not_started` | 0% | p95 turn &lt; 15s, no avatar |
+| M0 | Ground truth | 6h | `in_progress` | ~80% | verify services; no product code |
+| M1 | Skeleton & config | 8h (+3h DEV_LOOP) | `done` | 100% | three processes + make doctor |
+| M2 | Vision client | 10h | `done` | 100% | offline tests + live recognize |
+| M3 | Attention state machine | 12h (+4h console) | `done` | 100% | 100% branch coverage |
+| M4 | Audio pipeline | 14h | `in_progress` | ~30% | wake ROC + hardware UAT |
+| M5 | AO Reach session | 12h | `in_progress` | ~50% | text turn + no overlay leak |
+| M6 | Voice round trip | 10h | `in_progress` | ~40% | p95 turn &lt; 15s, no avatar |
 | M7 | Avatar & kiosk | 14h | `not_started` | 0% | lip-sync + render ADR |
 | M8 | First contact | 10h | `not_started` | 0% | walk-up demo UAT-8 |
 | M9 | Hardening & soak | 16h | `not_started` | 0% | 24h soak + runbook |

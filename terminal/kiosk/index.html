@@ -69,11 +69,11 @@
         onEnvelope: (envelope) => avatar.handle(envelope),
         onOpen: () => {
           bridge.send('ready', {
-            avatarLoaded: false,
-            webglVendor: 'stub',
+            avatarLoaded: avatar.loaded,
+            webglVendor: avatar.webglVendor,
             fps: 0,
           });
-          avatarStatusEl.textContent = 'Avatar: stub (M1)';
+          avatarStatusEl.textContent = `Avatar ready · WebGL: ${avatar.webglVendor}`;
         },
       });
 

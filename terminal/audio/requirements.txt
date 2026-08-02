@@ -1,3 +1,6 @@
 websockets>=13.0
 pyyaml>=6.0
 numpy>=2.0
+sounddevice>=0.5.0
+# openwakeword + torch optional — stub wakeword when model missing
+# torch/torchaudio pulled in only if Silero VAD is used
