@@ -21,7 +21,7 @@ async def _main() -> None:
         "./models/hey_comstar.onnx",
     )
     wakeword_threshold = float(os.environ.get("COMSTAR_WAKEWORD_THRESHOLD", "0.55"))
-    vad_silence_ms = int(os.environ.get("COMSTAR_VAD_SILENCE_MS", "700"))
+    vad_silence_ms = int(os.environ.get("COMSTAR_VAD_SILENCE_MS", "1000"))
     # Dev bypass when ONNX is missing — score must exceed threshold (default 0.55).
     force_wake_score = os.environ.get("COMSTAR_FORCE_WAKE_SCORE") or None
     if force_wake_score is not None and not force_wake_score.strip():
@@ -125,8 +125,8 @@ async def _main() -> None:
                                 np.float32,
                             )
                             rms = float(np.sqrt(np.mean(np.square(audio / 32768.0))))
-                            # Webcam mic is quiet; 0.025 catches speech without idle hiss.
-                            if rms > 0.025:
+                            # Webcam mic idle ~0.03; require clearer speech for force-wake.
+                            if rms > 0.06:
                                 score = float(force_wake_score)
                                 wake.mark_fired()
                         if score is not None:

@@ -117,11 +117,14 @@ class SttHandler(BaseHTTPRequestHandler):
                 task="transcribe",
                 # Short / quiet webcam clips get wiped by Silero VAD inside whisper.
                 vad_filter=False,
-                beam_size=3,
-                best_of=3,
+                beam_size=1,
+                best_of=1,
                 temperature=0.0,
                 condition_on_previous_text=False,
-                no_speech_threshold=0.45,
+                no_speech_threshold=0.5,
+                # Reject long single-character loops ("aaaa…") from hum/clipping.
+                compression_ratio_threshold=2.0,
+                log_prob_threshold=-0.8,
             )
             text = " ".join(segment.text.strip() for segment in segments).strip()
             print(

@@ -328,11 +328,10 @@ class AttentionMachine {
         final elapsedMs =
             context.clock.nowMs - context.listeningStartedAtMs;
         final maxMs = context.config.audio.maxUtteranceSeconds * 1000;
-        if (elapsedMs > maxMs) {
-          context.state = const Responding();
-          context.respondingStartedAtMs = context.clock.nowMs;
-          context.wakeEnabled = true;
-          effects.add(const EnableWake(true));
+        if (elapsedMs > maxMs && !context.sttPending) {
+          // Stay in Listening until STT returns — do not jump to Responding
+          // early or TranscriptReady will be dropped.
+          context.sttPending = true;
           effects.add(FinalizeCapture());
           effects.add(CallStt(context.turnId!));
         }

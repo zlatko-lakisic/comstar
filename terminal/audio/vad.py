@@ -63,7 +63,7 @@ class VadEngine:
                 silence_needed = int(self.sample_rate * self.silence_ms / 1000)
                 # Require a bit of real speech before allowing end (avoids
                 # one-frame wake blips ending the utterance immediately).
-                min_speech = int(self.sample_rate * 0.4)  # 400ms
+                min_speech = int(self.sample_rate * 1.0)  # 1.0s
                 if (
                     self._silence_samples >= silence_needed
                     and self._speech_samples >= min_speech
@@ -86,5 +86,6 @@ class VadEngine:
 
     def _energy_detect(self, samples: np.ndarray) -> bool:
         rms = float(np.sqrt(np.mean(np.square(samples.astype(np.float32) / 32768.0))))
-        # Webcam mic at +10dB software gain; keep sensitive but above idle hiss.
-        return rms > 0.015
+        # Idle webcam hiss sits ~0.05–0.06 RMS at 100–180% gain.
+        # Real close speech peaks well above 0.2. Stay clear of idle.
+        return rms > 0.10

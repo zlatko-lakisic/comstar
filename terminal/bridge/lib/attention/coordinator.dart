@@ -221,30 +221,36 @@ class AttentionCoordinator {
         data: {'active': true, 'followUp': true},
       ),
     );
-    // Keep force-wake muted until TTS echo settles; VAD also settles in audio.
+    // Keep force-wake muted until TTS echo settles.
     _sendAudio(
       Envelope.create(type: 'wake.enable', data: {'enabled': false}),
     );
-    // Stream mic so VAD can fire SpeechStart without a wake word.
-    _sendAudio(
-      Envelope.create(
-        type: 'listen.start',
-        turnId: turnId,
-        data: {
-          'turn_id': turnId,
-          'maxMs': seconds * 1000,
-        },
-      ),
-    );
-    Future<void>.delayed(const Duration(milliseconds: 1500), () {
+    // Delay mic start until after settle so the first VAD speech_start cannot
+    // race the arm window and be lost forever (continuous hiss never re-fires).
+    const settleMs = 1500;
+    Future<void>.delayed(const Duration(milliseconds: settleMs), () {
       if (machine.context.turnId != turnId) return;
-      if (machine.state is Engaged || machine.context.followUpListening) {
-        machine.context.wakeEnabled = true;
-        _sendAudio(
-          Envelope.create(type: 'wake.enable', data: {'enabled': true}),
-        );
-        logInfo('followup', 'Follow-up mic armed after settle');
+      if (machine.state is! Engaged || !machine.context.followUpListening) {
+        return;
       }
+      machine.context.followUpOpenedAtMs =
+          clock.nowMs - 2000; // already armed for SpeechStart
+      machine.context.wakeEnabled = true;
+      _sendAudio(
+        Envelope.create(type: 'wake.enable', data: {'enabled': true}),
+      );
+      _sendAudio(
+        Envelope.create(
+          type: 'listen.start',
+          turnId: turnId,
+          data: {
+            'turn_id': turnId,
+            // Remaining window after settle.
+            'maxMs': ((seconds * 1000) - settleMs).clamp(1000, 60000),
+          },
+        ),
+      );
+      logInfo('followup', 'Follow-up mic armed after settle');
     });
     _followUpTimer?.cancel();
     _followUpTimer = Timer(Duration(seconds: seconds), () {
@@ -290,20 +296,54 @@ class AttentionCoordinator {
         handle(const SpeechStart());
       case 'vad.speech_end':
         final durationMs = (envelope.data['durationMs'] as num?)?.toInt() ?? 0;
+        // Ambient blip ended the streamer with almost no PCM. Restart capture
+        // in place so the user can still finish their sentence.
+        if ((machine.state is Listening || machine.context.followUpListening) &&
+            _captureBuffer.length < 48000 &&
+            !machine.context.sttPending) {
+          final turnId = machine.context.turnId ?? 'relisten';
+          logWarn('vad_end_ignored', 'SpeechEnd too early; restarting listen', data: {
+            'bytes': _captureBuffer.length,
+            'duration_ms': durationMs,
+            'turn_id': turnId,
+          });
+          _sendAudio(
+            Envelope.create(
+              type: 'listen.start',
+              turnId: turnId,
+              data: {
+                'turn_id': turnId,
+                'maxMs': config.audio.maxUtteranceSeconds * 1000,
+              },
+            ),
+          );
+          break;
+        }
         handle(SpeechEnd(durationMs));
       case 'audio.begin':
         // Keep pre-roll already buffered from listen.start; only reset sample rate.
         _captureSampleRate =
             (envelope.data['sampleRate'] as num?)?.toInt() ?? 16000;
       case 'audio.end':
-        break;
+        // Streamer hit maxMs / stop without a VAD speech_end — still finalize.
+        if (machine.state is Listening && !machine.context.sttPending) {
+          final turnId = machine.context.turnId;
+          if (turnId != null) {
+            logInfo('listen_eof', 'audio.end while Listening; finalizing', data: {
+              'turn_id': turnId,
+              'bytes': _captureBuffer.length,
+            });
+            handle(SpeechEnd(_captureBuffer.length));
+          }
+        }
       case 'level':
         // Only drive the avatar mic meter while we are actually capturing.
-        // Broadcasting active=true on every RMS sample made the orb "listen"
-        // continuously even after the follow-up window closed.
-        final listening = machine.state is Listening ||
-            machine.context.followUpListening;
-        if (!listening) {
+        // After FinalizeCapture the streamer stops but level msgs continue —
+        // that made the orb "listen" while STT ran on dead audio.
+        final capturing = (machine.state is Listening ||
+                machine.context.followUpListening) &&
+            !machine.context.sttPending;
+        if (!capturing) {
           break;
         }
         final rms = (envelope.data['rms'] as num?)?.toDouble() ?? 0;
@@ -403,18 +443,52 @@ class AttentionCoordinator {
           'turn_id': turnId,
           'bytes': pcm.length,
           'sample_rate': _captureSampleRate,
-          'text': text,
+          'text': text.length > 120 ? '${text.substring(0, 120)}…' : text,
         },
       );
+      if (_isJunkTranscript(text)) {
+        logWarn('stt_junk', 'Rejecting hallucinated/junk transcript', data: {
+          'turn_id': turnId,
+          'bytes': pcm.length,
+          'len': text.length,
+        });
+        handle(const TranscriptReady(''));
+        return;
+      }
       handle(TranscriptReady(text));
     } finally {
       span.close();
     }
   }
 
+  /// Whisper often emits long runs of a single character (or no spaces) on
+  /// hum/clipping. Treat those as a missed listen, not a real utterance.
+  bool _isJunkTranscript(String text) {
+    final t = text.trim();
+    if (t.isEmpty) return true;
+    if (t.length > 80 && !t.contains(RegExp(r'\s'))) return true;
+    final letters = t.toLowerCase().replaceAll(RegExp(r'[^a-z]'), '');
+    if (letters.isEmpty) return true;
+    final counts = <String, int>{};
+    for (final c in letters.split('')) {
+      counts[c] = (counts[c] ?? 0) + 1;
+    }
+    final maxCount = counts.values.reduce((a, b) => a > b ? a : b);
+    if (maxCount / letters.length >= 0.55) return true;
+    // Collapse obvious stutter loops: "aaaa", "blah blah blah" x20
+    if (RegExp(r'(.)\1{8,}').hasMatch(letters)) return true;
+    return false;
+  }
+
   Future<void> _runDirectAgent(String text, String turnId) async {
     final turnSpan = Span('turn_total');
     try {
+      final clipped =
+          text.length > 500 ? '${text.substring(0, 500)}…' : text;
+      logInfo('direct_agent', 'Calling voice agent', data: {
+        'turn_id': turnId,
+        'text': clipped,
+      });
       final response = await session.directVoice(text);
       final ttsSpan = Span('tts_total');
       final path = await tts.synthesizeToFile(response);
