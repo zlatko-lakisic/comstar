@@ -336,7 +336,7 @@ this and nothing more.
 | noticed | FaceUnknown | stranger_mode = restricted | noticed | no session; wake word still armed |
 | noticed | PersonAbsent | absent ≥ 3 frames | ambient | drop poll to ambient_fps |
 | engaged | WakeWord | — | listening | `listen.start`, disable wake (half-duplex) |
-| engaged | SpeechStart | face_attention_trigger = true AND gaze | listening | `listen.start` |
+| engaged | SpeechStart | follow-up window open OR (face_attention_trigger AND gaze) | listening | `listen.start` |
 | engaged | Tick | idle > identity_ttl AND absent | ambient | `SessionBridge.stop()` |
 | listening | SpeechEnd | — | listening | finalize capture, call STT |
 | listening | Tick | elapsed > max_utterance_seconds | responding | force-close capture with what we have |
@@ -362,8 +362,29 @@ this and nothing more.
 
 ## 9. Kiosk avatar (TalkingHead)
 
-**Status:** SPEC — not yet verified on Pi Chromium.
+**Status:** VERIFIED (audio path) 2026-08-02 — GLB lip-sync still SPEC.
 
-TalkingHead integration (GLB load, viseme lip-sync, `speak.started` /
-`speak.ended` timing) is planned for M7. Desktop Chrome smoke test pending M0.4;
-this section will move to VERIFIED with measured fps and a sample viseme map.
+### Phase 1 audio path (shipping)
+
+Kiosk `terminal/kiosk/avatar.js` plays `speak.audioUrl` with `HTMLAudioElement`.
+
+| Event | When |
+|---|---|
+| `speak.started` | Immediately before `audio.play()` (or 1.2 s timer if `audioUrl` empty) |
+| `speak.ended` | `audio.onended` / `onerror` / cancel |
+| `ready` | On WS open — `{avatarLoaded, webglVendor, fps}` |
+
+`#avatar` is a full-bleed mount. Without a GLB, the HUD + ambient gradient render;
+spoken conversation still works (ADR 0001 kiosk sink).
+
+### TalkingHead GLB path (next)
+
+When `avatar.model` (`.glb`) is present and WebGL is healthy:
+
+1. Load TalkingHead (or equivalent) into `#avatar`.
+2. Drive lip-sync from the same `audioUrl` (or attached MediaElement source).
+3. On WebGL context loss: fall back to HTMLAudioElement; keep `speak.*` events.
+4. Bridge hang guard: if `speak.ended` missing after `tts_total + 5s`, force
+   `PlaybackEnded`.
+
+Pi fps / render-path ADR: `docs/adr/0002-render-path.md`.

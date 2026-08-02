@@ -1,13 +1,17 @@
 [Unit]
 Description=COMSTAR kiosk (Chromium avatar renderer)
 After=network-online.target comstar-bridge.service
-Wants=network-online.target
+Wants=network-online.target comstar-bridge.service
 
 [Service]
 Type=simple
-WorkingDirectory=%h/comstar/terminal/kiosk
+WorkingDirectory=/opt/comstar/src/terminal/kiosk
 Environment=COMSTAR_LOG=info
-ExecStart=/usr/bin/chromium-browser --kiosk --noerrdialogs file://%h/comstar/terminal/kiosk/index.html
+Environment=DISPLAY=:0
+Environment=WAYLAND_DISPLAY=wayland-0
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+# Served by bridge HttpAudioServer at :8776/kiosk/ (ES modules need http://, not file://).
+ExecStart=/usr/bin/chromium --ozone-platform=wayland --user-data-dir=%h/.config/comstar-kiosk-chromium --kiosk --noerrdialogs --disable-session-crashed-bubble --no-first-run --check-for-update-interval=31536000 http://127.0.0.1:8776/kiosk/
 Restart=on-failure
 RestartSec=5
 KillSignal=SIGTERM

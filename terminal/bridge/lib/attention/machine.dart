@@ -236,8 +236,9 @@ class AttentionMachine {
       case WakeWord():
         _enterListening(effects);
       case SpeechStart():
-        if (context.config.attention.faceAttentionTrigger &&
-            context.gazeDetected) {
+        if (context.followUpOpen ||
+            (context.config.attention.faceAttentionTrigger &&
+                context.gazeDetected)) {
           _enterListening(effects);
         }
       case Tick():

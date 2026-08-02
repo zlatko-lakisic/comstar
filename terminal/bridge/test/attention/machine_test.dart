@@ -154,6 +154,16 @@ void main() {
       expect(m.context.cachedUserid, 'zlatko');
     });
 
+    test('engaged + SpeechStart during follow-up → listening', () {
+      final m = _machine();
+      _apply(m, const PersonDetected(0.8));
+      _apply(m, const FaceRecognized('zlatko', 0.9));
+      m.context.followUpOpen = true;
+      final t = m.handle(const SpeechStart());
+      expect(t.to, isA<Listening>());
+      expect(_hasEffectType<StartListening>(t.effects), isTrue);
+    });
+
     test('noticed + FaceUnknown + greet → engaged guest', () {
       final m = _machine(strangerMode: 'greet');
       _apply(m, const PersonDetected(0.8));

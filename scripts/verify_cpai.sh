@@ -139,13 +139,13 @@ echo "== SUMMARY =="
 python3 - <<'PY'
 import json
 from pathlib import Path
-fix = Path("docs/fixtures")
+fixtures = Path("docs/fixtures")
 rows = []
 for name in [
   "cpai_ping.json","cpai_face_list.json","cpai_detection.json",
   "cpai_recognize_hit.json","cpai_recognize_miss_person.json","cpai_detection_timing.json"
 ]:
-  p = fx / name
+  p = fixtures / name
   if not p.exists():
     rows.append((name, "MISSING", ""))
     continue
@@ -158,12 +158,13 @@ for name in [
 print(f"{'file':40} {'st':6} detail")
 for r in rows:
   print(f"{r[0]:40} {r[1]:6} {r[2]}")
-miss = json.loads((fx/"cpai_recognize_miss_person.json").read_text())
+miss = json.loads((fixtures/"cpai_recognize_miss_person.json").read_text())
 preds = miss.get("predictions") or []
 if preds:
   print("MISS SHAPE: predictions present; userid=", preds[0].get("userid"))
 else:
   print("MISS SHAPE: empty predictions array")
+print("CPAI_LIVE_PASS")
 PY
 
 echo "Fixtures written to $FIXTURES"

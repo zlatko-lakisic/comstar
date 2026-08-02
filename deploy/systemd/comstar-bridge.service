@@ -1,18 +1,21 @@
 [Unit]
-Description=COMSTAR bridge (ao_reach sidecar + local WS)
+Description=COMSTAR bridge
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=%h/comstar
-Environment=COMSTAR_CONFIG=%h/comstar/config/comstar.yaml
+WorkingDirectory=/opt/comstar/src/terminal/bridge
+Environment=COMSTAR_CONFIG=/opt/comstar/src/config/comstar.yaml
+Environment=COMSTAR_CPAI_URL=http://10.0.10.16:32168
+Environment=COMSTAR_CAMERA_INPUT=/dev/video0
+Environment=COMSTAR_VISION=1
 Environment=COMSTAR_LOG=info
-ExecStart=%h/comstar/terminal/bridge/build/comstar_bridge --config %h/comstar/config/comstar.yaml
+ExecStart=/usr/local/bin/dart run bin/comstar_bridge.dart --config /opt/comstar/src/config/comstar.yaml
 Restart=on-failure
 RestartSec=5
 KillSignal=SIGTERM
-TimeoutStopSec=2
+TimeoutStopSec=5
 
 [Install]
 WantedBy=default.target

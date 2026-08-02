@@ -10,8 +10,9 @@ Hardware baseline: `docs/BASELINES.md`. Dev workflow: `docs/DEV_LOOP.md`.
 | Path | Purpose |
 |---|---|
 | `/opt/comstar/src` | Deployed git tree (rsync target) |
-| `/opt/comstar/config/comstar.yaml` | Production config (not in repo) |
-| `/opt/comstar/models/` | Wake-word ONNX, avatar GLB (not in repo) |
+| `/opt/comstar/src/config/comstar.yaml` | Production config (created from example on first deploy; not in git) |
+| `/opt/comstar/src/models/` | Wake-word ONNX, avatar GLB (not in repo) |
+| SSH `comstar` | `md-admin@192.168.89.34` (key auth) |
 | `~/.config/systemd/user/` | User units: `comstar-bridge`, `comstar-audio`, `comstar-kiosk` |
 
 Deploy from the Mac:
@@ -201,7 +202,8 @@ make logs            # merged journal tail (when configured)
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | Empty STT transcript | `COMSTAR_STT_URL` unset or STT down | Start `make stt-dev`, export URL |
-| Wake never fires | Stub model / missing ONNX | Train & deploy wake model (M4) |
+| Wake never fires | Stub model / missing ONNX | Train ONNX, or `COMSTAR_FORCE_WAKE_SCORE=0.99`, or inject `WakeWord` on `:8779` |
+| Kiosk blank / no WS | Chromium not loading `http://127.0.0.1:8776/kiosk/` | Confirm bridge `:8776` up; restart `comstar-kiosk`; avoid `file://` (ES/scripts need HTTP) |
 | Kiosk silent | Bridge not running or wrong `bridge=` URL | Check WS on :8777 |
 | No greet-by-name | Face not enrolled | `enroll_face.sh` |
 | AO timeout | AI server unreachable | Check `10.0.10.16:8765`, overlay path |

@@ -1,18 +1,28 @@
-"""Wake word runtime — stub when model missing; train script deferred to M4.2."""
+"""Wake word runtime — openWakeWord when model present; never-fire stub otherwise."""
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
+
+REFRACTORY_S = 2.0
 
 
 class WakeWordEngine:
-    """openWakeWord wrapper with never-fire stub fallback."""
+    """openWakeWord wrapper with never-fire stub fallback and 2 s refractory."""
 
-    def __init__(self, model_path: str, threshold: float = 0.55) -> None:
+    def __init__(
+        self,
+        model_path: str,
+        threshold: float = 0.55,
+        refractory_s: float = REFRACTORY_S,
+    ) -> None:
         self.model_path = model_path
         self.threshold = threshold
+        self.refractory_s = refractory_s
         self._enabled = True
         self._model = None
+        self._last_fire_monotonic = 0.0
         self._load()
 
     def _load(self) -> None:
@@ -34,9 +44,16 @@ class WakeWordEngine:
     def set_enabled(self, enabled: bool) -> None:
         self._enabled = enabled
 
+    def mark_fired(self) -> None:
+        """Start refractory (used by force-wake / inject paths)."""
+        self._last_fire_monotonic = time.monotonic()
+
     def process(self, pcm: bytes) -> float | None:
-        """Return wake score if above threshold, else None."""
+        """Return wake score if above threshold and past refractory, else None."""
         if not self._enabled or self._model is None:
+            return None
+        now = time.monotonic()
+        if now - self._last_fire_monotonic < self.refractory_s:
             return None
         try:
             import numpy as np
@@ -47,6 +64,7 @@ class WakeWordEngine:
                 return None
             best = max(float(v) for v in scores.values())
             if best >= self.threshold:
+                self._last_fire_monotonic = now
                 return best
         except Exception:  # noqa: BLE001
             return None

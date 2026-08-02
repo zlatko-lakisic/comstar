@@ -204,7 +204,7 @@ Same host (`10.0.10.16`) runs multiple services:
 | Hostname (server) | `codeproject-ai-server` |
 | Reachability | Pi (~0.4 ms via ethernet after route fix) and Mac (~0.5 ms) |
 | Config URL for COMSTAR | `http://10.0.10.16:32168` |
-| Detection p50 / p95 (idle, 20 samples) | **20 ms / 41 ms** (`docs/fixtures/cpai_detection_timing.json`) |
+| Detection p50 / p95 (idle, 20 samples) | **~19–20 ms / ~23–36 ms** (`docs/fixtures/cpai_detection_timing.json`, 2026-08-02) |
 
 ### agentic-orchestration
 

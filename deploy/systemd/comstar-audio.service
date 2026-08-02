@@ -1,14 +1,15 @@
 [Unit]
-Description=COMSTAR audio (wake word, VAD, capture)
-After=network-online.target comstar-bridge.service
-Wants=network-online.target
+Description=COMSTAR audio
+After=comstar-bridge.service
+Wants=comstar-bridge.service
 
 [Service]
 Type=simple
-WorkingDirectory=%h/comstar/terminal/audio
+WorkingDirectory=/opt/comstar/src/terminal/audio
 Environment=COMSTAR_BRIDGE=ws://127.0.0.1:8778/audio
+Environment=COMSTAR_WAKEWORD_MODEL=/opt/comstar/src/models/hey_comstar.onnx
 Environment=COMSTAR_LOG=info
-ExecStart=%h/comstar/terminal/audio/.venv/bin/python __main__.py
+ExecStart=/opt/comstar/src/terminal/audio/.venv/bin/python __main__.py
 Restart=on-failure
 RestartSec=5
 KillSignal=SIGTERM

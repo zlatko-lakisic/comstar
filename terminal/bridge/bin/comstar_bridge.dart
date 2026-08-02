@@ -70,7 +70,11 @@ Future<void> main(List<String> arguments) async {
     engine: config.avatar.tts,
     piperVoice: config.avatar.piperVoice,
   );
-  final audioServer = HttpAudioServer();
+  final repoRoot = File(configPath).absolute.parent.parent.path;
+  final kioskDir = Directory('$repoRoot/terminal/kiosk');
+  final audioServer = HttpAudioServer(
+    kioskRoot: kioskDir.existsSync() ? kioskDir.path : null,
+  );
 
   AttentionCoordinator? coordinator;
   VisionPoller? visionPoller;
@@ -91,6 +95,7 @@ Future<void> main(List<String> arguments) async {
   );
   await ws.start();
 
+  final fallbackDir = Directory('$repoRoot/assets/fallback');
   coordinator = AttentionCoordinator(
     config: config,
     ws: ws,
@@ -98,6 +103,7 @@ Future<void> main(List<String> arguments) async {
     stt: stt,
     tts: tts,
     audioServer: audioServer,
+    fallbackAudioDir: fallbackDir.existsSync() ? fallbackDir.path : null,
   );
 
   final visionEnabled = Platform.environment['COMSTAR_VISION'] == '1';

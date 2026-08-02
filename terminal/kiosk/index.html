@@ -77,44 +77,57 @@
       <p class="status" id="connection-status" data-state="connecting">Connecting…</p>
       <p id="avatar-status">Avatar: loading</p>
     </div>
-    <script type="module">
-      import { BridgeClient } from './bridge_client.js';
-      import { Avatar } from './avatar.js';
+    <script src="./bridge_client.js"></script>
+    <script src="./avatar.js"></script>
+    <script>
+      (function () {
+        const statusEl = document.getElementById('connection-status');
+        const avatarStatusEl = document.getElementById('avatar-status');
+        const avatarRoot = document.getElementById('avatar');
+        const params = new URLSearchParams(window.location.search);
+        const bridgeUrl = params.get('bridge') ?? 'ws://127.0.0.1:8777/kiosk';
 
-      const statusEl = document.getElementById('connection-status');
-      const avatarStatusEl = document.getElementById('avatar-status');
-      const avatarRoot = document.getElementById('avatar');
-      const params = new URLSearchParams(window.location.search);
-      const bridgeUrl = params.get('bridge') ?? 'ws://127.0.0.1:8777/kiosk';
+        // Boot beacon so operators can see JS executed (hits bridge static server).
+        try {
+          fetch('./boot.txt?t=' + Date.now()).catch(function () {});
+        } catch (_) {}
 
-      const avatar = new Avatar({
-        root: avatarRoot,
-        onSpeakStarted: () => bridge.send('speak.started'),
-        onSpeakEnded: () => bridge.send('speak.ended'),
-      });
+        if (typeof ComstarBridgeClient !== 'function' || typeof ComstarAvatar !== 'function') {
+          statusEl.dataset.state = 'disconnected';
+          statusEl.textContent = 'Kiosk scripts failed to load';
+          avatarStatusEl.textContent = 'Avatar: script error';
+          return;
+        }
 
-      const bridge = new BridgeClient(bridgeUrl, {
-        onStateChange: (state) => {
-          statusEl.dataset.state = state;
-          statusEl.textContent =
-            state === 'connected'
-              ? 'Connected to bridge'
-              : state === 'connecting'
-                ? 'Connecting…'
-                : 'Disconnected — reconnecting';
-        },
-        onEnvelope: (envelope) => avatar.handle(envelope),
-        onOpen: () => {
-          bridge.send('ready', {
-            avatarLoaded: avatar.loaded,
-            webglVendor: avatar.webglVendor,
-            fps: 0,
-          });
-          avatarStatusEl.textContent = `Avatar ready · WebGL: ${avatar.webglVendor}`;
-        },
-      });
+        const avatar = new ComstarAvatar({
+          root: avatarRoot,
+          onSpeakStarted: () => bridge.send('speak.started'),
+          onSpeakEnded: () => bridge.send('speak.ended'),
+        });
 
-      bridge.connect();
+        const bridge = new ComstarBridgeClient(bridgeUrl, {
+          onStateChange: (state) => {
+            statusEl.dataset.state = state;
+            statusEl.textContent =
+              state === 'connected'
+                ? 'Connected to bridge'
+                : state === 'connecting'
+                  ? 'Connecting…'
+                  : 'Disconnected — reconnecting';
+          },
+          onEnvelope: (envelope) => avatar.handle(envelope),
+          onOpen: () => {
+            bridge.send('ready', {
+              avatarLoaded: avatar.loaded,
+              webglVendor: avatar.webglVendor,
+              fps: 0,
+            });
+            avatarStatusEl.textContent = `Avatar ready · WebGL: ${avatar.webglVendor}`;
+          },
+        });
+
+        bridge.connect();
+      })();
     </script>
   </body>
 </html>

@@ -60,7 +60,7 @@ class BridgeClient:
                 async with websockets.connect(self.url) as ws:
                     self._ws = ws
                     attempt = 0
-                    await ws.send(wrap_message("ready", {"status": "audio_stub"}))
+                    await ws.send(wrap_message("ready", {"status": "audio_ok"}))
                     log_info("ws_connected", "Connected to bridge")
                     async for raw in ws:
                         if self._stop.is_set():

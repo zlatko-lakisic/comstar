@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Sync COMSTAR source to the Pi and refresh bridge deps.
+# Sync COMSTAR source to the Pi, ensure config, refresh deps, install units.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-REMOTE="${COMSTAR_DEPLOY_HOST:-md-admin@192.168.89.34}"
+REMOTE="${COMSTAR_DEPLOY_HOST:-comstar}"
 REMOTE_DIR="${COMSTAR_DEPLOY_DIR:-/opt/comstar/src}"
 RESTART="${COMSTAR_DEPLOY_RESTART:-1}"
 
@@ -17,23 +17,52 @@ rsync -az --delete \
   --exclude 'node_modules/' \
   --exclude '.dart_tool/' \
   --exclude 'terminal/bridge/build/' \
+  --exclude 'terminal/audio/.venv/' \
   "$ROOT/" "$REMOTE:$REMOTE_DIR/"
+
+echo "Ensuring production config + systemd units…"
+ssh "$REMOTE" "REMOTE_DIR='$REMOTE_DIR' bash -s" <<'EOF'
+set -euo pipefail
+CFG="$REMOTE_DIR/config/comstar.yaml"
+if [[ ! -f "$CFG" ]]; then
+  sed "s|overlay_root: ./overlays/comstar|overlay_root: $REMOTE_DIR/overlays/comstar|" \
+    "$REMOTE_DIR/config/comstar.example.yaml" > "$CFG"
+  echo "created $CFG"
+else
+  echo "config present: $CFG"
+fi
+
+UNIT_DIR="$HOME/.config/systemd/user"
+mkdir -p "$UNIT_DIR"
+for unit in comstar-bridge comstar-audio comstar-kiosk; do
+  src="$REMOTE_DIR/deploy/systemd/${unit}.service"
+  cp "$src" "$UNIT_DIR/${unit}.service"
+  echo "installed $unit.service"
+done
+systemctl --user daemon-reload
+systemctl --user enable comstar-bridge.service comstar-audio.service comstar-kiosk.service >/dev/null
+EOF
 
 echo "Running dart pub get on bridge…"
 ssh "$REMOTE" "cd '$REMOTE_DIR/terminal/bridge' && dart pub get"
 
 if [[ "$RESTART" == "1" ]]; then
-  echo "Restarting user systemd units (if present)…"
+  echo "Restarting user systemd units…"
   ssh "$REMOTE" bash -s <<'EOF'
 set -euo pipefail
-units=(comstar-bridge comstar-audio comstar-kiosk)
-for unit in "${units[@]}"; do
-  if systemctl --user list-unit-files --type=service "$unit.service" 2>/dev/null | grep -q "$unit.service"; then
-    systemctl --user restart "$unit.service" && echo "  restarted $unit"
-  else
-    echo "  skip $unit (not installed)"
+systemctl --user restart comstar-bridge.service
+# Wait until bridge WS port is up (dart compile can take a few seconds)
+for i in $(seq 1 30); do
+  if ss -ltn | grep -q ':8778 '; then
+    echo "bridge listening on 8778"
+    break
   fi
+  sleep 1
 done
+systemctl --user restart comstar-audio.service
+systemctl --user restart comstar-kiosk.service
+sleep 2
+systemctl --user --no-pager is-active comstar-bridge comstar-audio comstar-kiosk
 EOF
 fi
 

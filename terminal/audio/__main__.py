@@ -1,4 +1,4 @@
-"""COMSTAR audio process — capture, wake word stub, VAD, PCM streaming."""
+"""COMSTAR audio process — capture, wake word, VAD, PCM streaming."""
 
 from __future__ import annotations
 
@@ -22,6 +22,8 @@ async def _main() -> None:
     )
     wakeword_threshold = float(os.environ.get("COMSTAR_WAKEWORD_THRESHOLD", "0.55"))
     vad_silence_ms = int(os.environ.get("COMSTAR_VAD_SILENCE_MS", "700"))
+    # Dev bypass when ONNX is missing — score must exceed threshold (default 0.55).
+    force_wake_score = os.environ.get("COMSTAR_FORCE_WAKE_SCORE")
 
     client = BridgeClient()
     loop = asyncio.get_running_loop()
@@ -59,6 +61,7 @@ async def _main() -> None:
             "Audio capture running",
             data={
                 "wakeword_available": wake.available,
+                "force_wake": force_wake_score is not None,
                 "vad": "silero" if vad.using_silero else "energy",
             },
         )
@@ -74,7 +77,11 @@ async def _main() -> None:
         if msg_type == "listen.start":
             if streamer is not None:
                 tid = data.get("turn_id") or turn_id or "unknown"
-                await streamer.start(str(tid))
+                max_ms = data.get("maxMs")
+                await streamer.start(
+                    str(tid),
+                    max_ms=int(max_ms) if max_ms is not None else None,
+                )
         elif msg_type == "listen.stop":
             if streamer is not None:
                 await streamer.stop()
@@ -82,6 +89,14 @@ async def _main() -> None:
             wake_enabled = bool(data.get("enabled", True))
             if wake is not None:
                 wake.set_enabled(wake_enabled)
+        elif msg_type == "wake.force":
+            # Dev/test inject from bridge — still respects wake.enable.
+            if wake_enabled:
+                score = float(data.get("score", 0.99))
+                await client.send(
+                    "wake",
+                    {"score": score, "model": data.get("model", "force")},
+                )
 
     client.on_message = on_message
 
@@ -100,10 +115,24 @@ async def _main() -> None:
                     pcm = capture.snapshot()
                     if len(pcm) >= 3200:
                         score = wake.process(pcm[-3200:])
+                        if score is None and force_wake_score is not None:
+                            # Energy gate so silence does not spam forced wakes.
+                            import numpy as np
+
+                            audio = np.frombuffer(pcm[-3200:], dtype=np.int16).astype(
+                                np.float32,
+                            )
+                            rms = float(np.sqrt(np.mean(np.square(audio / 32768.0))))
+                            if rms > 0.02:
+                                score = float(force_wake_score)
+                                wake.mark_fired()
                         if score is not None:
                             await client.send(
                                 "wake",
-                                {"score": score, "model": "hey_comstar"},
+                                {
+                                    "score": score,
+                                    "model": "hey_comstar" if wake.available else "force",
+                                },
                             )
                 await asyncio.sleep(0.1)
 

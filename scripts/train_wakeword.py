@@ -1,46 +1,41 @@
 #!/usr/bin/env python3
-"""Train an openWakeWord model for 'hey comstar' (M4.2).
+"""M4.2 wake-word training driver.
 
-This is a thin driver around the openWakeWord synthetic training pipeline.
-Full training requires: piper TTS (or similar), openwakeword training extras,
-room impulse responses, and a negative corpus — see docs/IMPLEMENTATION_PLAN.md M4.2.
+openWakeWord AutoTrainer needs Piper voices + negative corpus + room IR data.
+Until that training environment is assembled, this script:
 
-Usage:
-  python scripts/train_wakeword.py --phrase "hey comstar" --out terminal/audio/models/hey_comstar.onnx
+1. Documents the expected output path (`models/hey_comstar.onnx`)
+2. Exits non-zero so CI/operators know the model is missing
+3. Points at the runtime bypasses (dev inject `:8779`, `COMSTAR_FORCE_WAKE_SCORE`)
+
+When training assets are available, replace the body with openWakeWord's
+synthetic pipeline and write the ONNX + hyperparameters into docs/BASELINES.md.
 """
+
 from __future__ import annotations
 
 import argparse
 import sys
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_OUT = ROOT / "models" / "hey_comstar.onnx"
+
 
 def main() -> int:
-    p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--phrase", default="hey comstar")
-    p.add_argument("--out", type=Path, default=Path("terminal/audio/models/hey_comstar.onnx"))
-    p.add_argument("--n-samples", type=int, default=20000)
-    p.add_argument("--tts", default="piper")
-    args = p.parse_args()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    args = parser.parse_args()
 
-    try:
-        import openwakeword  # noqa: F401
-    except ImportError:
-        print(
-            "openwakeword is not installed. Create a training venv and install\n"
-            "openwakeword[train] (and Piper) before running this script.\n"
-            "Until then the audio process uses a wake-word stub that never fires.",
-            file=sys.stderr,
-        )
-        return 2
-
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    print(
-        f"Training stub: phrase={args.phrase!r} n={args.n_samples} out={args.out}\n"
-        "Wire the openWakeWord AutoTrainer / custom trainer here once the training\n"
-        "environment is provisioned (see IMPLEMENTATION_PLAN M4.2).",
-        file=sys.stderr,
-    )
+    print("wakeword training: not configured in this environment")
+    print(f"expected model path: {args.out}")
+    print("runtime bypasses while model is missing:")
+    print("  - bridge dev inject: POST /inject WakeWord {\"score\":0.99}")
+    print("  - audio env: COMSTAR_FORCE_WAKE_SCORE=0.99 (energy-gated)")
+    print("  - audio message: wake.force from bridge")
+    if args.out.exists():
+        print(f"model already present ({args.out.stat().st_size} bytes)")
+        return 0
     return 2
 
 
