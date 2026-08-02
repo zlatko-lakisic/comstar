@@ -1,0 +1,7 @@
+name: comstar_spike
+publish_to: none
+environment:
+  sdk: ^3.5.0
+dependencies:
+  ao_reach:
+    path: ../vendor/agentic-orchestration-reach

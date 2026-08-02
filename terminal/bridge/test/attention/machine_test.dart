@@ -1,0 +1,349 @@
+import 'package:comstar_bridge/attention/clock.dart';
+import 'package:comstar_bridge/attention/effects.dart';
+import 'package:comstar_bridge/attention/events.dart';
+import 'package:comstar_bridge/attention/invariants.dart';
+import 'package:comstar_bridge/attention/machine.dart';
+import 'package:comstar_bridge/attention/states.dart';
+import 'package:comstar_bridge/config.dart';
+import 'package:test/test.dart';
+
+ComstarConfig _loadConfig({String strangerMode = 'restricted'}) {
+  final base = ComstarConfig.loadFile('test/fixtures/comstar.valid.yaml');
+  if (strangerMode == base.attention.strangerMode) return base;
+
+  return ComstarConfig.loadMap(
+    {
+      'orchestration': {
+        'base_url': base.orchestration.baseUrl,
+        'token': base.orchestration.token,
+        'ttl_seconds': base.orchestration.ttlSeconds,
+        'timeout_seconds': base.orchestration.timeoutSeconds,
+        'overlay_root': base.orchestration.overlayRoot,
+      },
+      'vision': {
+        'codeproject_url': base.vision.codeprojectUrl,
+        'detection_endpoint': base.vision.detectionEndpoint,
+        'recognize_endpoint': base.vision.recognizeEndpoint,
+        'ambient_fps': base.vision.ambientFps,
+        'engaged_fps': base.vision.engagedFps,
+        'person_confidence': base.vision.personConfidence,
+        'face_confidence': base.vision.faceConfidence,
+        'recognize_votes': base.vision.recognizeVotes,
+        'identity_ttl_seconds': base.vision.identityTtlSeconds,
+      },
+      'audio': {
+        'wakeword_model': base.audio.wakewordModel,
+        'wakeword_threshold': base.audio.wakewordThreshold,
+        'vad_silence_ms': base.audio.vadSilenceMs,
+        'max_utterance_seconds': base.audio.maxUtteranceSeconds,
+        'followup_window_seconds': base.audio.followupWindowSeconds,
+        'duplex': base.audio.duplex,
+      },
+      'avatar': {
+        'render': base.avatar.render,
+        'model': base.avatar.model,
+        'tts': base.avatar.tts,
+        'piper_voice': base.avatar.piperVoice,
+      },
+      'attention': {
+        'face_attention_trigger': base.attention.faceAttentionTrigger,
+        'stranger_mode': strangerMode,
+      },
+      'dev': {
+        'bind_lan': base.dev.bindLan,
+        'lan_token': base.dev.lanToken,
+      },
+    },
+    sourcePath: 'test/fixtures/comstar.valid.yaml',
+  );
+}
+
+AttentionMachine _machine({
+  FakeClock? clock,
+  ComstarConfig? config,
+  bool faceAttentionTrigger = false,
+  String strangerMode = 'restricted',
+}) {
+  final c = config ?? _loadConfig(strangerMode: strangerMode);
+  final clk = clock ?? FakeClock();
+  final cfg = faceAttentionTrigger
+      ? ComstarConfig.loadMap(
+          {
+            'orchestration': {
+              'base_url': c.orchestration.baseUrl,
+              'token': c.orchestration.token,
+              'ttl_seconds': c.orchestration.ttlSeconds,
+              'timeout_seconds': c.orchestration.timeoutSeconds,
+              'overlay_root': c.orchestration.overlayRoot,
+            },
+            'vision': {
+              'codeproject_url': c.vision.codeprojectUrl,
+              'detection_endpoint': c.vision.detectionEndpoint,
+              'recognize_endpoint': c.vision.recognizeEndpoint,
+              'ambient_fps': c.vision.ambientFps,
+              'engaged_fps': c.vision.engagedFps,
+              'person_confidence': c.vision.personConfidence,
+              'face_confidence': c.vision.faceConfidence,
+              'recognize_votes': c.vision.recognizeVotes,
+              'identity_ttl_seconds': c.vision.identityTtlSeconds,
+            },
+            'audio': {
+              'wakeword_model': c.audio.wakewordModel,
+              'wakeword_threshold': c.audio.wakewordThreshold,
+              'vad_silence_ms': c.audio.vadSilenceMs,
+              'max_utterance_seconds': c.audio.maxUtteranceSeconds,
+              'followup_window_seconds': c.audio.followupWindowSeconds,
+              'duplex': c.audio.duplex,
+            },
+            'avatar': {
+              'render': c.avatar.render,
+              'model': c.avatar.model,
+              'tts': c.avatar.tts,
+              'piper_voice': c.avatar.piperVoice,
+            },
+            'attention': {
+              'face_attention_trigger': true,
+              'stranger_mode': strangerMode,
+            },
+            'dev': {
+              'bind_lan': c.dev.bindLan,
+              'lan_token': c.dev.lanToken,
+            },
+          },
+          sourcePath: 'test/fixtures/comstar.valid.yaml',
+        )
+      : c;
+
+  return AttentionMachine(config: cfg, clock: clk);
+}
+
+void _apply(AttentionMachine machine, AttentionEvent event) {
+  final t = machine.handle(event);
+  assertInvariants(t.context);
+}
+
+bool _hasEffectType<T extends Effect>(List<Effect> effects) =>
+    effects.any((e) => e is T);
+
+void main() {
+  group('CONTRACTS §8 transition table', () {
+    test('ambient + PersonDetected → noticed', () {
+      final m = _machine();
+      final t = m.handle(const PersonDetected(0.8));
+      expect(t.to, isA<Noticed>());
+      expect(_hasEffectType<SetVisionFps>(t.effects), isTrue);
+      assertInvariants(t.context);
+    });
+
+    test('ambient + WakeWord → listening', () {
+      final m = _machine();
+      final t = m.handle(const WakeWord(0.9));
+      expect(t.to, isA<Listening>());
+      expect(_hasEffectType<OpenSession>(t.effects), isTrue);
+      expect(_hasEffectType<StartListening>(t.effects), isTrue);
+      expect(m.context.sessionOpen, isTrue);
+    });
+
+    test('noticed + FaceRecognized → engaged', () {
+      final m = _machine();
+      _apply(m, const PersonDetected(0.8));
+      final t = m.handle(const FaceRecognized('zlatko', 0.9));
+      expect(t.to, isA<Engaged>());
+      expect(_hasEffectType<OpenSession>(t.effects), isTrue);
+      expect(_hasEffectType<RunGreeter>(t.effects), isTrue);
+      expect(m.context.cachedUserid, 'zlatko');
+    });
+
+    test('noticed + FaceUnknown + greet → engaged guest', () {
+      final m = _machine(strangerMode: 'greet');
+      _apply(m, const PersonDetected(0.8));
+      final t = m.handle(const FaceUnknown());
+      expect(t.to, isA<Engaged>());
+      expect(
+        t.effects.whereType<OpenSession>().single.guest,
+        isTrue,
+      );
+    });
+
+    test('noticed + FaceUnknown + restricted → noticed', () {
+      final m = _machine(strangerMode: 'restricted');
+      _apply(m, const PersonDetected(0.8));
+      final t = m.handle(const FaceUnknown());
+      expect(t.to, isA<Noticed>());
+      expect(m.context.sessionOpen, isFalse);
+    });
+
+    test('noticed + PersonAbsent x3 → ambient', () {
+      final m = _machine();
+      _apply(m, const PersonDetected(0.8));
+      _apply(m, const PersonAbsent());
+      _apply(m, const PersonAbsent());
+      final t = m.handle(const PersonAbsent());
+      expect(t.to, isA<Ambient>());
+      expect(_hasEffectType<SetVisionFps>(t.effects), isTrue);
+    });
+
+    test('engaged + WakeWord → listening', () {
+      final m = _machine();
+      _apply(m, const PersonDetected(0.8));
+      _apply(m, const FaceRecognized('zlatko', 0.9));
+      final t = m.handle(const WakeWord(0.9));
+      expect(t.to, isA<Listening>());
+      expect(_hasEffectType<StartListening>(t.effects), isTrue);
+      expect(m.context.wakeEnabled, isFalse);
+    });
+
+    test('engaged + SpeechStart + gaze → listening', () {
+      final m = _machine(faceAttentionTrigger: true);
+      _apply(m, const PersonDetected(0.8));
+      _apply(m, const FaceRecognized('zlatko', 0.9));
+      m.context.gazeDetected = true;
+      final t = m.handle(const SpeechStart());
+      expect(t.to, isA<Listening>());
+      expect(_hasEffectType<StartListening>(t.effects), isTrue);
+    });
+
+    test('engaged + Tick identity expired and absent → ambient', () {
+      final clock = FakeClock();
+      final m = _machine(clock: clock);
+      _apply(m, const PersonDetected(0.8));
+      _apply(m, const FaceRecognized('zlatko', 0.9));
+      clock.advance(301 * 1000);
+      m.context.personPresent = false;
+      final t = m.handle(const Tick());
+      expect(t.to, isA<Ambient>());
+      expect(_hasEffectType<CloseSession>(t.effects), isTrue);
+    });
+
+    test('listening + SpeechEnd stays listening and calls STT', () {
+      final m = _machine();
+      _apply(m, const WakeWord(0.9));
+      final t = m.handle(const SpeechEnd(1200));
+      expect(t.to, isA<Listening>());
+      expect(_hasEffectType<FinalizeCapture>(t.effects), isTrue);
+      expect(_hasEffectType<CallStt>(t.effects), isTrue);
+    });
+
+    test('listening + Tick max utterance → responding', () {
+      final clock = FakeClock();
+      final m = _machine(clock: clock);
+      _apply(m, const WakeWord(0.9));
+      clock.advance(16 * 1000);
+      final t = m.handle(const Tick());
+      expect(t.to, isA<Responding>());
+      expect(_hasEffectType<FinalizeCapture>(t.effects), isTrue);
+    });
+
+    test('listening + TranscriptReady non-empty → responding', () {
+      final m = _machine();
+      _apply(m, const WakeWord(0.9));
+      _apply(m, const SpeechEnd(500));
+      final t = m.handle(const TranscriptReady('hello'));
+      expect(t.to, isA<Responding>());
+      expect(_hasEffectType<SetThinking>(t.effects), isTrue);
+      expect(_hasEffectType<CallDirectAgent>(t.effects), isTrue);
+    });
+
+    test('listening + TranscriptReady empty → engaged', () {
+      final m = _machine();
+      _apply(m, const WakeWord(0.9));
+      _apply(m, const SpeechEnd(500));
+      final t = m.handle(const TranscriptReady('  '));
+      expect(t.to, isA<Engaged>());
+      expect(_hasEffectType<PlayErrorTone>(t.effects), isTrue);
+      expect(_hasEffectType<StopListening>(t.effects), isTrue);
+      expect(m.context.turnId, isNull);
+    });
+
+    test('responding + ResponseReady speaks', () {
+      final m = _machine();
+      _apply(m, const WakeWord(0.9));
+      _apply(m, const SpeechEnd(500));
+      _apply(m, const TranscriptReady('hello'));
+      final t = m.handle(
+        const ResponseReady('hi there', 'http://127.0.0.1/audio.wav'),
+      );
+      expect(t.to, isA<Responding>());
+      expect(_hasEffectType<Speak>(t.effects), isTrue);
+    });
+
+    test('responding + PlaybackEnded → engaged', () {
+      final m = _machine();
+      _apply(m, const WakeWord(0.9));
+      _apply(m, const SpeechEnd(500));
+      _apply(m, const TranscriptReady('hello'));
+      _apply(m, const ResponseReady('hi', 'http://127.0.0.1/a.wav'));
+      final t = m.handle(const PlaybackEnded());
+      expect(t.to, isA<Engaged>());
+      expect(_hasEffectType<OpenFollowUpWindow>(t.effects), isTrue);
+      expect(m.context.wakeEnabled, isTrue);
+      expect(m.context.turnId, isNull);
+    });
+
+    test('responding + Tick orchestration timeout → engaged', () {
+      final clock = FakeClock();
+      final m = _machine(clock: clock);
+      _apply(m, const WakeWord(0.9));
+      _apply(m, const SpeechEnd(500));
+      _apply(m, const TranscriptReady('hello'));
+      clock.advance(16 * 1000);
+      final t = m.handle(const Tick());
+      expect(t.to, isA<Engaged>());
+      expect(_hasEffectType<SpeakFallback>(t.effects), isTrue);
+      expect(m.context.turnId, isNull);
+    });
+
+    test('any + fatal Error → ambient', () {
+      final m = _machine();
+      _apply(m, const PersonDetected(0.8));
+      _apply(m, const FaceRecognized('zlatko', 0.9));
+      final t = m.handle(const AttentionError('test', fatal: true));
+      expect(t.to, isA<Ambient>());
+      expect(_hasEffectType<CloseSession>(t.effects), isTrue);
+    });
+  });
+
+  group('golden scenarios', () {
+    test('happy path walk-up greet and question', () {
+      final m = _machine();
+      _apply(m, const PersonDetected(0.85));
+      expect(m.state, isA<Noticed>());
+      _apply(m, const FaceRecognized('zlatko', 0.92));
+      expect(m.state, isA<Engaged>());
+      _apply(m, const WakeWord(0.88));
+      expect(m.state, isA<Listening>());
+      _apply(m, const SpeechEnd(800));
+      _apply(m, const TranscriptReady('what time is it'));
+      expect(m.state, isA<Responding>());
+      _apply(m, const ResponseReady('It is noon', 'http://127.0.0.1/a.wav'));
+      _apply(m, const PlaybackEnded());
+      expect(m.state, isA<Engaged>());
+    });
+
+    test('stranger restricted stays noticed', () {
+      final m = _machine(strangerMode: 'restricted');
+      _apply(m, const PersonDetected(0.85));
+      _apply(m, const FaceUnknown());
+      expect(m.state, isA<Noticed>());
+      expect(m.context.sessionOpen, isFalse);
+    });
+
+    test('wake word from empty room', () {
+      final m = _machine();
+      _apply(m, const WakeWord(0.9));
+      expect(m.state, isA<Listening>());
+      expect(m.context.sessionOpen, isTrue);
+    });
+
+    test('vision degraded lowers fps', () {
+      final m = _machine();
+      _apply(m, const PersonDetected(0.85));
+      final t = m.handle(const VisionDegraded());
+      expect(_hasEffectType<SetVisionFps>(t.effects), isTrue);
+      expect(
+        t.effects.whereType<SetVisionFps>().single.fps,
+        m.context.config.vision.ambientFps,
+      );
+    });
+  });
+}

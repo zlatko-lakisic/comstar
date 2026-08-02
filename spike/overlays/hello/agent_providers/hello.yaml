@@ -1,0 +1,6 @@
+id: hello
+name: Hello
+description: Trivial probe agent
+system_prompt: |
+  Reply with a single short spoken sentence saying hello. No markdown.
+model: qwen2.5:14b-instruct
