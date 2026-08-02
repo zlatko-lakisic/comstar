@@ -190,7 +190,8 @@ Same host (`10.0.10.16`) runs multiple services:
 | CodeProject.AI | `http://10.0.10.16:32168` | **VERIFIED** — YOLO + Face on GPU |
 | agentic-orchestration | `http://10.0.10.16:8765` | **VERIFIED** — v1.27.4, overlay+tunnel, Reach hello |
 | Ollama | `http://10.0.10.16:11434` | up (`qwen2.5:14b` present) |
-| STT (faster-whisper) | unknown | **NOT FOUND** on scanned ports — blocker for live M6 |
+| STT (faster-whisper) | local `scripts/stt_server.py` :8090 | **Bring-up** via faster-whisper on Mac (Python 3.12). Not yet on AI server. |
+| CompreFace | `http://10.0.10.16:8000` | Present (SPA); not used by COMSTAR (CPAI is vision) |
 
 ### CodeProject.AI
 

@@ -19,13 +19,21 @@
 | Field | Value |
 |---|---|
 | Active milestone | **M4 / M6 / M7 remaining** (M0≈90%, M1–M3 done, M5 session code + AO hello verified) |
-| Overall Phase 1 | ~45% |
+| Overall Phase 1 | ~60% |
 | Last updated | 2026-08-02 |
 | Board | `comstar-ai` Pi 4B 4GB @ `192.168.89.34` (Dart 3.5.4, Node 18, jq, linger on) |
 | Vision backend | CodeProject.AI `10.0.10.16:32168` (GPU YOLO + Face) |
 | AO Reach | `10.0.10.16:8765` v1.27.4 — `spike/reach_hello.dart` → `Hello.` |
 | Product code | bridge (vision+attention+session+stt/tts), audio bring-up, kiosk audio playback |
-| Tests | **56** Dart + **2** Python — green on Mac and Pi |
+| Packaging | `deploy/deploy.sh`, `scripts/stt_server.py`, `docs/RUNBOOK.md`, dev inject `:8779` |
+| Tests | **60** Dart + **2** Python — green on Mac and Pi |
+
+### Remaining before Phase 1 exit
+
+- Wake-word ONNX train + ROC (M4) — `train_wakeword.py` is a placeholder; stub never fires
+- TalkingHead GLB lip-sync (M7) — kiosk plays `audioUrl`; `#avatar` container ready
+- 24 h soak + failure matrix (M9)
+- Face enrollment on hardware (M8) — script ready, no users enrolled yet
 
 ### Open blockers / gaps
 
@@ -34,7 +42,7 @@
 | B1 | ~~Dart/Node/jq missing on Pi~~ | — | **Resolved** — Dart 3.5.4, Node 18, jq installed |
 | B2 | ~~linger disabled~~ | — | **Resolved** — `loginctl enable-linger md-admin` |
 | B3 | ~~AO Reach not verified~~ | — | **Resolved** — overlay+tunnel+directAgent |
-| B4 | faster-whisper / STT HTTP not found on LAN | M6 live STT | Deploy or expose STT; set `COMSTAR_STT_URL` |
+| B4 | ~~faster-whisper / STT HTTP not found on LAN~~ | — | **Mitigated** — `scripts/stt_server.py` + `make stt-dev`; set `COMSTAR_STT_URL` |
 | B5 | ~~Audio routing ADR~~ | — | **Resolved** — kiosk sink (ADR 0001) |
 | B6 | No faces enrolled | M8 greet-by-name | `scripts/enroll_face.sh` ready |
 | B7 | SSH keys / full Makefile DEV_LOOP | iteration speed | password SSH works; keys still preferred |
@@ -53,8 +61,8 @@
 | M3 | Attention state machine | 12h (+4h console) | `done` | 100% | 100% branch coverage |
 | M4 | Audio pipeline | 14h | `in_progress` | ~30% | wake ROC + hardware UAT |
 | M5 | AO Reach session | 12h | `in_progress` | ~50% | text turn + no overlay leak |
-| M6 | Voice round trip | 10h | `in_progress` | ~40% | p95 turn &lt; 15s, no avatar |
-| M7 | Avatar & kiosk | 14h | `not_started` | 0% | lip-sync + render ADR |
+| M6 | Voice round trip | 10h | `in_progress` | ~50% | p95 turn &lt; 15s, no avatar |
+| M7 | Avatar & kiosk | 14h | `in_progress` | ~15% | lip-sync + render ADR |
 | M8 | First contact | 10h | `not_started` | 0% | walk-up demo UAT-8 |
 | M9 | Hardening & soak | 16h | `not_started` | 0% | 24h soak + runbook |
 

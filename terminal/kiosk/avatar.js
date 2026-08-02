@@ -4,24 +4,28 @@
  * for follow-up window timing. TalkingHead GLB lip-sync lands when a model is present.
  */
 export class Avatar {
-  constructor({ onSpeakStarted, onSpeakEnded } = {}) {
+  constructor({ root, onSpeakStarted, onSpeakEnded } = {}) {
+    this.root = root ?? document.body;
     this.onSpeakStarted = onSpeakStarted ?? (() => {});
     this.onSpeakEnded = onSpeakEnded ?? (() => {});
     this._audio = null;
     this._fallbackTimer = null;
     this.loaded = true;
-    this.webglVendor = this._detectWebgl();
+    this.webglVendor = this._detectWebgl(this.root);
   }
 
-  _detectWebgl() {
+  _detectWebgl(mount) {
     try {
       const c = document.createElement('canvas');
+      mount?.appendChild?.(c);
       const gl = c.getContext('webgl') || c.getContext('experimental-webgl');
       if (!gl) return 'none';
       const dbg = gl.getExtension('WEBGL_debug_renderer_info');
-      return dbg
+      const vendor = dbg
         ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)
         : 'webgl';
+      c.remove();
+      return vendor;
     } catch (_) {
       return 'error';
     }

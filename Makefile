@@ -1,4 +1,4 @@
-.PHONY: doctor bridge-dev kiosk-dev audio-sync deploy logs test
+.PHONY: doctor bridge-dev kiosk-dev audio-sync deploy logs test stt-dev
 
 ROOT := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 
@@ -11,11 +11,14 @@ bridge-dev:
 kiosk-dev:
 	cd terminal/kiosk && npm start
 
+stt-dev:
+	python3 scripts/stt_server.py
+
 audio-sync:
 	@echo "stub: rsync terminal/audio/ to comstar:~/comstar/terminal/audio/ and restart comstar-audio"
 
 deploy:
-	@echo "stub: build arm64 bridge, rsync all three processes, restart systemd units"
+	@bash deploy/deploy.sh
 
 logs:
 	@echo "stub: tail merged JSON logs from bridge, audio, and kiosk"

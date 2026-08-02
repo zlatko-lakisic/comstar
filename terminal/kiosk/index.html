@@ -9,21 +9,50 @@
         color-scheme: dark;
         font-family: system-ui, sans-serif;
       }
+      * {
+        box-sizing: border-box;
+      }
+      html,
       body {
         margin: 0;
-        min-height: 100vh;
-        display: grid;
-        place-items: center;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
         background: #0b0f14;
         color: #e8eef5;
       }
-      main {
-        text-align: center;
-        padding: 2rem;
+      /* Full-bleed TalkingHead mount point (GLB lands here in M7). */
+      #avatar {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        display: block;
+        background: radial-gradient(circle at 50% 35%, #152033 0%, #0b0f14 70%);
+      }
+      .hud {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        padding: 1rem 1.25rem 1.25rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.35rem;
+        pointer-events: none;
+        background: linear-gradient(transparent, rgba(11, 15, 20, 0.85));
+      }
+      .hud h1 {
+        margin: 0;
+        font-size: 1.1rem;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        opacity: 0.85;
       }
       .status {
-        font-size: 1.25rem;
-        margin-top: 1rem;
+        font-size: 0.95rem;
+        margin: 0;
       }
       .status[data-state="connected"] {
         color: #6ee7a8;
@@ -34,24 +63,32 @@
       .status[data-state="disconnected"] {
         color: #f87171;
       }
+      #avatar-status {
+        margin: 0;
+        font-size: 0.8rem;
+        opacity: 0.65;
+      }
     </style>
   </head>
   <body>
-    <main>
+    <div id="avatar" aria-label="COMSTAR avatar"></div>
+    <div class="hud">
       <h1>COMSTAR</h1>
       <p class="status" id="connection-status" data-state="connecting">Connecting…</p>
       <p id="avatar-status">Avatar: loading</p>
-    </main>
+    </div>
     <script type="module">
       import { BridgeClient } from './bridge_client.js';
       import { Avatar } from './avatar.js';
 
       const statusEl = document.getElementById('connection-status');
       const avatarStatusEl = document.getElementById('avatar-status');
+      const avatarRoot = document.getElementById('avatar');
       const params = new URLSearchParams(window.location.search);
       const bridgeUrl = params.get('bridge') ?? 'ws://127.0.0.1:8777/kiosk';
 
       const avatar = new Avatar({
+        root: avatarRoot,
         onSpeakStarted: () => bridge.send('speak.started'),
         onSpeakEnded: () => bridge.send('speak.ended'),
       });

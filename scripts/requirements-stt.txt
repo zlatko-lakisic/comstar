@@ -1,0 +1,2 @@
+# Use Python 3.11 or 3.12 (3.14 cannot build PyAV / faster-whisper today).
+faster-whisper>=1.1.0

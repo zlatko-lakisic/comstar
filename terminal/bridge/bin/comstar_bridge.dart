@@ -6,6 +6,7 @@ import 'package:args/args.dart';
 import 'package:comstar_bridge/attention/clock.dart';
 import 'package:comstar_bridge/attention/coordinator.dart';
 import 'package:comstar_bridge/config.dart';
+import 'package:comstar_bridge/dev_inject.dart';
 import 'package:comstar_bridge/http_audio_server.dart';
 import 'package:comstar_bridge/local_ws.dart';
 import 'package:comstar_bridge/log.dart';
@@ -124,6 +125,9 @@ Future<void> main(List<String> arguments) async {
 
   await coordinator.start(visionPoller: visionPoller);
 
+  final devInject = DevInjectServer(coordinator: coordinator);
+  await devInject.start();
+
   logInfo('bridge_started', 'COMSTAR bridge running', data: {
     'config': configPath,
     'dev_lan': config.devLanBindingEnabled,
@@ -137,6 +141,7 @@ Future<void> main(List<String> arguments) async {
     if (stopping) return;
     stopping = true;
     logInfo('shutdown', 'SIGTERM received, draining');
+    await devInject.stop();
     await coordinator?.stop();
     stt.dispose();
     await visionPoller?.dispose();

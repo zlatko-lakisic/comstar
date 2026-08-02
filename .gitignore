@@ -11,3 +11,4 @@ build/
 __pycache__
 .DS_Store
 spike/.dart_tool
+.venv-stt
