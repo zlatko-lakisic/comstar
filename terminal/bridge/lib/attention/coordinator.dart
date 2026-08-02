@@ -56,6 +56,7 @@ class AttentionCoordinator {
   Timer? _followUpTimer;
   vision.VisionPoller? _visionPoller;
   StreamSubscription<vision.VisionEvent>? _visionSub;
+  Future<void>? _sessionOpenFuture;
 
   final _captureBuffer = BytesBuilder(copy: false);
   var _captureSampleRate = 16000;
@@ -121,8 +122,10 @@ class AttentionCoordinator {
       case SetVisionFps(:final fps):
         _visionPoller?.setTargetFps(fps);
       case OpenSession(:final userid, :final guest):
-        unawaited(session.open(userid: userid, guest: guest));
+        _sessionOpenFuture = session.open(userid: userid, guest: guest);
+        unawaited(_sessionOpenFuture);
       case CloseSession():
+        _sessionOpenFuture = null;
         unawaited(session.close());
       case StartListening(:final turnId):
         _followUpTimer?.cancel();
@@ -176,7 +179,7 @@ class AttentionCoordinator {
       case OpenFollowUpWindow():
         _openFollowUpWindow();
       case RunGreeter(:final userid):
-        unawaited(_runGreeter(userid));
+        unawaited(_runGreeterAfterSession(userid));
       case EmitState(:final stateName, :final userid, :final displayName):
         _broadcastKiosk(
           Envelope.create(
@@ -347,6 +350,26 @@ class AttentionCoordinator {
     } finally {
       turnSpan.close();
     }
+  }
+
+  Future<void> _runGreeterAfterSession(String userid) async {
+    final pending = _sessionOpenFuture;
+    if (pending != null) {
+      try {
+        await pending;
+      } catch (e) {
+        logWarn('session_open_failed', e.toString(), data: {'userid': userid});
+        return;
+      }
+    } else if (!session.isOpen) {
+      try {
+        await session.open(userid: userid, guest: false);
+      } catch (e) {
+        logWarn('session_open_failed', e.toString(), data: {'userid': userid});
+        return;
+      }
+    }
+    await _runGreeter(userid);
   }
 
   Future<void> _runGreeter(String userid) async {
