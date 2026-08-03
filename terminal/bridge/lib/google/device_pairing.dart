@@ -4,8 +4,24 @@ import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
-/// Default Workspace scopes for the off-the-shelf MCP package.
+/// Scopes for Google's **device-code** (TV / limited-input) flow.
+///
+/// Gmail and full Drive are **not** allowed on this grant type and return
+/// `invalid_scope`. See:
+/// https://developers.google.com/identity/protocols/oauth2/limited-input-device#allowedscopes
+///
+/// Calendar is not listed there but is accepted by Google today; Drive uses the
+/// permitted `drive.file` scope (files the app creates/opens).
 const googleWorkspaceScopes = <String>[
+  'openid',
+  'email',
+  'profile',
+  'https://www.googleapis.com/auth/calendar',
+  'https://www.googleapis.com/auth/drive.file',
+];
+
+/// Full Workspace scopes for Desktop / Playground one-shot pairing (not device code).
+const googleWorkspaceDesktopScopes = <String>[
   'https://www.googleapis.com/auth/gmail.readonly',
   'https://www.googleapis.com/auth/gmail.send',
   'https://www.googleapis.com/auth/calendar',

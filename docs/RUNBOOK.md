@@ -331,10 +331,14 @@ Comstar does **not** ship a custom Gmail MCP. It pairs once (voice + QR), stores
 per-userid refresh token, runs pinned `mcp-server-google-workspace` via
 `LocalMcpHost.startNpxPackage`, and tunnels it to AO as `client.google_workspace`.
 
-1. Create a Google Cloud OAuth client (TVs / Limited Input or Desktop). Enable
-   Gmail, Calendar, and Drive APIs.
+1. Create a Google Cloud OAuth client (**TVs and Limited Input devices**). Enable
+   Calendar and Drive APIs. Device-code pairing cannot request Gmail scopes
+   (Google returns `invalid_scope`); voice+QR grants Calendar + `drive.file`.
+   For full Gmail access, mint a refresh token once with the Desktop client
+   (OAuth Playground) and place it in `~/.local/share/comstar/google/<userid>.json`.
 2. Export `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` on the bridge host
-   (see `config/comstar.mac.env.example`). Never commit them.
+   (Pi: `~/.config/comstar/google.env` via systemd drop-in; Mac:
+   `config/comstar.mac.env`). Never commit them.
 3. As a known face, say **“connect my Google”**. Enter the spoken code on your
    phone or scan the on-screen QR.
 4. Tokens land in `~/.local/share/comstar/google/<userid>.json` (`0600`).

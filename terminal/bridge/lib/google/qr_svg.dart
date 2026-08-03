@@ -2,9 +2,9 @@ import 'package:qr/qr.dart';
 
 /// Renders [data] as a compact SVG QR (light modules on dark, kiosk-friendly).
 String qrSvg(String data, {int moduleSize = 6, int quietZone = 2}) {
-  final code = QrCode(
-    payload: QrPayload.fromString(data),
-    errorCorrectLevel: QrErrorCorrectLevel.medium,
+  final code = QrCode.fromData(
+    data: data,
+    errorCorrectLevel: QrErrorCorrectLevel.M,
   );
   final image = QrImage(code);
   final n = image.moduleCount;

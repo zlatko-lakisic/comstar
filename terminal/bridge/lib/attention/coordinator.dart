@@ -1111,10 +1111,13 @@ class AttentionCoordinator {
         _googlePairingCancel = null;
       }
       logWarn('google_pairing_failed', e.toString(), data: {'userid': userid});
-      await _speakText(
-        'I could not start Google pairing right now.',
-        turnId,
-      );
+      final msg = e.toString();
+      final spoken = msg.contains('invalid_scope')
+          ? 'Google rejected the permission list for this device login. '
+              'Calendar and Drive file access should work after an update; '
+              'Gmail needs a separate desktop setup.'
+          : 'I could not start Google pairing right now.';
+      await _speakText(spoken, turnId);
     }
   }
 

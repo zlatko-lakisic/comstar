@@ -16,6 +16,19 @@ void main() {
         parseGoogleIntent('sign in to gmail')?.kind,
         GoogleIntentKind.connect,
       );
+      // Live STT variants
+      expect(
+        parseGoogleIntent('Connects my Google')?.kind,
+        GoogleIntentKind.connect,
+      );
+      expect(
+        parseGoogleIntent('Connect my Google.')?.kind,
+        GoogleIntentKind.connect,
+      );
+      expect(
+        parseGoogleIntent('connecting google')?.kind,
+        GoogleIntentKind.connect,
+      );
     });
 
     test('unlink phrases', () {
