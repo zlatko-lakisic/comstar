@@ -1,7 +1,8 @@
 # COMSTAR — Hardware & Environment Baselines
 
-Captured during bring-up on **2026-08-01 / 2026-08-02**.  
-Companion docs: `docs/CONTRACTS.md`, `docs/IMPLEMENTATION_PLAN.md` (M0.5), `docs/DEV_LOOP.md`.
+Captured during bring-up on **2026-08-01 / 2026-08-02**; speech path updated **2026-08-03**
+(STT/TTS on Pi, not AI server).  
+Companion docs: `docs/CONTRACTS.md`, `docs/IMPLEMENTATION_PLAN.md` (M0.5), `docs/DEV_LOOP.md`, `docs/RUNBOOK.md`.
 
 Do **not** store passwords or tokens in this file. SSH access should use keys (see §Access).
 
@@ -11,7 +12,7 @@ Do **not** store passwords or tokens in this file. SSH access should use keys (s
 
 | Field | Value |
 |---|---|
-| Role | COMSTAR terminal (Pi side of thin-client / fat-brain split) |
+| Role | COMSTAR terminal (I/O + on-box STT/TTS; AO + vision on AI server) |
 | Hostname | `comstar-ai` |
 | Model | **Raspberry Pi 4 Model B Rev 1.5** |
 | Revision | `c03115` |
@@ -190,7 +191,7 @@ Same host (`10.0.10.16`) runs multiple services:
 | CodeProject.AI | `http://10.0.10.16:32168` | **VERIFIED** — YOLO + Face on GPU |
 | agentic-orchestration | `http://10.0.10.16:8765` | **VERIFIED** — v1.27.4, overlay+tunnel, Reach hello |
 | Ollama | `http://10.0.10.16:11434` | up (`qwen2.5:14b` present) |
-| STT (faster-whisper) | local `scripts/stt_server.py` :8090 | **Bring-up** via faster-whisper on Mac (Python 3.12). Not yet on AI server. |
+| STT / TTS | **on the Pi**, not this host | `comstar-stt` `:8090` (faster-whisper tiny); `comstar-tts` `:8091` (Piper/sherpa). Mac `make stt-dev` for local bring-up. |
 | CompreFace | `http://10.0.10.16:8000` | Present (SPA); not used by COMSTAR (CPAI is vision) |
 
 ### CodeProject.AI
@@ -217,7 +218,7 @@ Same host (`10.0.10.16`) runs multiple services:
 | Flags | session overlay + MCP tunnel confirmed via Reach (`overlay=true tunnel=true`) |
 | Live COMSTAR overlays (2026-08-02) | `client.greeter` → “Welcome, Zlatko!” (~0.85s); `client.voice_responder` → spoken confirm (~1.0s); guest greeter OK |
 | Hosted MCP catalog (known ids) | `fetch_url`, `filesystem_local`, `home_assistant`, `media_audio_transcribe`, `media_understand`, `media_video_analyze` — **no** `memory` / `time` / `math` / `vision` on this host |
-| STT via AO | `media_audio_transcribe` is callable as an MCP id on voice turns (probe passed) |
+| STT via AO | `media_audio_transcribe` available as MCP; **COMSTAR voice path uses on-Pi STT**, not AO |
 
 ### Modules verified against live traffic
 
@@ -257,11 +258,8 @@ So a miss is **`userid: "unknown"`** (with a box), not an empty `predictions` ar
 
 ### Not verified on this host yet
 
-- AO / `agentic-orchestration` daemon, session overlay flags, Reach tunnel  
-- faster-whisper / STT HTTP endpoint  
-- Piper TTS (may run on Pi)  
-- GPU contention under house-camera load (M0.2)  
-- Face enrollment end-to-end (register → recognize hit fixture)
+- GPU contention under house-camera load (M0.2)
+- Face enrollment end-to-end under oblique angles / low light
 
 ---
 
@@ -297,18 +295,19 @@ Ordered summary of operator actions during this bring-up:
 |---|---|
 | Pi 4 + Bookworm 64-bit + desktop/kiosk path | Ready |
 | Camera (UVC) | Ready (C525 / `/dev/video0`) |
-| Mic capture | Ready for bring-up (C525); room-distance TBD |
-| HDMI panel | Ready (1024×768) |
+| Mic capture | Ready (C525); room-distance UAT open |
+| HDMI panel | Ready |
 | Ethernet preferred routing | Ready |
 | CodeProject.AI vision | Ready at `10.0.10.16:32168` |
-| Dart / Node / jq / deploy root | **Not installed** |
-| systemd linger | **Not enabled** |
-| AO Reach + STT | **Not verified** |
-| Audio routing ADR (kiosk vs ALSA sink) | **Open** (M0.6) |
-| TalkingHead on-device fps | **Not measured** |
-| Face enrollment | **None yet** |
+| Dart / Node / jq / deploy root | Ready (`/opt/comstar/src`) |
+| systemd linger + units | Ready (bridge, audio, kiosk, stt, tts) |
+| AO Reach | Ready (`10.0.10.16:8765`) |
+| On-Pi STT / TTS | Ready (`:8090` / `:8091`) |
+| Audio routing ADR (kiosk sink) | Accepted (ADR 0001) |
+| TalkingHead on-device fps | **Not measured** (GLB open) |
+| Face enrollment | `zlatko` enrolled; walk-up UAT open |
 
-**Can develop on Mac and test on Pi:** yes — follow `docs/DEV_LOOP.md` (bridge on Mac, peripherals on Pi). Remote debug via SSH tunnels is supported once keys + Makefile exist (M1.7).
+**Can develop on Mac and test on Pi:** yes — `docs/DEV_LOOP.md` (Loops A–D). Mac-only browser voice: Loop B+.
 
 ---
 

@@ -13,13 +13,13 @@ Hardware baseline: `docs/BASELINES.md`. Dev workflow: `docs/DEV_LOOP.md`.
 | `/opt/comstar/src/config/comstar.yaml` | Production config (created from example on first deploy; not in git) |
 | `/opt/comstar/src/models/` | Wake-word ONNX, avatar GLB (not in repo) |
 | SSH `comstar` | `md-admin@192.168.89.34` (key auth) |
-| Piper TTS | `/usr/local/bin/piper` → `/opt/comstar/bin/piper`; voice `/opt/comstar/models/en_US-lessac-medium.onnx` |
-| Local STT | `comstar-stt` on `127.0.0.1:8090` (faster-whisper `tiny`) |
+| Local TTS | `comstar-tts` on `127.0.0.1:8091` (Piper via sherpa-onnx) |
+| Local STT | `comstar-stt` on `127.0.0.1:8090` (faster-whisper `tiny`, beam 5) |
 | Local speaker | `COMSTAR_LOCAL_SPEAKER=1` plays via `paplay` when kiosk absent |
 | Camera source | `COMSTAR_CAMERA_SOURCE` (alias: `COMSTAR_CAMERA_INPUT`) — e.g. `/dev/video0` |
 | Mic source | `COMSTAR_MIC_SOURCE` — sounddevice index or name substring (e.g. `C525`) |
 | Speaker source | `COMSTAR_SPEAKER_SOURCE` — Pulse/PipeWire sink for local `paplay` |
-| `~/.config/systemd/user/` | User units: `comstar-bridge`, `comstar-audio`, `comstar-kiosk` |
+| `~/.config/systemd/user/` | User units: `comstar-bridge`, `comstar-audio`, `comstar-kiosk`, `comstar-stt`, `comstar-tts` |
 
 Deploy from the Mac:
 
@@ -57,14 +57,45 @@ curl -sS -X POST http://10.0.10.16:32168/v1/vision/face/list | jq .
 Ensure `loginctl enable-linger md-admin` is set once, then:
 
 ```bash
-systemctl --user enable --now comstar-bridge comstar-audio comstar-kiosk
-systemctl --user status comstar-bridge comstar-audio comstar-kiosk
+systemctl --user enable --now comstar-bridge comstar-audio comstar-kiosk comstar-stt comstar-tts
+systemctl --user status comstar-bridge comstar-audio comstar-kiosk comstar-stt comstar-tts
 ```
 
 Unit files live in `deploy/systemd/`. Copy or symlink into
 `~/.config/systemd/user/` and adjust paths if not using `/opt/comstar/src`.
 
-### Development (Mac)
+### Development (Mac — browser loop)
+
+Speech and peripherals can run entirely on the Mac for bring-up (no Pi required):
+
+```bash
+# Optional device picks (gitignored local file)
+cp config/comstar.mac.env.example config/comstar.mac.env
+# edit camera/mic/speaker, then:
+set -a && source config/comstar.mac.env && set +a
+
+# Terminal 1 — STT (faster-whisper)
+make stt-dev
+export COMSTAR_STT_URL=http://127.0.0.1:8090
+
+# Terminal 2 — TTS (optional for spoken replies)
+python3 scripts/tts_server.py   # or systemd-equivalent on Pi
+
+# Terminal 3 — bridge (dev config; bind_lan false for localhost browser)
+COMSTAR_ENV=dev make bridge-dev
+
+# Terminal 4 — kiosk
+make kiosk-dev
+# Open Chrome: http://127.0.0.1:5173/?bridge=ws://127.0.0.1:8777/kiosk
+```
+
+Notes:
+
+- The kiosk UI does **not** show a live camera preview. Camera ownership is in the bridge (`ffmpeg`).
+- Overlay paths are cwd-relative — start the bridge from the repo root (or set absolute `overlay_root`).
+- Keep `config/comstar.mac.env` out of git (already gitignored).
+
+### Development (Mac bridge + Pi audio)
 
 ```bash
 # Terminal 1 — bridge (dev config, optional LAN bind)
@@ -80,27 +111,73 @@ make audio-sync
 
 ---
 
-## 3. Speech-to-text (`COMSTAR_STT_URL`)
+## 3. Speech (STT + TTS on the Pi)
 
-The bridge reads `COMSTAR_STT_URL` and POSTs WAV to
-`$COMSTAR_STT_URL/v1/audio/transcriptions`.
+Production speech stays **on the Pi** (not on the AI server):
 
-### Local dev server (faster-whisper)
+| Service | Unit | Port | Script |
+|---|---|---|---|
+| STT | `comstar-stt` | `127.0.0.1:8090` | `scripts/stt_server_whisper.py --model tiny --beam-size 5` |
+| TTS | `comstar-tts` | `127.0.0.1:8091` | `scripts/tts_server.py` |
+
+The bridge POSTs WAV to `$COMSTAR_STT_URL/v1/audio/transcriptions` and fetches
+speech from `$COMSTAR_TTS_URL/v1/audio/speech`.
+
+Live path (what product accuracy means):
+
+```
+mic → comstar-audio (VAD) → bridge PCM → HttpSttClient WAV → STT → transcript
+```
+
+STT is **batch after VAD end**, not streaming. Debug WAV: `/tmp/comstar-last-utterance.wav`.
+Pi archive: `/opt/comstar/testdata/stt/live/`.
+
+### Local / Mac STT server
 
 ```bash
-python3 -m venv .venv-stt && source .venv-stt/bin/activate
+# Prefer Python 3.12 (.venv-stt) — PyAV/faster-whisper struggle on 3.14
+python3.12 -m venv .venv-stt && source .venv-stt/bin/activate
 pip install -r scripts/requirements-stt.txt
 make stt-dev
-# or: python scripts/stt_server.py
+# → scripts/stt_server_whisper.py (production engine)
+# Alternate: scripts/stt_server.py (Moonshine) — not used live
+export COMSTAR_STT_URL=http://127.0.0.1:8090
+curl -sS http://127.0.0.1:8090/health
 ```
 
-Set on the bridge:
+### STT fixture testing
 
 ```bash
-export COMSTAR_STT_URL=http://127.0.0.1:8090
+# Offline metadata / engine smoke
+python3 -m unittest discover -s testdata/stt -p 'test_*.py'
+
+# Live accuracy gate (needs ≥ N labeled bridge fixtures)
+COMSTAR_STT_BENCH=1 python3 -m testdata.stt.bench_stt --trials 1 --require-live 10
 ```
 
-If faster-whisper is not installed, `stt_server.py` exits with a clear error.
+Each labeled fixture is a `*.wav` + sibling `*.json`:
+
+```json
+{
+  "file": "utterance.wav",
+  "transcript": "How are you doing today",
+  "source": "bridge",
+  "path": "audio→bridge→stt"
+}
+```
+
+`source: parecord` (or synthetic) fixtures are fine for smoke checks but **do not
+count** toward the live gate. Replaying one golden file ten times only proves
+determinism — it is not a product accuracy test.
+
+### Device env vars
+
+| Variable | Role |
+|---|---|
+| `COMSTAR_CAMERA_SOURCE` | ffmpeg camera (`/dev/video0`, `avfoundation:N`) |
+| `COMSTAR_MIC_SOURCE` | sounddevice index or name substring |
+| `COMSTAR_SPEAKER_SOURCE` | Pulse/PipeWire sink for `paplay` |
+| `COMSTAR_VAD_SILENCE_MS` | end-of-speech silence (Pi often uses `1200`) |
 
 ---
 
@@ -160,20 +237,21 @@ make deploy
 COMSTAR is designed for local-first operation:
 
 - **Vision:** frames go to CodeProject.AI on the LAN only; no cloud upload in Phase 1.
-- **Audio:** utterances are streamed to STT on the LAN (`COMSTAR_STT_URL`); ring buffer
-  is in-memory only (never written to disk by default).
+- **Audio:** utterances go to on-Pi STT (`COMSTAR_STT_URL`, usually `127.0.0.1:8090`);
+  ring buffer is in-memory only (never written to disk by default). Live archives under
+  `/opt/comstar/testdata/stt/live/` are optional debug captures.
 - **Orchestration:** AO Reach on the LAN; guest/restricted mode limits MCP tools.
 
 **Immediate stop:**
 
 ```bash
-systemctl --user stop comstar-bridge comstar-audio comstar-kiosk
+systemctl --user stop comstar-bridge comstar-audio comstar-kiosk comstar-stt comstar-tts
 ```
 
 **Disable auto-start:**
 
 ```bash
-systemctl --user disable comstar-bridge comstar-audio comstar-kiosk
+systemctl --user disable comstar-bridge comstar-audio comstar-kiosk comstar-stt comstar-tts
 ```
 
 **Network isolation:** unplug Ethernet / disable Wi-Fi on the Pi to confirm offline
@@ -197,7 +275,8 @@ make logs            # merged journal tail (when configured)
 | Bridge WS (kiosk) | `127.0.0.1:8777` | kiosk connects, `ready` logged |
 | Bridge WS (audio) | `127.0.0.1:8778` | audio process connects |
 | Dev inject | `127.0.0.1:8779` | dev only |
-| STT | `127.0.0.1:8090` | `curl http://127.0.0.1:8090/health` |
+| STT | `127.0.0.1:8090` | `curl http://127.0.0.1:8090/health` → faster-whisper tiny |
+| TTS | `127.0.0.1:8091` | `curl http://127.0.0.1:8091/health` (or POST `/v1/audio/speech`) |
 | AO Reach | `10.0.10.16:8765` | `spike/reach_hello.dart` |
 | CodeProject.AI | `10.0.10.16:32168` | `scripts/verify_cpai.sh` |
 
@@ -207,12 +286,15 @@ make logs            # merged journal tail (when configured)
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| Empty STT transcript | `COMSTAR_STT_URL` unset or STT down | Start `make stt-dev`, export URL |
+| Empty / junk STT | STT down, wrong engine, or short utterance | `systemctl --user status comstar-stt`; check `/tmp/comstar-last-utterance.wav`; raise finalize threshold |
+| Fast speech cut early | VAD silence too aggressive | Raise `COMSTAR_VAD_SILENCE_MS` (e.g. 1200); hysteresis is in `terminal/audio/vad.py` |
+| Empty STT on Mac | `COMSTAR_STT_URL` unset or STT down | `make stt-dev`, export URL |
 | Wake never fires | Stub model / missing ONNX | Train ONNX, or `COMSTAR_FORCE_WAKE_SCORE=0.99`, or inject `WakeWord` on `:8779` |
-| Kiosk blank / no WS | Chromium not loading `http://127.0.0.1:8776/kiosk/` | Confirm bridge `:8776` up; restart `comstar-kiosk`; avoid `file://` (ES/scripts need HTTP) |
+| Kiosk blank / no WS | Chromium not loading `http://127.0.0.1:8776/kiosk/` | Confirm bridge `:8776` up; restart `comstar-kiosk`; avoid `file://` |
 | Kiosk silent | Bridge not running or wrong `bridge=` URL | Check WS on :8777 |
+| Chrome has no camera preview | Expected — kiosk has no webcam tile | Confirm bridge ffmpeg / camera LED; set `COMSTAR_CAMERA_SOURCE` |
 | No greet-by-name | Face not enrolled | `enroll_face.sh` |
-| AO timeout | AI server unreachable | Check `10.0.10.16:8765`, overlay path |
+| AO timeout / overlay missing | AI server unreachable or cwd-relative overlay | Check `10.0.10.16:8765`; run bridge from repo root or absolute `overlay_root` |
 
 ## Local STT note
 

@@ -1,7 +1,9 @@
 # COMSTAR — Implementation Plan
 
 **Audience:** an AI coding agent (Cursor / Claude Code) plus one human operator.
-**Companions:** `AGENTS.md` (rules), `docs/CONTRACTS.md` (interfaces), `docs/TESTING.md` (test suite + UAT scripts).
+**Companions:** `AGENTS.md` (rules), `docs/CONTRACTS.md` (interfaces), `docs/TESTING.md` (test suite + UAT scripts), `docs/IMPLEMENTATION_TRACKER.md` (live status).
+
+> **Architecture note (2026-08):** STT/TTS run on the Pi (`comstar-stt` / `comstar-tts`), not on the AI server. Vision (CPAI) and orchestration (AO) remain on the Ada host. Prefer the tracker + RUNBOOK over milestone text where they diverge.
 
 ---
 

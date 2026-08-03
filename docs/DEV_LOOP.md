@@ -3,11 +3,12 @@
 Three machines on one LAN:
 
 ```
-  MacBook (dev)              Raspberry Pi 4 (terminal)         AI server (A4000)
+  MacBook (dev)              Raspberry Pi 4 (terminal)         AI server (RTX 4000 Ada)
   ├ Cursor / editor          ├ camera, mic, speaker, screen    ├ agentic-orchestration
   ├ bridge (dev mode)   ◄──► ├ comstar-audio                   ├ CodeProject.AI :32168
-  ├ kiosk dev server    ◄──► ├ Chromium kiosk                  └ faster-whisper
-  └ test runners             └ comstar-bridge (prod mode only)
+  ├ kiosk / Chrome      ◄──► ├ Chromium kiosk                  └ (no STT/TTS — on Pi)
+  ├ local STT/TTS (:8090/91) ├ comstar-stt / comstar-tts
+  └ test runners             └ comstar-bridge (prod)
      comstar-dev.lan            comstar.lan                       ai-server.lan
 ```
 
@@ -62,9 +63,10 @@ loop for what you're changing.
 
 | Changing | Loop | Turnaround |
 |---|---|---|
-| Avatar / kiosk JS | Mac dev server, Pi's Chromium points at it | **instant, hot reload** |
-| Bridge / state machine | Bridge runs **on the Mac** in dev mode | **~2 s, with breakpoints** |
-| Audio / wake word | Must run on the Pi; sync + restart | ~8 s |
+| Avatar / kiosk JS | Mac Chrome → Mac kiosk-dev | **instant, hot reload** |
+| Bridge / state machine | Bridge on Mac in dev mode | **~2 s, with breakpoints** |
+| Full Mac voice bring-up | Bridge + STT/TTS + Chrome on Mac | **seconds** (see Loop B+) |
+| Audio / wake word on Pi | Must run on the Pi; sync + restart | ~8 s |
 | Anything, final check | Full deploy to the Pi | ~40 s |
 
 ### Loop A — kiosk (instant)
@@ -118,6 +120,24 @@ the file you'll edit most.
 > the bridge refuses to start in dev mode if `dev.bind_lan` is true in a config file
 > named `comstar.yaml` rather than `comstar.dev.yaml`. A T0 test asserts
 > `comstar.example.yaml` has `dev.bind_lan: false`. Do not weaken any of these.
+
+### Loop B+ — Mac browser voice (no Pi)
+
+For STT/TTS and kiosk bring-up without standing at the terminal:
+
+```bash
+cp config/comstar.mac.env.example config/comstar.mac.env   # once; gitignored
+set -a && source config/comstar.mac.env && set +a
+
+make stt-dev                                            # :8090 faster-whisper
+COMSTAR_ENV=dev make bridge-dev                         # bind_lan: false in comstar.dev.yaml
+make kiosk-dev
+# Chrome → http://127.0.0.1:5173/?bridge=ws://127.0.0.1:8777/kiosk
+```
+
+Device env: `COMSTAR_CAMERA_SOURCE` / `COMSTAR_MIC_SOURCE` / `COMSTAR_SPEAKER_SOURCE`
+(see RUNBOOK). The kiosk has **no camera preview** — the bridge owns the camera via
+ffmpeg. Score STT on live bridge captures, not only golden WAVs (`testdata/stt/`).
 
 ### Loop C — audio (needs the Pi)
 
@@ -301,7 +321,8 @@ Checks, and prints a pass/fail table:
 | Dart, Python, Chromium versions on the Pi match `.tool-versions` |
 | `ai-server.lan:32168` reachable; both CPAI modules present **and on CUDA** |
 | AO daemon reachable, version ≥ v1.27.0, both `AGENTIC_SERVE_*` flags set |
-| faster-whisper endpoint responds |
+| faster-whisper on Pi (`:8090`) or Mac `make stt-dev` |
+| Piper/sherpa TTS on Pi (`:8091`) |
 | Camera and mic enumerate on the Pi |
 | Ports 8777/8778/8779 free or held by the expected process |
 | Clock skew between Mac and Pi < 1 s *(latency spans are meaningless otherwise)* |
@@ -320,7 +341,8 @@ make dev-full        everything on the Mac with fake hardware
 make bridge-dev      bridge on the Mac, LAN-bound, Pi peripherals connect in
 make kiosk-dev       kiosk dev server with hot reload
 make audio-sync      rsync + restart audio on the Pi
-make deploy          full build + deploy + restart all three
+make stt-dev         local faster-whisper STT (:8090)
+make deploy          full build + deploy + restart all units
 make rollback        redeploy the previous release symlink
 make logs            merged coloured tail        [F=prefix] [TURN=id]
 make logs-export     dump a window as jsonl      [SINCE="..."]

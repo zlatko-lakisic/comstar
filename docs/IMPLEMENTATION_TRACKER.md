@@ -20,13 +20,14 @@
 |---|---|
 | Active milestone | **M4 / M7 / M8 hardware gates** (software path largely wired) |
 | Overall Phase 1 | ~75% |
-| Last updated | 2026-08-02 |
+| Last updated | 2026-08-03 |
 | Board | `comstar-ai` Pi 4B 4GB @ `192.168.89.34` — SSH Host `comstar` (key auth) |
 | Vision backend | CodeProject.AI `10.0.10.16:32168` (GPU YOLO + Face) — `verify_cpai.sh` green |
 | AO Reach | `10.0.10.16:8765` v1.27.4 — greeter + voice_responder live PASS |
-| Product code | bridge + audio + kiosk deployed under `/opt/comstar/src` systemd user units |
+| Speech | On-Pi `comstar-stt` (faster-whisper tiny) + `comstar-tts` (Piper/sherpa) |
+| Product code | bridge + audio + kiosk + STT/TTS under `/opt/comstar/src` systemd user units |
 | Packaging | `deploy/deploy.sh` creates config, installs units, waits for `:8778` |
-| Tests | **61** Dart + **6** Python — green on Mac |
+| Tests | Dart + Python unit tests green on Mac; live STT gate needs more bridge fixtures |
 
 ### Remaining before Phase 1 exit
 
@@ -42,8 +43,7 @@
 | B6 | No faces enrolled | M8 greet-by-name | Camera clear but empty room → `ENROLL_SKIPPED_NO_FACE` |
 | B8 | Wake ONNX not trained | M4 ROC exit | Runtime + refractory done; train script documents bypasses |
 | B9 | TalkingHead GLB missing | M7 lip-sync UAT | Audio path + state visuals shipping |
-| B10 | STT on Pi | Full voice UAT | Use Mac `make stt-dev` or AO `media_audio_transcribe` |
-
+| B11 | Live STT fixture set thin | M6 voice UAT gate | Need ≥10 labeled `source=bridge` captures; parecord goldens do not count |
 ---
 
 ## Milestone rollup
@@ -56,7 +56,7 @@
 | M3 | Attention state machine | 12h (+4h console) | `done` | 100% | property + branch tests |
 | M4 | Audio pipeline | 14h | `in_progress` | ~70% | wake ROC + hardware UAT |
 | M5 | AO Reach session | 12h | `in_progress` | ~80% | greeter/voice live; MCP tunnel partial |
-| M6 | Voice round trip | 10h | `in_progress` | ~70% | STT/TTS wired; Pi STT + UAT open |
+| M6 | Voice round trip | 10h | `in_progress` | ~85% | On-Pi whisper STT + sherpa TTS; live fixture UAT open |
 | M7 | Avatar & kiosk | 14h | `in_progress` | ~50% | audio path + ADR; GLB open |
 | M8 | First contact | 10h | `in_progress` | ~40% | wiring done; enroll/walk-up open |
 | M9 | Hardening & soak | 16h | `not_started` | 0% | 24h soak + runbook polish |
@@ -76,7 +76,8 @@
 - [x] Dart / Node / jq on Pi
 - [x] linger enabled
 - [x] AO overlay + tunnel
-- [x] STT via local `scripts/stt_server.py` (dedicated LAN STT optional)
+- [x] STT via on-Pi `scripts/stt_server_whisper.py` (`comstar-stt` :8090)
+- [x] TTS via on-Pi `scripts/tts_server.py` (`comstar-tts` :8091)
 
 ---
 
@@ -104,7 +105,7 @@ Scaffold, config, WS, vision client, attention machine, deploy/doctor — shippe
 - [x] Capture + 3 s ring
 - [x] Stream pre-roll + `maxMs` hard stop
 - [x] Wake refractory 2 s + force/inject bypasses
-- [x] VAD (Silero or energy)
+- [x] VAD (energy with hysteresis; Silero optional)
 - [ ] Train `hey_comstar.onnx` + ROC table
 - [ ] Hardware UAT (3 m / TV)
 
@@ -128,7 +129,9 @@ Scaffold, config, WS, vision client, attention machine, deploy/doctor — shippe
 - [x] Coordinator wiring + `speak.ended` watchdog
 - [x] Follow-up window (listen without wake)
 - [x] `scripts/latency_report.py`
-- [ ] Pi-local STT always-on
+- [x] Pi-local STT always-on (`comstar-stt`, faster-whisper tiny)
+- [x] Pi-local TTS always-on (`comstar-tts`, sherpa Piper)
+- [ ] ≥10 labeled live-bridge STT fixtures + `--require-live 10`
 - [ ] 20 consecutive spoken UAT
 
 ---
@@ -148,7 +151,7 @@ Scaffold, config, WS, vision client, attention machine, deploy/doctor — shippe
 - [x] Full software wiring on Pi (bridge+audio+kiosk active)
 - [x] Greeter half-duplex + cache
 - [x] `enroll_face.sh`
-- [ ] Enroll real user (needs face in frame)
+- [ ] Enroll real user (needs face in frame) — `zlatko` enrolled on CPAI; re-verify walk-up
 - [ ] Walk-up UAT-8
 
 ---
@@ -169,8 +172,8 @@ Failure matrix, soak, privacy audit.
 
 ## Next concrete actions
 
-1. Stand in front of Pi → `scripts/enroll_face.sh zlatko`
-2. Train or obtain `models/hey_comstar.onnx` (or run with `COMSTAR_FORCE_WAKE_SCORE=0.99` for bring-up)
-3. Drop a GLB at `assets/comstar.glb` and wire TalkingHead
-4. Point Pi `COMSTAR_STT_URL` at Mac STT or AO transcribe
+1. Collect ≥10 labeled live-bridge STT fixtures; run `bench_stt --require-live 10`
+2. Fast-speech UAT after VAD hysteresis (`COMSTAR_VAD_SILENCE_MS=1200`)
+3. Train or obtain `models/hey_comstar.onnx` (or run with `COMSTAR_FORCE_WAKE_SCORE=0.99`)
+4. Drop a GLB at `assets/comstar.glb` and wire TalkingHead
 5. Run M9 soak

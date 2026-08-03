@@ -65,7 +65,7 @@ COMSTAR is the open version. Commodity parts, a GPU you already own, and an orch
 | | |
 |---|---|
 | **Local by default** | Nothing leaves the LAN unless you explicitly wire it to. |
-| **Thin client, fat brain** | The Pi does I/O. All inference happens on the AI server. |
+| **Thin client, fat brain** | The Pi does I/O plus on-box speech (STT/TTS). AO + vision inference stay on the AI server. |
 | **Identity is the session** | Face recognition isn't decoration — it selects the AO session and its memory. |
 | **The room is a tool** | Presence and vision are MCP tools the planner can call, not context you prepend. |
 | **Latency is a feature** | If a response takes longer than ~15s, the interaction is broken. Budget accordingly. |
@@ -80,26 +80,26 @@ COMSTAR is the open version. Commodity parts, a GPU you already own, and an orch
 │                                                                         │
 │   USB camera ──► frame grabber ──► JPEG @ 1-5 fps ──────────┐           │
 │                                                             │           │
-│   Microphone ──► openWakeWord ──► Silero VAD ──► PCM ───────┤           │
+│   Microphone ──► openWakeWord ──► energy/Silero VAD ──► PCM ┤           │
 │                  (local, always on)                         │           │
 │                                                             │           │
 │   HDMI screen ◄── Chromium kiosk ◄── TalkingHead.js         │           │
-│   Speakers    ◄── audio out       ◄── Piper TTS             │           │
+│   Speakers    ◄── audio out       ◄── Piper TTS (:8091)     │           │
 │                          ▲                                  │           │
 │                          │                                  │           │
 │                  ┌───────┴──────────────────────────────────┴───────┐   │
-│                  │  ao_reach sidecar (Dart)                         │   │
-│                  │   SessionBridge · LocalMcpHost · OverlayPacker   │   │
-│                  │   local WS API on 127.0.0.1 for the kiosk        │   │
+│                  │  comstar-bridge (Dart)                           │   │
+│                  │   attention · vision · STT/TTS · ao_reach        │   │
+│                  │   local WS for kiosk/audio                       │   │
+│                  │   STT: faster-whisper tiny on :8090 (on-Pi)      │   │
 │                  └───────┬──────────────────────────────────────────┘   │
 └──────────────────────────┼──────────────────────────────────────────────┘
                            │  LAN
-                           │  ├─ WSS  ── AO session overlay + reverse tunnel
-                           │  ├─ HTTP ── CodeProject.AI  :32168
-                           │  └─ HTTP ── STT / TTS
+                           │  ├─ HTTP/WS ── AO session overlay + reverse tunnel
+                           │  └─ HTTP ── CodeProject.AI  :32168
                            ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│  AI SERVER — NVIDIA RTX A4000                                           │
+│  AI SERVER — NVIDIA RTX 4000 Ada                                        │
 │                                                                         │
 │   ┌──────────────────────────┐   ┌──────────────────────────────────┐   │
 │   │  agentic-orchestration   │   │  CodeProject.AI Server  :32168   │   │
@@ -108,16 +108,16 @@ COMSTAR is the open version. Commodity parts, a GPU you already own, and an orch
 │   │   • CrewAI agents        │   │   (already serving house cams)   │   │
 │   │   • MCP registry         │   └──────────────────────────────────┘   │
 │   │   • SQLite KB + FTS      │                                          │
-│   │   • session memory       │   ┌──────────────────────────────────┐   │
-│   │   • learning / eval loop │   │  faster-whisper (STT, CUDA)      │   │
-│   └──────────────────────────┘   └──────────────────────────────────┘   │
+│   │   • session memory       │                                          │
+│   │   • learning / eval loop │                                          │
+│   └──────────────────────────┘                                          │
 │                                                                         │
 │   AGENTIC_SERVE_SESSION_OVERLAY=1                                       │
 │   AGENTIC_SERVE_MCP_TUNNEL=1                                            │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-**The split, stated plainly:** the Pi captures and presents. The server thinks. The only inference running on the Pi is the wake word model and the voice activity detector, because those must stay local for the privacy model to hold.
+**The split, stated plainly:** the Pi captures, presents, and runs speech (STT/TTS). The server thinks (AO) and sees (CPAI). Speech stays on-box so the voice path does not depend on LAN bandwidth.
 
 ---
 
@@ -130,7 +130,7 @@ COMSTAR is the open version. Commodity parts, a GPU you already own, and an orch
 | **Ambient** | idle | wake word model, low-rate presence polling | nothing persisted |
 | **Noticed** | YOLO `person` class in frame | presence tracking | nothing persisted |
 | **Engaged** | face match returns a known `userid` | AO session opened under that identity | greeting emitted |
-| **Listening** | wake word · follow-up window · face-attention | VAD, audio streaming to STT | utterance only |
+| **Listening** | wake word · follow-up window · face-attention | VAD; utterance sent to STT after silence | utterance only |
 | **Responding** | end of speech, ~700ms silence | orchestration → TTS → avatar | response + transcript to session |
 
 **Transitions worth understanding:**
@@ -153,7 +153,7 @@ Identity is cached with a TTL bound to continuous presence. Face recognition run
 | Microphone | **ReSpeaker 2-Mic / 4-Mic array** or USB conference puck | *Strongly recommended over the webcam's built-in mic* — see below |
 | Display | Small HDMI panel | 800×480 to 1280×720 |
 | Audio out | USB or 3.5mm powered speakers | |
-| Brain | AI server with NVIDIA RTX A4000 | Runs AO, CodeProject.AI, and STT |
+| Brain | AI server with NVIDIA RTX 4000 Ada | Runs AO + CodeProject.AI (vision). Speech is on the Pi. |
 | Network | Wired ethernet to the Pi | Wi-Fi adds jitter to the frame stream |
 
 > **On the microphone.** The webcam's built-in mic is the weakest link in the entire build. Those capsules are tuned for a face 40cm away. At 2–3m across a room with any reverb, wake-word accuracy falls off a cliff. A beamforming array will do more for the felt quality of this project than any other single upgrade. Keep the webcam for vision, add a separate mic for audio.
@@ -171,9 +171,9 @@ Identity is cached with a TTL bound to continuous presence. Face recognition run
 | Animations | [Mixamo](https://www.mixamo.com) | 2,000+ royalty-free mocap clips |
 | Vision | **CodeProject.AI Server** (`:32168`) | Already deployed, CUDA-backed, serving house cameras |
 | Wake word | [openWakeWord](https://github.com/dscripka/openWakeWord) | Free, local, custom words trainable from synthetic audio |
-| VAD | Silero VAD | Lightweight end-of-speech detection |
-| STT | faster-whisper (CUDA) | ~200–400ms for a short utterance on the A4000 |
-| TTS | Piper (local) with optional cloud fallback | Roughly realtime on the Pi, no network hop |
+| VAD | Energy VAD (Silero optional) | End-of-speech with start/continue hysteresis for fast talk |
+| STT | faster-whisper `tiny` on the Pi (`:8090`) | ~4s/utterance on Pi 4; selected via live fixture bench |
+| TTS | Piper via sherpa-onnx on the Pi (`:8091`) | OpenAI-compatible `/v1/audio/speech` |
 | Orchestration | [`agentic-orchestration`](https://github.com/zlatko-lakisic/agentic-orchestration) ≥ v1.27.0 | Planner, agents, MCP, KB, learning loop |
 
 ---
@@ -212,9 +212,14 @@ comstar/
 │   ├── vision_mcp/              # wraps CodeProject.AI for the orchestrator
 │   └── terminal_mcp/            # Pi-local: display, speaker, mic state
 ├── config/
-│   └── comstar.example.yaml
+│   ├── comstar.example.yaml
+│   ├── comstar.dev.example.yaml
+│   └── comstar.mac.env.example  # Mac device template → copy to comstar.mac.env (gitignored)
+├── testdata/stt/                # STT golden + live-bridge fixtures + bench harness
 └── scripts/
     ├── enroll_face.sh
+    ├── stt_server_whisper.py    # production Pi STT (faster-whisper)
+    ├── tts_server.py            # production Pi TTS (sherpa Piper)
     └── train_wakeword.py
 ```
 
@@ -230,15 +235,15 @@ comstar/
   export AGENTIC_SERVE_MCP_TUNNEL=1
   ```
 - CodeProject.AI Server reachable on `:32168`, with both the **Object Detection** and **Face Processing** modules installed and confirmed running on CUDA. Check the dashboard at `http://<server>:32168` — the Face module is more prone than Object Detection to silently falling back to CPU.
-- faster-whisper exposed over HTTP (or run via your existing inference host).
 
 **On the Pi:**
 
 - Raspberry Pi OS 64-bit (Bookworm or later)
 - Dart SDK ^3.5
-- Python 3.11+
+- Python 3.11+ (3.12 preferred for `.venv-stt`)
 - Node.js (only if using `LocalMcpHost` to spawn stdio MCPs via `npx`)
 - Chromium
+- Local speech units: `comstar-stt` (faster-whisper) + `comstar-tts` (Piper/sherpa)
 
 ---
 
@@ -279,9 +284,8 @@ The bridge registers `client.*` agents with the AO daemon at session start, from
 **5 — Run**
 
 ```bash
-systemctl --user enable --now comstar-bridge
-systemctl --user enable --now comstar-audio
-systemctl --user enable --now comstar-kiosk
+systemctl --user enable --now comstar-bridge comstar-audio comstar-kiosk
+systemctl --user enable --now comstar-stt comstar-tts
 ```
 
 ---
@@ -326,6 +330,26 @@ attention:
   face_attention_trigger: false   # experimental — see notes
   stranger_mode: restricted       # restricted | greet | ignore
 ```
+
+### Device and speech environment
+
+| Variable | Purpose | Examples |
+|---|---|---|
+| `COMSTAR_CAMERA_SOURCE` | Camera for ffmpeg grabber | `/dev/video0`, `avfoundation:1` (Mac) |
+| `COMSTAR_MIC_SOURCE` | Mic for `comstar-audio` | sounddevice index or name substring (`C525`) |
+| `COMSTAR_SPEAKER_SOURCE` | Local `paplay` sink when kiosk absent | Pulse/PipeWire sink name; empty = default |
+| `COMSTAR_STT_URL` | OpenAI-compatible STT base | `http://127.0.0.1:8090` |
+| `COMSTAR_TTS_URL` | OpenAI-compatible TTS base | `http://127.0.0.1:8091` |
+| `COMSTAR_LOCAL_SPEAKER` | Play TTS via `paplay` without kiosk | `1` |
+| `COMSTAR_VAD_SILENCE_MS` | End-of-speech silence | `1200` (Pi default override) |
+
+Aliases: `COMSTAR_CAMERA_INPUT` / `COMSTAR_CAMERA_DEVICE`, `COMSTAR_MIC_DEVICE`, `COMSTAR_SPEAKER_SINK` / `COMSTAR_AUDIO_SINK`.
+
+For Mac browser bring-up, copy `config/comstar.mac.env.example` → `config/comstar.mac.env` (gitignored), source it, then run bridge + kiosk + local STT/TTS. The kiosk does **not** show a camera preview — the bridge owns the camera.
+
+### STT accuracy tests
+
+Do not score product STT by replaying one golden WAV ten times. That only proves determinism. Live fixtures must go through `mic → comstar-audio → bridge → STT` (`source: bridge`, `path: audio→bridge→stt`). See `testdata/stt/` and `docs/RUNBOOK.md` § Speech.
 
 ---
 
@@ -422,13 +446,13 @@ Total target: **under 15 seconds**, ideally under 6.
 | Stage | Budget | Notes |
 |---|---|---|
 | Wake word → capture start | ~50ms | local, negligible |
-| Utterance + VAD close | speech + 700ms | user-controlled |
-| STT (faster-whisper, CUDA) | 200–400ms | stream audio progressively so this overlaps capture |
+| Utterance + VAD close | speech + ~1.2s silence | hysteresis VAD; tune `audio.vad_silence_ms` |
+| STT (faster-whisper `tiny`, Pi) | ~3–5s | batch after VAD end (not streamed); CPU-bound on Pi 4 |
 | Orchestration | 2–10s | dominated by MCP calls; this is where the budget goes |
-| TTS (Piper, Pi) | ~1s | roughly realtime; first chunk can start earlier |
+| TTS (Piper/sherpa, Pi) | ~1s | roughly realtime; first chunk can start earlier |
 | Avatar render + playback | ~200ms | |
 
-Orchestration is the only variable that matters. Everything else is noise. If you're over budget, the fix is MCP selection, not codec tuning.
+STT on the Pi trades GPU latency for a self-contained voice path. Orchestration is still the main variable; if you're over budget after STT, the fix is MCP selection, not codec tuning.
 
 ---
 
@@ -436,8 +460,8 @@ Orchestration is the only variable that matters. Everything else is noise. If yo
 
 This device has a camera and a microphone pointed at your home. The boundaries are deliberate:
 
-1. **The wake word runs on the Pi.** Audio is held in a rolling in-memory buffer and never persisted. Nothing is transmitted anywhere until the wake word fires or a session is explicitly active.
-2. **No inference leaves the LAN.** STT, vision, TTS, and orchestration all run on hardware you own.
+1. **The wake word and speech run on the Pi.** Audio is held in a rolling in-memory buffer and never persisted by default. STT/TTS are local HTTP on `127.0.0.1`. Nothing leaves the box until a session is active and AO needs the transcript.
+2. **No inference leaves the LAN.** Vision and orchestration run on the AI server; STT/TTS stay on the Pi. Nothing goes to the public cloud in Phase 1.
 3. **Camera frames are transient.** Sent to CodeProject.AI for inference, not written to disk by COMSTAR.
 4. **Face descriptors live in CodeProject.AI**, on your server, under `userid`s you chose.
 5. **Transcripts are session-scoped** and retained under AO's session memory policy — configure retention there.
@@ -485,7 +509,7 @@ Be deliberate about this now, both because it's the right default and because it
 | 1 | Vision engine | CodeProject.AI Server | face-api.js, MediaPipe, custom InsightFace | Already deployed, GPU-backed, co-located with AO. Enrollment is a curl call. Deletes an entire subsystem. |
 | 2 | Transport to AO | AO Reach (WS + overlays + tunnel) | Plain REST `/voice/query` | Overlays give per-session agents; the tunnel lets the planner call Pi-local tools. REST can't express either. |
 | 3 | Client shell | Dart sidecar + Chromium kiosk | Pure Flutter, pure Electron | REACH is Dart; TalkingHead is browser JS. The sidecar keeps both native rather than forcing one into the other. |
-| 4 | Where inference runs | AI server | On-Pi (Coral TPU, NCNN) | YOLO + face + STT + avatar does not fit on four Cortex-A72 cores. The A4000 is already there and idle. |
+| 4 | Where inference runs | Split: AO + CPAI on AI server; STT/TTS on Pi | All-on-server speech, or all-on-Pi vision | Vision needs the Ada GPU; speech stays on-Pi so voice does not depend on LAN bandwidth. |
 | 5 | Wake word | openWakeWord | Porcupine, Precise | Free, local, custom phrases trainable from synthetic audio, no per-keyword licence. |
 | 6 | Duplex mode | Half (Phase 1) | Full duplex with AEC | Shared enclosure means acoustic echo; AEC on a USB mic with no reference channel is genuinely hard. Ship half, revisit. |
 | 7 | Identity source | Face → `x-agentic-user-name` | Prompt-prefixed context | Makes recognition load-bearing rather than cosmetic. Session memory scopes per person automatically. |
@@ -510,6 +534,10 @@ Longer-form records live in `docs/adr/`.
 **Avatar stutters on the Pi.** Drop the render resolution, or switch `avatar.render` to `streamed` and render headless on the A4000 — the Pi 4 decodes H.264 in hardware and LAN latency is 50–100ms.
 
 **Lip-sync drifts.** Viseme quality depends on the TTS. Piper's timing is adequate; if you need better, the cloud engines expose richer viseme streams.
+
+**STT hallucinates or truncates fast speech.** Confirm `comstar-stt` health (`faster-whisper tiny`). Raise `COMSTAR_VAD_SILENCE_MS`. Score fixes with labeled **bridge** fixtures in `testdata/stt/`, not by replaying one golden WAV.
+
+**Chrome shows no camera.** Expected in the kiosk — there is no webcam preview tile. The bridge owns the camera via ffmpeg (`COMSTAR_CAMERA_SOURCE`).
 
 ---
 

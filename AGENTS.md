@@ -48,7 +48,13 @@ Never bind WebSocket ports to `0.0.0.0` unless **all three** are true:
 
 Production configs must ship with `dev.bind_lan: false`.
 
+## Architecture (speech vs brain)
+
+- **On Pi:** capture, VAD, wake word, kiosk, **STT** (`comstar-stt` / faster-whisper), **TTS** (`comstar-tts` / Piper).
+- **On AI server:** AO Reach + CodeProject.AI (detection + face). Do not move STT/TTS to the Ada host unless the human explicitly asks.
+- STT accuracy: label **live bridge** fixtures (`testdata/stt/`). Parecord goldens are smoke-only.
+
 ## Secrets
 
-Never commit tokens, keys, or real `config/comstar.yaml` / `comstar.dev.yaml`.
-Use the `.example.yaml` files as templates.
+Never commit tokens, keys, real `config/comstar.yaml` / `comstar.dev.yaml`, or
+`config/comstar.mac.env`. Use the `.example` / `.example.yaml` templates.

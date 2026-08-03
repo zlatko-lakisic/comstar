@@ -14,7 +14,7 @@ kiosk-dev:
 	cd terminal/kiosk && npm start
 
 stt-dev:
-	python3 scripts/stt_server.py
+	python3 scripts/stt_server_whisper.py --host 127.0.0.1 --port 8090 --model tiny --beam-size 5
 
 audio-sync:
 	rsync -az --delete \
