@@ -81,6 +81,11 @@ class AttentionCoordinator {
   DateTime? _speakStartedAt;
   Duration? _lastTtsTotal;
 
+  /// Force-wake while Sleeping: capture + STT must match hey/hello comstar.
+  var _sleepWakeVerifyInFlight = false;
+  double _sleepWakeScore = 0.8;
+  Timer? _sleepWakeTimer;
+
   Future<void> start({vision.VisionPoller? visionPoller}) async {
     await audioServer.start();
     _tickTimer = Timer.periodic(
