@@ -99,12 +99,7 @@ class FfmpegCamera implements Camera {
       '-hide_banner',
       '-loglevel',
       'error',
-      if (input.startsWith('/dev/') || input.startsWith('video'))
-        ...['-f', 'v4l2', '-input_format', 'mjpeg']
-      else
-        ...['-re'],
-      '-i',
-      input,
+      ..._inputArgs(input),
       '-vf',
       'fps=$fpsArg,scale=$width:$height',
       '-f',
@@ -172,6 +167,41 @@ class FfmpegCamera implements Camera {
     if (i < data.length) {
       buffer.add(data.sublist(i));
     }
+  }
+
+  /// Build ffmpeg `-f` / `-i` args for Linux V4L2, macOS AVFoundation, or files.
+  ///
+  /// Env examples:
+  ///   COMSTAR_CAMERA_SOURCE=/dev/video0
+  ///   COMSTAR_CAMERA_SOURCE=avfoundation:1
+  ///   COMSTAR_CAMERA_SOURCE=avfoundation:1:none   (video only)
+  static List<String> _inputArgs(String input) {
+    final trimmed = input.trim();
+    if (trimmed.startsWith('/dev/') || trimmed.startsWith('video')) {
+      return ['-f', 'v4l2', '-input_format', 'mjpeg', '-i', trimmed];
+    }
+    const avf = 'avfoundation:';
+    if (trimmed.toLowerCase().startsWith(avf)) {
+      var spec = trimmed.substring(avf.length);
+      // Video-only is safer for the vision poller (no unused audio graph).
+      if (!spec.contains(':')) {
+        spec = '$spec:none';
+      }
+      return [
+        '-f',
+        'avfoundation',
+        '-framerate',
+        '30',
+        '-video_size',
+        '640x480',
+        '-pixel_format',
+        'uyvy422',
+        '-i',
+        spec,
+      ];
+    }
+    // File / URL / other ffmpeg inputs.
+    return ['-re', '-i', trimmed];
   }
 
   Future<void> _stopProcess() async {
