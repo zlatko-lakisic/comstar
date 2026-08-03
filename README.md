@@ -74,50 +74,48 @@ COMSTAR is the open version. Commodity parts, a GPU you already own, and an orch
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│  TERMINAL — Raspberry Pi 4                                              │
-│                                                                         │
-│   USB camera ──► frame grabber ──► JPEG @ 1-5 fps ──────────┐           │
-│                                                             │           │
-│   Microphone ──► openWakeWord ──► energy/Silero VAD ──► PCM ┤           │
-│                  (local, always on)                         │           │
-│                                                             │           │
-│   HDMI screen ◄── Chromium kiosk ◄── TalkingHead.js         │           │
-│   Speakers    ◄── audio out       ◄── Piper TTS (:8091)     │           │
-│                          ▲                                  │           │
-│                          │                                  │           │
-│                  ┌───────┴──────────────────────────────────┴───────┐   │
-│                  │  comstar-bridge (Dart)                           │   │
-│                  │   attention · vision · STT/TTS · ao_reach        │   │
-│                  │   local WS for kiosk/audio                       │   │
-│                  │   STT: faster-whisper tiny on :8090 (on-Pi)      │   │
-│                  └───────┬──────────────────────────────────────────┘   │
-└──────────────────────────┼──────────────────────────────────────────────┘
-                           │  LAN
-                           │  ├─ HTTP/WS ── AO session overlay + reverse tunnel
-                           │  └─ HTTP ── CodeProject.AI  :32168
-                           ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│  AI SERVER — NVIDIA RTX 4000 Ada                                        │
-│                                                                         │
-│   ┌──────────────────────────┐   ┌──────────────────────────────────┐   │
-│   │  agentic-orchestration   │   │  CodeProject.AI Server  :32168   │   │
-│   │   daemon ≥ v1.27.0       │   │   • Object Detection (YOLO)      │   │
-│   │   • dynamic planner      │◄──┤   • Face Processing              │   │
-│   │   • CrewAI agents        │   │   (already serving house cams)   │   │
-│   │   • MCP registry         │   └──────────────────────────────────┘   │
-│   │   • SQLite KB + FTS      │                                          │
-│   │   • session memory       │                                          │
-│   │   • learning / eval loop │                                          │
-│   └──────────────────────────┘                                          │
-│                                                                         │
-│   AGENTIC_SERVE_SESSION_OVERLAY=1                                       │
-│   AGENTIC_SERVE_MCP_TUNNEL=1                                            │
-└─────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+  subgraph pi ["Raspberry Pi 4 - terminal"]
+    direction TB
+    cam["USB camera"]
+    mic["Microphone"]
+    display["HDMI display"]
+    speakers["Speakers"]
+
+    audio["comstar-audio<br/>wake word + VAD"]
+    stt["comstar-stt<br/>faster-whisper tiny<br/>:8090"]
+    tts["comstar-tts<br/>Piper / sherpa<br/>:8091"]
+    bridge["comstar-bridge Dart<br/>attention / vision / STT / TTS<br/>ao_reach / WS / HTTP"]
+    kiosk["Chromium kiosk<br/>SVG avatar<br/>HTTP :8776 / WS :8777"]
+
+    cam -->|"ffmpeg JPEG in-process"| bridge
+    mic --> audio
+    audio -->|"WS :8778 PCM"| bridge
+    bridge -->|"POST /v1/audio/transcriptions"| stt
+    bridge -->|"POST /v1/audio/speech"| tts
+    bridge -->|"speak + audioUrl"| kiosk
+    kiosk --> display
+    kiosk -->|"HTMLAudio"| speakers
+  end
+
+  subgraph server ["AI server - RTX 4000 Ada"]
+    direction TB
+    ao["agentic-orchestration v1.27+<br/>:8765<br/>planner / agents / session memory"]
+    cpai["CodeProject.AI<br/>:32168<br/>YOLO detect + Face recognize"]
+  end
+
+  bridge -->|"HTTP detect / recognize"| cpai
+  bridge -->|"HTTP/WS session overlay"| ao
 ```
 
-**The split, stated plainly:** the Pi captures, presents, and runs speech (STT/TTS). The server thinks (AO) and sees (CPAI). Speech stays on-box so the voice path does not depend on LAN bandwidth.
+| Runs on the Pi | Runs on the AI server |
+|---|---|
+| Camera grab, mic, wake, VAD, kiosk | CodeProject.AI (YOLO + face) |
+| STT `:8090`, TTS `:8091` | agentic-orchestration `:8765` |
+| Bridge (attention + clients) | Hosted MCPs (e.g. Home Assistant) |
+
+**The split:** the Pi captures, speaks, and transcribes. The server thinks (AO) and sees (CPAI). Speech stays on-box so the voice path does not depend on LAN bandwidth. The kiosk has no camera preview — the bridge owns the camera for vision only.
 
 ---
 
@@ -165,10 +163,9 @@ Identity is cached with a TTL bound to continuous presence. Face recognition run
 | Layer | Choice | Rationale |
 |---|---|---|
 | Client SDK | `ao_reach` (Dart ^3.5) | Session overlays + reverse MCP tunnel, native to AO |
-| Client shell | Dart sidecar daemon + Chromium kiosk | Sidecar speaks REACH; kiosk renders the avatar; they talk over local WS |
-| Avatar | [TalkingHead.js](https://github.com/met4citizen/TalkingHead) (Three.js / WebGL) | Real-time IPA-mapped viseme lip-sync, GLB avatars |
-| Avatar model | Ready Player Me / Microsoft RocketBox | Free, GLB, pre-rigged for blend shapes |
-| Animations | [Mixamo](https://www.mixamo.com) | 2,000+ royalty-free mocap clips |
+| Client shell | Dart bridge + Chromium kiosk | Bridge speaks REACH; kiosk renders the avatar; they talk over local WS |
+| Avatar (Phase 1) | Live SVG starburst in Chromium | State, mic level, speech amplitude; no WebGL yet |
+| Avatar (planned) | [TalkingHead.js](https://github.com/met4citizen/TalkingHead) + GLB | Lip-sync path reserved; GLB UAT still open |
 | Vision | **CodeProject.AI Server** (`:32168`) | Already deployed, CUDA-backed, serving house cameras |
 | Wake word | [openWakeWord](https://github.com/dscripka/openWakeWord) | Free, local, custom words trainable from synthetic audio |
 | VAD | Energy VAD (Silero optional) | End-of-speech with start/continue hysteresis for fast talk |
@@ -184,25 +181,24 @@ Identity is cached with a TTL bound to continuous presence. Face recognition run
 comstar/
 ├── docs/
 │   ├── comstar-banner.png
-│   ├── architecture.md
+│   ├── RUNBOOK.md
 │   └── adr/                     # architecture decision records
 ├── terminal/                    # everything that runs on the Pi
-│   ├── bridge/                  # Dart — ao_reach sidecar
+│   ├── bridge/                  # Dart — attention, vision, STT/TTS, ao_reach
 │   │   ├── bin/comstar_bridge.dart
 │   │   ├── lib/
 │   │   │   ├── session.dart     # SessionBridge lifecycle + identity headers
-│   │   │   ├── attention.dart   # the state machine
-│   │   │   ├── vision.dart      # CodeProject.AI client
-│   │   │   └── local_ws.dart    # 127.0.0.1 API for the kiosk
+│   │   │   ├── attention/       # state machine + coordinator
+│   │   │   ├── vision/          # ffmpeg camera + CodeProject.AI client
+│   │   │   └── local_ws.dart    # 127.0.0.1 WS for kiosk (:8777) + audio (:8778)
 │   │   └── pubspec.yaml
-│   ├── audio/                   # Python — wake word, VAD, capture, playback
+│   ├── audio/                   # Python — wake word, VAD, capture
 │   │   ├── wakeword.py
 │   │   ├── vad.py
-│   │   └── playback.py
-│   └── kiosk/                   # web — avatar renderer
+│   │   └── __main__.py
+│   └── kiosk/                   # web — SVG avatar (TalkingHead/GLB planned)
 │       ├── index.html
-│       ├── avatar.js            # TalkingHead wiring
-│       └── assets/*.glb
+│       └── avatar.js
 ├── overlays/                    # AO session overlay definitions
 │   └── comstar/
 │       └── agent_providers/
@@ -415,18 +411,11 @@ Generate positives with Piper across multiple voices, speaking rates, and pitche
 
 ## MCP topology
 
-The reverse tunnel exists for tools that are *only reachable from the Pi*. Everything co-located with the daemon registers as a plain hosted HTTP MCP. Getting this split right matters — routing server-side services through the tunnel adds a hop for nothing.
+The reverse tunnel is for tools that are *only reachable from the Pi*. Everything co-located with the daemon registers as a hosted HTTP MCP. Session overlays (`overlays/comstar/`) register per session today; Pi-local tunnel MCP bootstrap is still incomplete.
 
-**Hosted (server-side, direct):**
+**Hosted on this AO host (observed):** `home_assistant`, `media_audio_transcribe`, `media_understand`, `media_video_analyze`, `fetch_url`, `filesystem_local`. COMSTAR vision for attention runs **bridge → CPAI directly**, not via an AO `vision` MCP.
 
-| MCP | Exposes |
-|---|---|
-| `vision` | `who_is_present`, `describe_view`, `check_camera` — wraps CodeProject.AI |
-| `memory` | KB / session recall, SQLite FTS |
-| `home_assistant` | Local device control |
-| `time`, `math` | Trivial, fast |
-
-**Tunnelled (Pi-local, over `tunnel://session-mcp/…`):**
+**Tunnelled (Pi-local, planned over `tunnel://session-mcp/…`):**
 
 | MCP | Exposes |
 |---|---|
@@ -434,8 +423,6 @@ The reverse tunnel exists for tools that are *only reachable from the Pi*. Every
 | `filesystem_local` | Scoped local paths, if needed |
 
 **Excluded from voice sessions** — too slow for the 15s budget. Web search, arxiv, and any long-running task belong in batch flows (a morning briefing), not in a conversation.
-
-The payoff of putting vision behind an MCP rather than prepending it to the prompt: the planner can *decide to look*. "Is anyone else in the room?" becomes a tool call the orchestrator issues mid-plan, rather than context you guessed it would need.
 
 ---
 
