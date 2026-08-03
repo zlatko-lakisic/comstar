@@ -11,7 +11,8 @@ export XDG_SESSION_TYPE="${XDG_SESSION_TYPE:-wayland}"
 export XCURSOR_THEME="${XCURSOR_THEME:-comstar-none}"
 export XCURSOR_SIZE="${XCURSOR_SIZE:-24}"
 
-URL="${COMSTAR_KIOSK_URL:-http://127.0.0.1:8776/kiosk/}"
+# Default query keeps the SVG avatar cheap on VideoCore (override via COMSTAR_KIOSK_URL).
+URL="${COMSTAR_KIOSK_URL:-http://127.0.0.1:8776/kiosk/?bloom=0&fps=12}"
 PROFILE="${COMSTAR_KIOSK_PROFILE:-$HOME/.config/comstar-kiosk-chromium}"
 CHROME="${COMSTAR_CHROMIUM:-/usr/bin/chromium}"
 
@@ -67,6 +68,13 @@ exec "$CHROME" \
   --noerrdialogs \
   --no-first-run \
   --check-for-update-interval=31536000 \
+  --disable-background-networking \
+  --disable-sync \
+  --disable-default-apps \
+  --no-pings \
+  --metrics-recording-only \
+  --num-raster-threads=1 \
+  --renderer-process-limit=2 \
   --kiosk \
   --start-maximized \
   "$URL"

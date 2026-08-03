@@ -1,0 +1,42 @@
+{
+  "trials": 10,
+  "fixtures": [
+    "haydt-20260802-210836"
+  ],
+  "results": [
+    {
+      "engine": "http:http://127.0.0.1:8090",
+      "fixture": "haydt-20260802-210836",
+      "ok": 0,
+      "trials": 10,
+      "perfect": false,
+      "avg_ms": 996.6,
+      "texts": [
+        ""
+      ]
+    },
+    {
+      "engine": "moonshine:sherpa-onnx-moonshine-base-en-int8",
+      "fixture": "haydt-20260802-210836",
+      "ok": 0,
+      "trials": 10,
+      "perfect": false,
+      "avg_ms": 908.6,
+      "texts": [
+        ""
+      ]
+    },
+    {
+      "engine": "moonshine:sherpa-onnx-moonshine-tiny-en-int8",
+      "fixture": "haydt-20260802-210836",
+      "ok": 0,
+      "trials": 10,
+      "perfect": false,
+      "avg_ms": 501.7,
+      "texts": [
+        ""
+      ]
+    }
+  ],
+  "winners": []
+}

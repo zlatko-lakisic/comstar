@@ -20,13 +20,20 @@ RING_SECONDS = 3.0
 
 
 class RingBuffer:
-    """Fixed-duration PCM s16le ring buffer."""
+    """Fixed-duration PCM s16le ring with a monotonic write cursor.
+
+    Consumers must use ``read_since(sample_offset)`` — indexing into
+    ``read_all()`` breaks once the ring wraps, because new samples reuse
+    the same absolute indices in the returned buffer.
+    """
 
     def __init__(self, sample_rate: int = SAMPLE_RATE, seconds: float = RING_SECONDS) -> None:
         self.sample_rate = sample_rate
         self.max_samples = int(sample_rate * seconds)
         self._chunks: deque[np.ndarray] = deque()
         self._total = 0
+        # Total samples ever written (never decreases on drop/clear of unread).
+        self._written = 0
 
     def write(self, pcm: np.ndarray) -> None:
         flat = np.asarray(pcm, dtype=np.int16).reshape(-1)
@@ -34,6 +41,7 @@ class RingBuffer:
             return
         self._chunks.append(flat)
         self._total += flat.size
+        self._written += flat.size
         while self._total > self.max_samples and self._chunks:
             dropped = self._chunks.popleft()
             self._total -= dropped.size
@@ -44,9 +52,36 @@ class RingBuffer:
         merged = np.concatenate(list(self._chunks))
         return merged.astype(np.int16).tobytes()
 
+    def read_since(self, sample_offset: int) -> tuple[bytes, int]:
+        """Return PCM written after ``sample_offset`` and the new cursor.
+
+        If ``sample_offset`` lags behind the ring (data was dropped before it
+        was read), start from the oldest sample still available.
+        """
+        if sample_offset < 0:
+            sample_offset = 0
+        if not self._chunks:
+            return b"", max(sample_offset, self._written)
+
+        oldest = self._written - self._total
+        if sample_offset < oldest:
+            sample_offset = oldest
+        if sample_offset >= self._written:
+            return b"", self._written
+
+        merged = np.concatenate(list(self._chunks))
+        start = int(sample_offset - oldest)
+        data = merged[start:].astype(np.int16).tobytes()
+        return data, self._written
+
+    @property
+    def written_samples(self) -> int:
+        return self._written
+
     def clear(self) -> None:
         self._chunks.clear()
         self._total = 0
+        # Keep _written so consumers can resync without replaying ghost audio.
 
     @property
     def duration_ms(self) -> int:
@@ -113,6 +148,15 @@ class AudioCapture:
     def snapshot(self) -> bytes:
         with self._lock:
             return self.ring.read_all()
+
+    def read_since(self, sample_offset: int) -> tuple[bytes, int]:
+        with self._lock:
+            return self.ring.read_since(sample_offset)
+
+    @property
+    def written_samples(self) -> int:
+        with self._lock:
+            return self.ring.written_samples
 
     def clear_ring(self) -> None:
         with self._lock:

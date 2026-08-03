@@ -19,6 +19,7 @@ class MachineContext {
     this.followUpOpen = false,
     this.followUpListening = false,
     this.followUpOpenedAtMs,
+    this.followUpMicArmedAtMs,
     this.absentFrames = 0,
     this.personPresent = false,
     this.gazeDetected = false,
@@ -44,6 +45,8 @@ class MachineContext {
   bool followUpListening;
   /// When the follow-up window opened (ignore echo for a short settle).
   int? followUpOpenedAtMs;
+  /// When follow-up listen.start was sent — SpeechStart ignored until settle after this.
+  int? followUpMicArmedAtMs;
   int absentFrames;
   bool personPresent;
   bool gazeDetected;
@@ -59,10 +62,10 @@ class MachineContext {
   bool get identityExpired =>
       identityExpiresAtMs == null || clock.nowMs >= identityExpiresAtMs!;
 
-  /// Wait out HDMI TTS echo before treating mic energy as user speech.
+  /// Mic is live and VAD settle has elapsed — safe to promote on SpeechStart.
   bool get followUpArmed =>
-      followUpOpenedAtMs != null &&
-      clock.nowMs - followUpOpenedAtMs! >= 1500;
+      followUpMicArmedAtMs != null &&
+      clock.nowMs - followUpMicArmedAtMs! >= 2000;
 
   MachineContext copyForTransition() => MachineContext(
         config: config,
@@ -76,6 +79,7 @@ class MachineContext {
         followUpOpen: followUpOpen,
         followUpListening: followUpListening,
         followUpOpenedAtMs: followUpOpenedAtMs,
+        followUpMicArmedAtMs: followUpMicArmedAtMs,
         absentFrames: absentFrames,
         personPresent: personPresent,
         gazeDetected: gazeDetected,
@@ -242,35 +246,35 @@ class AttentionMachine {
         if (context.playing) {
           break;
         }
-        // Follow-up already streams the mic — wait for VAD SpeechStart.
+        // Mic already armed while face-engaged — wait for VAD SpeechStart.
         // Energy/force wake false-triggers on room noise right after arming.
         if (context.followUpListening) {
           break;
         }
         _enterListening(effects);
       case SpeechStart():
+        // Face-engaged = addressable. Real speech (not greeter) starts a turn.
         if (context.playing) {
           break;
         }
-        if (context.followUpOpen ||
-            (context.config.attention.faceAttentionTrigger &&
-                context.gazeDetected)) {
-          if (context.followUpListening) {
-            if (!context.followUpArmed) {
-              break;
-            }
-            _promoteFollowUpListening(effects);
-          } else {
-            _enterListening(effects);
+        if (context.followUpListening) {
+          if (!context.followUpArmed) {
+            break;
           }
+          _promoteFollowUpListening(effects);
+        } else {
+          _enterListening(effects);
         }
       case PlaybackEnded():
-        // Greeter (and any Engaged-time speak) finishes here — open follow-up
-        // so the user can talk without a wake word for a few seconds.
+        // Greeter/reply finished — arm the mic for VAD only. Do not treat
+        // greeter as a listen trigger; SpeechStart from the camera+mic path does.
         context.playing = false;
+        if (context.halfDuplex) {
+          context.wakeEnabled = true;
+          effects.add(const EnableWake(true));
+        }
         context.followUpOpen = true;
         context.followUpOpenedAtMs = context.clock.nowMs;
-        // Keep wake muted during settle — OpenFollowUpWindow re-enables it.
         effects.add(const OpenFollowUpWindow());
       case Tick():
         if (context.identityExpired && !context.personPresent) {
@@ -297,7 +301,7 @@ class AttentionMachine {
         }
       case PlaybackEnded():
         // TTS finished after an echo/false wake pulled us into Listening.
-        // Drop the bad turn and open a real follow-up window.
+        // Drop the bad turn and re-arm VAD while face-engaged.
         context.playing = false;
         context.sttPending = false;
         _leaveListeningToEngaged(effects);
@@ -308,8 +312,7 @@ class AttentionMachine {
       case TranscriptReady(:final text):
         context.sttPending = false;
         if (text.trim().isEmpty) {
-          // Missed / too-short capture — keep the conversation open so the
-          // user can speak again without waiting for another face engage.
+          // Silence/miss — stay face-engaged and re-arm VAD (no greeter gate).
           _leaveListeningToEngaged(effects);
           effects.add(const StopListening());
           context.followUpOpen = true;
@@ -414,6 +417,10 @@ class AttentionMachine {
     // pulls us into Listening and swallows speak.ended).
     if (!guest) {
       context.playing = true;
+      if (context.halfDuplex) {
+        context.wakeEnabled = false;
+        effects.add(const EnableWake(false));
+      }
     }
     effects.add(OpenSession(userid: userid, guest: guest));
     if (!guest) {
@@ -463,6 +470,7 @@ class AttentionMachine {
     context.sttPending = false;
     context.followUpOpen = false;
     context.followUpListening = false;
+    context.followUpMicArmedAtMs = null;
     context.listeningStartedAtMs = context.clock.nowMs;
     if (context.turnId == null) {
       context.turnId = _uuid.v4();
@@ -496,6 +504,10 @@ class AttentionMachine {
     context.state = const Engaged();
     context.turnId = null;
     context.playing = false;
+    if (context.halfDuplex) {
+      context.wakeEnabled = true;
+      effects.add(const EnableWake(true));
+    }
     effects.add(const SetThinking(false));
   }
 

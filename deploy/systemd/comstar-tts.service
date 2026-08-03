@@ -1,0 +1,16 @@
+[Unit]
+Description=COMSTAR local TTS (sherpa-onnx Piper VITS)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/comstar/src
+ExecStart=/opt/comstar/.venv-sherpa/bin/python scripts/tts_server.py --host 127.0.0.1 --port 8091
+Restart=on-failure
+RestartSec=5
+Environment=COMSTAR_SHERPA_TTS_DIR=/opt/comstar/models/sherpa/tts-piper
+Environment=COMSTAR_TTS_THREADS=2
+Environment=OMP_NUM_THREADS=2
+
+[Install]
+WantedBy=default.target

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:comstar_bridge/attention/clock.dart';
@@ -58,7 +59,11 @@ class AttentionCoordinator {
   StreamSubscription<vision.VisionEvent>? _visionSub;
   Future<void>? _sessionOpenFuture;
 
-  final _captureBuffer = BytesBuilder(copy: false);
+  final _captureBuffer = BytesBuilder(); // copy:true — toBytes() must not wipe PCM
+  var _capturePeakRms = 0.0;
+  var _loudFrameCount = 0;
+  var _totalFrameCount = 0;
+
   var _captureSampleRate = 16000;
   WebSocketChannel? _audioChannel;
   final Map<String, String> _greetingCache = {};
@@ -107,6 +112,21 @@ class AttentionCoordinator {
 
   void handleBinaryAudio(Uint8List chunk) {
     _captureBuffer.add(chunk);
+    // Track peak / loudness while capturing so we can decide STT vs re-arm
+    // without relying on average RMS (speech is sparse in a 3s window).
+    if (chunk.length >= 2) {
+      final rms = _pcmRms(chunk);
+      _totalFrameCount++;
+      if (rms > _capturePeakRms) _capturePeakRms = rms;
+      // Frame is "loud" if clearly above idle C525 @70%.
+      if (rms >= 0.05) _loudFrameCount++;
+    }
+  }
+
+  void _resetCaptureStats() {
+    _capturePeakRms = 0.0;
+    _loudFrameCount = 0;
+    _totalFrameCount = 0;
   }
 
   void handle(AttentionEvent event) {
@@ -131,6 +151,7 @@ class AttentionCoordinator {
         _followUpTimer?.cancel();
         _followUpTimer = null;
         _captureBuffer.clear();
+        _resetCaptureStats();
         _sendAudio(
           Envelope.create(
             type: 'listen.start',
@@ -138,9 +159,12 @@ class AttentionCoordinator {
             data: {
               'turn_id': turnId,
               'maxMs': config.audio.maxUtteranceSeconds * 1000,
+              // Wake-path pre-roll was producing 1.9s ambient STT junk.
+              'preRollMs': 0,
             },
           ),
         );
+        _broadcastPhase('listening', detail: 'Listening…');
         _broadcastKiosk(
           Envelope.create(type: 'listening', data: {'active': true}),
         );
@@ -159,9 +183,24 @@ class AttentionCoordinator {
         _broadcastKiosk(
           Envelope.create(type: 'thinking', data: {'active': active}),
         );
+        if (active) {
+          _broadcastPhase('thinking', detail: 'Talking to AO…');
+        }
       case Speak(:final text, :final audioUrl, :final turnId):
         machine.context.playing = true;
+        // Clear thinking UI as soon as we have audio to play.
+        _broadcastKiosk(
+          Envelope.create(type: 'thinking', data: {'active': false}),
+        );
         _beginSpeakWatchdog();
+        _broadcastPhase('speaking', detail: text);
+        if (text.trim().isNotEmpty) {
+          logInfo('speak', 'Sending reply to kiosk', data: {
+            'turn_id': turnId,
+            'chars': text.length,
+            'audioUrl': audioUrl,
+          });
+        }
         _broadcastKiosk(
           Envelope.create(
             type: 'speak',
@@ -184,6 +223,7 @@ class AttentionCoordinator {
         _followUpTimer?.cancel();
         _followUpTimer = null;
         logInfo('listen_promote', 'Promoted follow-up capture to Listening');
+        _broadcastPhase('listening', detail: 'Listening…');
         _broadcastKiosk(
           Envelope.create(type: 'listening', data: {'active': true}),
         );
@@ -200,6 +240,22 @@ class AttentionCoordinator {
             },
           ),
         );
+        // Drive the phase pill from attention state so the HUD is not stuck
+        // on Ready while we are noticed / listening / responding.
+        switch (stateName) {
+          case 'noticed':
+            _broadcastPhase('noticed', detail: 'I see you…');
+          case 'listening':
+            _broadcastPhase('listening', detail: 'Listening…');
+          case 'responding':
+            break; // speak / thinking handlers set finer phases
+          case 'engaged':
+            _broadcastPhase('engaged', detail: userid ?? '');
+          case 'ambient':
+            _broadcastPhase('idle', detail: '');
+          default:
+            break;
+        }
       case LogAttention():
         break;
     }
@@ -215,6 +271,7 @@ class AttentionCoordinator {
     machine.context.turnId = turnId;
     machine.context.listeningStartedAtMs = clock.nowMs;
     _captureBuffer.clear();
+    _broadcastPhase('listening', detail: 'Listening…');
     _broadcastKiosk(
       Envelope.create(
         type: 'listening',
@@ -225,6 +282,7 @@ class AttentionCoordinator {
     _sendAudio(
       Envelope.create(type: 'wake.enable', data: {'enabled': false}),
     );
+    _sendAudio(Envelope.create(type: 'listen.stop'));
     // Delay mic start until after settle so the first VAD speech_start cannot
     // race the arm window and be lost forever (continuous hiss never re-fires).
     const settleMs = 1500;
@@ -233,9 +291,10 @@ class AttentionCoordinator {
       if (machine.state is! Engaged || !machine.context.followUpListening) {
         return;
       }
-      machine.context.followUpOpenedAtMs =
-          clock.nowMs - 2000; // already armed for SpeechStart
+      machine.context.followUpMicArmedAtMs = clock.nowMs;
       machine.context.wakeEnabled = true;
+      _captureBuffer.clear();
+      _resetCaptureStats();
       _sendAudio(
         Envelope.create(type: 'wake.enable', data: {'enabled': true}),
       );
@@ -245,12 +304,22 @@ class AttentionCoordinator {
           turnId: turnId,
           data: {
             'turn_id': turnId,
-            // Remaining window after settle.
-            'maxMs': ((seconds * 1000) - settleMs).clamp(1000, 60000),
+            // Cap one utterance; speech_end usually finishes earlier.
+            'maxMs': 8000,
+            'preRollMs': 0,
+            'vadSettleMs': 0,
+            'clearRing': true,
           },
         ),
       );
-      logInfo('followup', 'Follow-up mic armed after settle');
+      logInfo(
+        'followup',
+        'Engaged mic armed — listening for utterance',
+      );
+      // Enter Listening immediately so levels + capture are live. STT is gated
+      // later by peak energy so silence still does not go to Whisper.
+      machine.context.followUpMicArmedAtMs = clock.nowMs - 2000;
+      handle(const SpeechStart());
     });
     _followUpTimer?.cancel();
     _followUpTimer = Timer(Duration(seconds: seconds), () {
@@ -296,39 +365,29 @@ class AttentionCoordinator {
         handle(const SpeechStart());
       case 'vad.speech_end':
         final durationMs = (envelope.data['durationMs'] as num?)?.toInt() ?? 0;
-        // Ambient blip ended the streamer with almost no PCM. Restart capture
-        // in place so the user can still finish their sentence.
         if ((machine.state is Listening || machine.context.followUpListening) &&
-            _captureBuffer.length < 48000 &&
             !machine.context.sttPending) {
-          final turnId = machine.context.turnId ?? 'relisten';
-          logWarn('vad_end_ignored', 'SpeechEnd too early; restarting listen', data: {
-            'bytes': _captureBuffer.length,
-            'duration_ms': durationMs,
-            'turn_id': turnId,
-          });
-          _sendAudio(
-            Envelope.create(
-              type: 'listen.start',
-              turnId: turnId,
-              data: {
-                'turn_id': turnId,
-                'maxMs': config.audio.maxUtteranceSeconds * 1000,
-              },
-            ),
-          );
-          break;
+          if (_tryDeferShortCapture(
+            reason: 'vad_end',
+            durationMs: durationMs,
+          )) {
+            break;
+          }
         }
         handle(SpeechEnd(durationMs));
       case 'audio.begin':
-        // Keep pre-roll already buffered from listen.start; only reset sample rate.
+        // Keep buffered PCM across listen restarts; only refresh sample rate.
         _captureSampleRate =
             (envelope.data['sampleRate'] as num?)?.toInt() ?? 16000;
       case 'audio.end':
-        // Streamer hit maxMs / stop without a VAD speech_end — still finalize.
+        // Streamer hit maxMs / stop without a VAD speech_end — still finalize,
+        // but bounce true blips the same way as early SpeechEnd.
         if (machine.state is Listening && !machine.context.sttPending) {
           final turnId = machine.context.turnId;
           if (turnId != null) {
+            if (_tryDeferShortCapture(reason: 'listen_eof', durationMs: 0)) {
+              break;
+            }
             logInfo('listen_eof', 'audio.end while Listening; finalizing', data: {
               'turn_id': turnId,
               'bytes': _captureBuffer.length,
@@ -358,6 +417,81 @@ class AttentionCoordinator {
     }
   }
 
+  /// ~2.0s mono s16le @ 16 kHz. Fast phrases were finalizing at ~1.6s truncated.
+  static const _minFinalizeBytes = 64000;
+  /// ~0.8s — below this, keep listening (unless very loud short "yes"/"hey").
+  static const _minKeepBytes = 25600;
+  /// Peak RMS that counts as "someone spoke" (C525 @80%).
+  static const _speechPeakRms = 0.04;
+
+  /// Returns true if we deferred STT and restarted capture (caller should break).
+  bool _tryDeferShortCapture({
+    required String reason,
+    required int durationMs,
+  }) {
+    final bytes = _captureBuffer.length;
+    final peak = _capturePeakRms;
+    final loudFrac = _totalFrameCount == 0
+        ? 0.0
+        : _loudFrameCount / _totalFrameCount;
+
+    final hasSpeech = peak >= _speechPeakRms || loudFrac >= 0.15;
+
+    // Enough audio AND real speech energy → finalize.
+    if (bytes >= _minFinalizeBytes && hasSpeech) {
+      return false;
+    }
+    // Short but clearly spoken → finalize.
+    if (bytes >= _minKeepBytes && peak >= 0.08) {
+      logInfo('capture_short_ok', 'Finalizing short loud utterance', data: {
+        'reason': reason,
+        'bytes': bytes,
+        'peak': peak,
+        'loud_frac': loudFrac,
+        'duration_ms': durationMs,
+      });
+      return false;
+    }
+
+    final turnId = machine.context.turnId ?? 'relisten';
+    // Long quiet window: drop ambient so the next utterance is clean.
+    // Short window: keep PCM in case speech was mid-phrase.
+    final clear = bytes >= _minFinalizeBytes && !hasSpeech;
+    if (clear) {
+      _captureBuffer.clear();
+      _resetCaptureStats();
+    }
+    logWarn(
+      reason == 'listen_eof' ? 'listen_eof_ignored' : 'vad_end_ignored',
+      clear
+          ? 'Quiet capture; clearing and restarting'
+          : 'No clear speech yet; keeping PCM and restarting',
+      data: {
+        'bytes': bytes,
+        'peak': peak,
+        'loud_frac': loudFrac,
+        'duration_ms': durationMs,
+        'turn_id': turnId,
+        'cleared': clear,
+      },
+    );
+    machine.context.listeningStartedAtMs = clock.nowMs;
+    _sendAudio(
+      Envelope.create(
+        type: 'listen.start',
+        turnId: turnId,
+        data: {
+          'turn_id': turnId,
+          'maxMs': 8000,
+          'preRollMs': 0,
+          'vadSettleMs': 0,
+          'clearRing': clear,
+        },
+      ),
+    );
+    return true;
+  }
+
   void _handleKioskEnvelope(Envelope envelope) {
     switch (envelope.type) {
       case 'speak.started':
@@ -381,6 +515,11 @@ class AttentionCoordinator {
           machine.context.followUpOpen = true;
           machine.context.followUpOpenedAtMs = clock.nowMs;
           _openFollowUpWindow();
+        } else if (machine.context.followUpListening ||
+            machine.state is Listening) {
+          _broadcastPhase('listening', detail: 'Listening…');
+        } else {
+          _broadcastPhase('idle', detail: '');
         }
       default:
         break;
@@ -416,49 +555,125 @@ class AttentionCoordinator {
   Future<void> _runStt(String turnId) async {
     final span = Span('stt');
     try {
-      final pcm = _captureBuffer.toBytes();
-      // One 320 ms frame is never enough for a real utterance — skip the
-      // slow empty STT round-trip and let the machine reopen follow-up.
-      if (pcm.length < 24000) {
-        logWarn(
-          'stt_too_short',
-          'Capture too short for STT; reopening listen',
-          data: {
-            'turn_id': turnId,
-            'bytes': pcm.length,
-            'sample_rate': _captureSampleRate,
-          },
-        );
+      var pcm = _captureBuffer.toBytes();
+      final peak = _capturePeakRms;
+      final avg = _pcmRms(pcm);
+      final loudFrac = _totalFrameCount == 0
+          ? 0.0
+          : _loudFrameCount / _totalFrameCount;
+
+      if (pcm.length < 16000) {
+        logWarn('stt_too_short', 'Capture too short for STT', data: {
+          'turn_id': turnId,
+          'bytes': pcm.length,
+          'peak': peak,
+        });
         handle(const TranscriptReady(''));
         return;
       }
-      final text = await stt.transcribe(
-        Uint8List.fromList(pcm),
-        sampleRate: _captureSampleRate,
-      );
+
+      // Gate on peak / loud fraction — average RMS of a 3s clip stays low even
+      // when the user clearly spoke for 1s in the middle.
+      final hasSpeech = peak >= _speechPeakRms || loudFrac >= 0.12;
+      if (!hasSpeech) {
+        logInfo('stt_silence', 'No speech energy in capture; re-arming', data: {
+          'turn_id': turnId,
+          'bytes': pcm.length,
+          'peak': peak,
+          'avg': avg,
+          'loud_frac': loudFrac,
+        });
+        handle(const TranscriptReady(''));
+        return;
+      }
+
+      // Digital gain was clipping soft C525 captures and feeding Moonshine
+      // garbage that hallucinates. Leave levels alone — raise mic at ALSA.
+      final samplePeak = _pcmSamplePeak(pcm);
+      if (samplePeak > 0 && samplePeak < 0.05) {
+        logInfo('stt_soft', 'Capture is very soft', data: {
+          'turn_id': turnId,
+          'peak': peak,
+          'sample_peak': samplePeak,
+        });
+      }
+
+      _broadcastPhase('thinking', detail: 'Transcribing…');
+      final text = await stt.transcribe(pcm, sampleRate: _captureSampleRate);
       logInfo(
         'stt_result',
         text.trim().isEmpty ? 'Empty transcript' : 'Transcript ready',
         data: {
           'turn_id': turnId,
           'bytes': pcm.length,
-          'sample_rate': _captureSampleRate,
+          'peak': peak,
+          'avg': avg,
+          'loud_frac': loudFrac,
           'text': text.length > 120 ? '${text.substring(0, 120)}…' : text,
         },
       );
+      if (text.trim().isEmpty) {
+        handle(const TranscriptReady(''));
+        return;
+      }
       if (_isJunkTranscript(text)) {
         logWarn('stt_junk', 'Rejecting hallucinated/junk transcript', data: {
           'turn_id': turnId,
           'bytes': pcm.length,
           'len': text.length,
+          'text': text.length > 80 ? '${text.substring(0, 80)}…' : text,
         });
+        _broadcastPhase('missed', detail: "Didn't catch that — try again");
         handle(const TranscriptReady(''));
         return;
       }
+      final clipped =
+          text.trim().length > 80 ? '${text.trim().substring(0, 80)}…' : text.trim();
+      _broadcastPhase('heard', detail: clipped);
       handle(TranscriptReady(text));
     } finally {
+      _resetCaptureStats();
       span.close();
     }
+  }
+
+  Uint8List _boostPcm(Uint8List pcm, double gain) {
+    final out = Uint8List(pcm.length);
+    final src = ByteData.sublistView(pcm);
+    final dst = ByteData.sublistView(out);
+    final n = pcm.length ~/ 2;
+    for (var i = 0; i < n; i++) {
+      final s = src.getInt16(i * 2, Endian.little);
+      final v = (s * gain).round().clamp(-32768, 32767);
+      dst.setInt16(i * 2, v, Endian.little);
+    }
+    return out;
+  }
+
+  /// Absolute sample peak of int16 LE PCM in 0..1.
+  double _pcmSamplePeak(Uint8List pcm) {
+    if (pcm.length < 2) return 0;
+    final bd = ByteData.sublistView(pcm);
+    final samples = pcm.length ~/ 2;
+    var peak = 0;
+    for (var i = 0; i < samples; i++) {
+      final s = bd.getInt16(i * 2, Endian.little).abs();
+      if (s > peak) peak = s;
+    }
+    return peak / 32768.0;
+  }
+
+  /// RMS of int16 LE PCM in ~0..1 (same scale as energy VAD).
+  double _pcmRms(Uint8List pcm) {
+    if (pcm.length < 4) return 0;
+    final bd = ByteData.sublistView(pcm);
+    final samples = pcm.length ~/ 2;
+    var sum = 0.0;
+    for (var i = 0; i < samples; i++) {
+      final s = bd.getInt16(i * 2, Endian.little) / 32768.0;
+      sum += s * s;
+    }
+    return math.sqrt(sum / samples);
   }
 
   /// Whisper often emits long runs of a single character (or no spaces) on
@@ -466,8 +681,107 @@ class AttentionCoordinator {
   bool _isJunkTranscript(String text) {
     final t = text.trim();
     if (t.isEmpty) return true;
+    final lower = t
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^\w\s]'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    // Exact micro-fillers.
+    const fillers = {
+      'okay',
+      'ok',
+      'yes',
+      'yeah',
+      'yep',
+      'no',
+      'nope',
+      'you',
+      'the',
+      'a',
+      'um',
+      'uh',
+      'hmm',
+      'hi',
+      'hello',
+      'bye',
+      'thanks',
+      'thank you',
+      'thank you very much',
+      'thanks for watching',
+      'subtitle',
+      'subtitles',
+      'music',
+      'applause',
+      'silence',
+      'a user speaking to the phone',
+      'a user speaking to the comstar home assistant',
+    };
+    if (fillers.contains(lower)) return true;
+
+    // Stutter loops: "Hello. Hello. Hello."
+    if (RegExp(r'^(\b\w+\b)([.\s,]+\1){2,}\.?$', caseSensitive: false)
+        .hasMatch(t)) {
+      return true;
+    }
+
+    // Phrase-family hallucinations (YouTube / podcast Whisper priors +
+    // Moonshine Librispeech priors that fire on noise).
+    const ghostPhrases = [
+      'thank you very much',
+      'thanks for watching',
+      'thanks for listening',
+      'please subscribe',
+      'like and subscribe',
+      'see you next time',
+      'see you in the next',
+      'we ll see you',
+      "we'll see you",
+      'for your time',
+      'for watching',
+      'amara.org',
+      'subtitle',
+      'transcription by',
+      'a user speaking',
+      'speaking to the phone',
+      'speaking to the comstar',
+      'questions and requests',
+      'clear english',
+      'yellow lamps',
+      'squalid',
+      'early nightfall',
+      'quarter of the brothel',
+      'you d be dead',
+      'youd be dead',
+      'you would be dead',
+      'i dont believe you',
+      "i don't believe you",
+      'shut up now',
+      'can you see my god',
+    ];
+    for (final p in ghostPhrases) {
+      if (lower.contains(p)) return true;
+    }
+
+    // Mostly "thank you" / "thanks" with little else.
+    final words = lower.split(' ').where((w) => w.isNotEmpty).toList();
+    if (words.isNotEmpty) {
+      final thankish = words.where((w) =>
+          w == 'thank' ||
+          w == 'thanks' ||
+          w == 'you' ||
+          w == 'very' ||
+          w == 'much' ||
+          w == 'for' ||
+          w == 'your' ||
+          w == 'time' ||
+          w == 'watching' ||
+          w == 'listening').length;
+      if (thankish / words.length >= 0.7) return true;
+    }
+
     if (t.length > 80 && !t.contains(RegExp(r'\s'))) return true;
-    final letters = t.toLowerCase().replaceAll(RegExp(r'[^a-z]'), '');
+    final letters = lower.replaceAll(RegExp(r'[^a-z]'), '');
     if (letters.isEmpty) return true;
     final counts = <String, int>{};
     for (final c in letters.split('')) {
@@ -475,8 +789,10 @@ class AttentionCoordinator {
     }
     final maxCount = counts.values.reduce((a, b) => a > b ? a : b);
     if (maxCount / letters.length >= 0.55) return true;
-    // Collapse obvious stutter loops: "aaaa", "blah blah blah" x20
     if (RegExp(r'(.)\1{8,}').hasMatch(letters)) return true;
+    if (RegExp(r'^(.{8,}?)(\s*\1){1,}$', caseSensitive: false).hasMatch(t)) {
+      return true;
+    }
     return false;
   }
 
@@ -490,6 +806,23 @@ class AttentionCoordinator {
         'text': clipped,
       });
       final response = await session.directVoice(text);
+      if (response.trim().isEmpty) {
+        logWarn('direct_agent_empty', 'AO returned empty reply', data: {
+          'turn_id': turnId,
+        });
+        await _speakFallback(
+          "I heard you, but I don't have a reply right now.",
+          turnId,
+        );
+        return;
+      }
+      logInfo('direct_agent_ok', 'AO reply ready', data: {
+        'turn_id': turnId,
+        'chars': response.length,
+        'preview': response.length > 80
+            ? '${response.substring(0, 80)}…'
+            : response,
+      });
       final ttsSpan = Span('tts_total');
       final path = await tts.synthesizeToFile(response);
       _lastTtsTotal = Duration(milliseconds: ttsSpan.elapsedMs);
@@ -497,8 +830,11 @@ class AttentionCoordinator {
       final audioUrl = audioServer.registerFile(path);
       handle(ResponseReady(response, audioUrl));
     } catch (e) {
-      logWarn('direct_agent_failed', e.toString(), turnId: turnId);
-      handle(const AttentionError('orchestration'));
+      logWarn('direct_agent_failed', e.toString(), data: {'turn_id': turnId});
+      await _speakFallback(
+        'Sorry, I could not get an answer in time.',
+        turnId,
+      );
     } finally {
       turnSpan.close();
     }
@@ -627,6 +963,18 @@ class AttentionCoordinator {
     } on Object catch (e) {
       logWarn('audio_send_failed', e.toString());
     }
+  }
+
+  void _broadcastPhase(String phase, {String detail = ''}) {
+    _broadcastKiosk(
+      Envelope.create(
+        type: 'phase',
+        data: {
+          'phase': phase,
+          if (detail.isNotEmpty) 'detail': detail,
+        },
+      ),
+    );
   }
 
   void _broadcastKiosk(Envelope envelope) {

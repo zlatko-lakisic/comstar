@@ -11,18 +11,22 @@
     background: #060d16;
     overflow: hidden;
     cursor: none !important;
+    display: flex;
+    flex-direction: column;
   }
   *, *::before, *::after { cursor: none !important; }
   #stage {
-    display: block;
-    width: 100vw;
-    height: 100vh;
+    position: relative;
+    flex: 1 1 auto;
+    width: 100%;
+    min-height: 0;
+    z-index: 1;
   }
   #status {
     position: absolute;
     left: 0;
     right: 0;
-    bottom: 0;
+    bottom: 5.75rem;
     padding: 10px 16px;
     font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
     color: #7fc4ff;
@@ -30,16 +34,162 @@
     white-space: pre;
     pointer-events: none;
     display: none;
+    z-index: 20;
   }
   #status.on { display: block; }
+  #phase {
+    position: fixed;
+    top: 0.75rem;
+    left: 0.75rem;
+    z-index: 20;
+    pointer-events: none;
+    text-align: left;
+    max-width: min(48vw, 18rem);
+    font-family: "Segoe UI", "Helvetica Neue", system-ui, sans-serif;
+  }
+  #chat {
+    position: relative;
+    flex: 0 0 5.75rem;
+    z-index: 20;
+    width: 100%;
+    height: 5.75rem;
+    padding: 0.45rem 0.85rem 0.55rem;
+    box-sizing: border-box;
+    pointer-events: none;
+    background: #0a1420;
+    border-top: 1px solid rgba(127, 196, 255, 0.28);
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.45);
+    font-family: "Segoe UI", "Helvetica Neue", system-ui, sans-serif;
+  }
+  #chat-log {
+    height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    gap: 0.2rem;
+    scrollbar-width: none;
+  }
+  #chat-log:empty::after {
+    content: "Conversation will appear here";
+    display: block;
+    text-align: center;
+    font-size: 0.75rem;
+    letter-spacing: 0.04em;
+    color: rgba(140, 190, 230, 0.45);
+    padding-top: 1.4rem;
+  }
+  #chat-log::-webkit-scrollbar { display: none; }
+  .chat-line {
+    display: flex;
+    flex-direction: row;
+    align-items: baseline;
+    gap: 0.45rem;
+    max-width: 100%;
+    animation: chat-in 0.22s ease-out;
+  }
+  .chat-line.you { align-self: stretch; justify-content: flex-end; text-align: right; }
+  .chat-line.comstar { align-self: stretch; justify-content: flex-start; text-align: left; }
+  .chat-line.sys { align-self: stretch; justify-content: center; text-align: center; opacity: 0.75; }
+  .chat-line.you .chat-who { order: 2; }
+  .chat-line.you .chat-text { order: 1; }
+  .chat-who {
+    flex: none;
+    font-size: 0.62rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(140, 190, 230, 0.65);
+  }
+  .chat-line.you .chat-who { color: rgba(140, 220, 170, 0.7); }
+  .chat-text {
+    font-size: clamp(0.78rem, 2.2vw, 0.95rem);
+    line-height: 1.3;
+    color: rgba(220, 232, 245, 0.92);
+  }
+  .chat-line.sys .chat-text {
+    font-size: 0.72rem;
+    color: rgba(255, 180, 160, 0.9);
+  }
+  @keyframes chat-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  #phase .label {
+    display: inline-block;
+    padding: 0.4rem 0.85rem;
+    border-radius: 999px;
+    font-size: clamp(0.82rem, 2.4vw, 1rem);
+    font-weight: 650;
+    letter-spacing: 0.04em;
+    color: #e8f4ff;
+    background: rgba(8, 18, 32, 0.92);
+    border: 1px solid rgba(127, 196, 255, 0.4);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+    transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, opacity 0.2s ease;
+  }
+  #phase .detail {
+    margin-top: 0.3rem;
+    font-size: clamp(0.72rem, 2vw, 0.88rem);
+    line-height: 1.3;
+    color: rgba(200, 225, 245, 0.9);
+    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.7);
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* Always visible — idle is dim, active phases are bright. */
+  #phase[data-phase="idle"] { opacity: 0.72; }
+  #phase:not([data-phase="idle"]) { opacity: 1; }
+  #phase[data-phase="noticed"] .label {
+    border-color: rgba(180, 200, 255, 0.65);
+    background: rgba(20, 28, 48, 0.92);
+  }
+  #phase[data-phase="engaged"] .label {
+    border-color: rgba(127, 196, 255, 0.55);
+    background: rgba(12, 28, 44, 0.92);
+  }
+  #phase[data-phase="listening"] .label {
+    border-color: rgba(80, 210, 255, 0.7);
+    background: rgba(10, 40, 60, 0.92);
+    animation: phase-pulse 1.4s ease-in-out infinite;
+  }
+  #phase[data-phase="heard"] .label {
+    border-color: rgba(90, 220, 140, 0.75);
+    background: rgba(12, 48, 28, 0.92);
+    color: #d8ffe8;
+  }
+  #phase[data-phase="thinking"] .label {
+    border-color: rgba(255, 190, 90, 0.75);
+    background: rgba(48, 32, 8, 0.92);
+    color: #ffe8c0;
+    animation: phase-pulse 0.9s ease-in-out infinite;
+  }
+  #phase[data-phase="speaking"] .label {
+    border-color: rgba(200, 220, 255, 0.8);
+    background: rgba(20, 32, 56, 0.94);
+  }
+  #phase[data-phase="missed"] .label {
+    border-color: rgba(255, 140, 120, 0.75);
+    background: rgba(48, 16, 12, 0.92);
+    color: #ffd8d0;
+  }
+  @keyframes phase-pulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.03); opacity: 0.88; }
+  }
   #fault {
     position: absolute;
-    inset: auto 0 24px;
+    left: 0;
+    right: 0;
+    bottom: 6.4rem;
     text-align: center;
     font: 14px/1.5 system-ui, sans-serif;
     color: #7fc4ff;
     opacity: .7;
     display: none;
+    z-index: 20;
   }
   .health {
     position: fixed;
@@ -47,7 +197,7 @@
     right: 0.75rem;
     width: 140px;
     height: 48px;
-    z-index: 5;
+    z-index: 20;
     pointer-events: none;
     opacity: 0.9;
   }
@@ -57,20 +207,19 @@
     height: 100%;
   }
 </style>
-<script type="importmap">
-{
-  "imports": {
-    "three": "./assets/vendor/three.module.js",
-    "three/addons/": "./assets/vendor/"
-  }
-}
-</script>
 <script src="./health_chart.js"></script>
 </head>
 <body>
-<canvas id="stage"></canvas>
+<div id="stage"></div>
 <div class="health" aria-hidden="true">
   <canvas id="health-chart" width="140" height="48"></canvas>
+</div>
+<div id="phase" data-phase="idle" aria-live="polite">
+  <div class="label">Ready</div>
+  <div class="detail"></div>
+</div>
+<div id="chat" aria-live="polite">
+  <div id="chat-log"></div>
 </div>
 <div id="status"></div>
 <div id="fault"></div>
@@ -85,7 +234,66 @@ const demo = params.has('demo');
 
 const statusEl = document.getElementById('status');
 const faultEl = document.getElementById('fault');
+const phaseEl = document.getElementById('phase');
+const phaseLabel = phaseEl.querySelector('.label');
+const phaseDetail = phaseEl.querySelector('.detail');
 if (demo) statusEl.classList.add('on');
+
+const PHASE_LABELS = {
+  idle: 'Ready',
+  noticed: 'I see you',
+  engaged: 'Hi',
+  listening: 'Listening',
+  heard: 'Heard you',
+  thinking: 'Thinking',
+  speaking: 'Speaking',
+  missed: 'Missed that',
+};
+
+let phaseClearTimer = null;
+function setPhase(phase, detail = '') {
+  const key = PHASE_LABELS[phase] ? phase : 'idle';
+  phaseEl.dataset.phase = key;
+  phaseLabel.textContent = PHASE_LABELS[key];
+  phaseDetail.textContent = detail || '';
+  if (phaseClearTimer) clearTimeout(phaseClearTimer);
+  phaseClearTimer = null;
+  if (key === 'missed') {
+    phaseClearTimer = setTimeout(() => {
+      if (phaseEl.dataset.phase === 'missed') setPhase('listening', 'Listening…');
+    }, 2500);
+  }
+}
+
+const chatLog = document.getElementById('chat-log');
+const MAX_CHAT_LINES = 40;
+function appendChat(role, text) {
+  const t = (text || '').trim();
+  if (!t) return;
+  const line = document.createElement('div');
+  line.className = `chat-line ${role}`;
+  const who = document.createElement('div');
+  who.className = 'chat-who';
+  who.textContent = role === 'you' ? 'You' : role === 'comstar' ? 'COMSTAR' : '';
+  const body = document.createElement('div');
+  body.className = 'chat-text';
+  body.textContent = t;
+  if (role !== 'sys') line.appendChild(who);
+  line.appendChild(body);
+  chatLog.appendChild(line);
+  while (chatLog.children.length > MAX_CHAT_LINES) {
+    chatLog.removeChild(chatLog.firstChild);
+  }
+  chatLog.scrollTop = chatLog.scrollHeight;
+}
+
+function fault(msg) {
+  faultEl.textContent = msg;
+  faultEl.style.display = 'block';
+  setTimeout(() => {
+    faultEl.style.display = 'none';
+  }, 6000);
+}
 
 const healthChart =
   typeof ComstarHealthChart === 'function'
@@ -97,8 +305,14 @@ const healthChart =
 let speakStart = 0;
 
 const avatar = new ComstarAvatar(document.getElementById('stage'), {
+  // Preset: starburst | reactor | sentinel | spectrum | instrument
+  emblem: params.get('emblem') || 'starburst',
+  // Pi defaults: no SVG bloom + low fps (GPU was pegged at 100%).
+  // Override: ?bloom=3&fps=24  or  COMSTAR_KIOSK_URL=...
+  emblemScale: parseFloat(params.get('scale') || '0.62'),
+  bloom: parseFloat(params.get('bloom') || '0'),
+  maxFps: parseFloat(params.get('fps') || '12'),
   onEvent(type, data) {
-    if (type === 'head.loaded') return;
     if (type === 'speak.started') {
       bridge.span('avatar_start', performance.now() - speakStart);
       bridge.send('speak.started', {});
@@ -110,13 +324,6 @@ const avatar = new ComstarAvatar(document.getElementById('stage'), {
     }
     if (type === 'error') {
       bridge.send('error', data);
-      if (data.code === 'glb_load_failed') {
-        faultEl.textContent = 'Running without the head model.';
-        faultEl.style.display = 'block';
-        setTimeout(() => {
-          faultEl.style.display = 'none';
-        }, 6000);
-      }
     }
   },
 });
@@ -125,7 +332,7 @@ const bridge = new BridgeClient(bridgeUrl, {
   onOpen() {
     const s = avatar.stats();
     bridge.send('ready', {
-      avatarLoaded: s.headLoaded,
+      avatarLoaded: true,
       webglVendor: s.webglVendor,
       fps: s.fps,
     });
@@ -138,25 +345,49 @@ const bridge = new BridgeClient(bridgeUrl, {
   state(d) {
     avatar.setState(d.state);
     if (d.gaze) avatar.setGaze(d.gaze.x, d.gaze.y || 0);
+    // Fallback if a phase envelope was missed: keep HUD in sync with state.
+    if (d.state === 'noticed') setPhase('noticed', 'I see you…');
+    if (d.state === 'listening') setPhase('listening', 'Listening…');
+    if (d.state === 'ambient') setPhase('idle');
+    if (d.state === 'engaged' && phaseEl.dataset.phase === 'idle') {
+      setPhase('engaged', d.userid || d.displayName || '');
+    }
   },
 
   speak(d) {
     speakStart = performance.now();
     avatar.setState('responding');
+    setPhase('speaking', d.text || '');
+    if (d.text) appendChat('comstar', d.text);
     avatar.speak(d.audioUrl);
   },
 
   'speak.cancel'() {
     avatar.cancelSpeak();
+    setPhase('idle');
   },
 
   listening(d) {
-    if (d.active) avatar.setState('listening');
+    if (d.active) {
+      avatar.setState('listening');
+      if (phaseEl.dataset.phase !== 'heard' && phaseEl.dataset.phase !== 'thinking') {
+        setPhase('listening', 'Listening…');
+      }
+    }
     avatar.setMicLevel(d.level ?? 0);
   },
 
   thinking(d) {
     avatar.setThinking(!!d.active);
+    if (d.active) setPhase('thinking', 'Talking to AO…');
+  },
+
+  phase(d) {
+    const phase = d.phase || 'idle';
+    const detail = d.detail || '';
+    setPhase(phase, detail);
+    if (phase === 'heard' && detail) appendChat('you', detail);
+    if (phase === 'missed') appendChat('sys', detail || "Didn't catch that");
   },
 
   health(d) {
@@ -164,11 +395,7 @@ const bridge = new BridgeClient(bridgeUrl, {
   },
 
   error(d) {
-    faultEl.textContent = d.message || 'Something went wrong.';
-    faultEl.style.display = 'block';
-    setTimeout(() => {
-      faultEl.style.display = 'none';
-    }, 6000);
+    fault(d.message || 'Something went wrong.');
   },
 });
 
@@ -176,8 +403,9 @@ if (demo) {
   setInterval(() => {
     const s = avatar.stats();
     statusEl.textContent =
-      `state ${avatar.state}  fps ${s.fps}  head ${s.headLoaded ? 'ok' : 'none'}  ` +
-      `gaze ${avatar.gaze.x.toFixed(2)}  amp ${avatar.amplitude.toFixed(2)}`;
+      `state ${avatar.state}  fps ${s.fps}  ` +
+      `gaze ${avatar.gaze.x.toFixed(2)}  amp ${avatar.amplitude.toFixed(2)}  ` +
+      `scale ${avatar.emblemScale}  bloom ${avatar.bloom}`;
   }, 250);
 }
 

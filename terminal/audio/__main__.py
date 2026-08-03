@@ -80,9 +80,15 @@ async def _main() -> None:
             if streamer is not None:
                 tid = data.get("turn_id") or turn_id or "unknown"
                 max_ms = data.get("maxMs")
+                pre_roll = data.get("preRollMs")
+                vad_settle = data.get("vadSettleMs")
+                clear_ring = data.get("clearRing")
                 await streamer.start(
                     str(tid),
                     max_ms=int(max_ms) if max_ms is not None else None,
+                    pre_roll_ms=int(pre_roll) if pre_roll is not None else None,
+                    vad_settle_ms=int(vad_settle) if vad_settle is not None else None,
+                    clear_ring=bool(clear_ring) if clear_ring is not None else None,
                 )
         elif msg_type == "listen.stop":
             if streamer is not None:
@@ -125,8 +131,8 @@ async def _main() -> None:
                                 np.float32,
                             )
                             rms = float(np.sqrt(np.mean(np.square(audio / 32768.0))))
-                            # Webcam mic idle ~0.03; require clearer speech for force-wake.
-                            if rms > 0.06:
+                            # Idle C525 @100% ~0.01–0.02; soft speech often ~0.06–0.12.
+                            if rms > 0.10:
                                 score = float(force_wake_score)
                                 wake.mark_fired()
                         if score is not None:

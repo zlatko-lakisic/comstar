@@ -15,8 +15,8 @@ vision:
   ambient_fps: 1
   engaged_fps: 3
   person_confidence: 0.60
-  face_confidence: 0.55
-  recognize_votes: 3
+  face_confidence: 0.40
+  recognize_votes: 2
   identity_ttl_seconds: 300
 
 audio:

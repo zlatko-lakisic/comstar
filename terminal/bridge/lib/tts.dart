@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:comstar_bridge/log.dart';
+import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 
 /// First-chunk streaming TTS output.
@@ -186,11 +188,76 @@ class PiperTts implements TtsEngine {
   }
 }
 
+/// HTTP TTS client (sherpa Piper server: POST /v1/audio/speech → WAV).
+class HttpTts implements TtsEngine {
+  HttpTts({
+    required String baseUrl,
+    this.outputDir,
+    http.Client? client,
+    TtsEngine? fallback,
+  })  : baseUrl = baseUrl.replaceAll(RegExp(r'/+$'), ''),
+        _client = client ?? http.Client(),
+        _fallback = fallback ?? FakeTts(outputDir: outputDir);
+
+  final String baseUrl;
+  final String? outputDir;
+  final http.Client _client;
+  final TtsEngine _fallback;
+
+  @override
+  Stream<TtsChunk> synthesize(String text) async* {
+    final path = await synthesizeToFile(text);
+    final bytes = await File(path).readAsBytes();
+    yield TtsChunk(audio: bytes, isFirst: true, isLast: true, filePath: path);
+  }
+
+  @override
+  Future<String> synthesizeToFile(String text) async {
+    final span = Span('tts_total');
+    try {
+      final uri = Uri.parse('$baseUrl/v1/audio/speech');
+      final response = await _client
+          .post(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'text': text}),
+          )
+          .timeout(const Duration(seconds: 45));
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        logWarn('tts_http_failed', 'TTS HTTP ${response.statusCode}');
+        return _fallback.synthesizeToFile(text);
+      }
+      final dir =
+          outputDir ?? Directory.systemTemp.createTempSync('comstar-tts').path;
+      Directory(dir).createSync(recursive: true);
+      final safe = text.hashCode.abs().toRadixString(16);
+      final path = p.join(dir, 'http_$safe.wav');
+      await File(path).writeAsBytes(response.bodyBytes);
+      return path;
+    } catch (e) {
+      logWarn('tts_http_failed', e.toString());
+      return _fallback.synthesizeToFile(text);
+    } finally {
+      span.close();
+    }
+  }
+}
+
 TtsEngine createTtsEngine({
   required String engine,
   required String piperVoice,
   String? outputDir,
 }) {
+  final httpUrl = Platform.environment['COMSTAR_TTS_URL']?.trim();
+  if (httpUrl != null && httpUrl.isNotEmpty) {
+    return HttpTts(
+      baseUrl: httpUrl,
+      outputDir: outputDir,
+      fallback: engine == 'piper'
+          ? PiperTts(voice: piperVoice, outputDir: outputDir)
+          : FakeTts(outputDir: outputDir),
+    );
+  }
   if (engine == 'piper') {
     return PiperTts(voice: piperVoice, outputDir: outputDir);
   }

@@ -1,0 +1,32 @@
+{
+  "trials": 10,
+  "fixtures": [
+    "haydt-20260802-210836"
+  ],
+  "results": [
+    {
+      "engine": "http:http://127.0.0.1:8090",
+      "fixture": "haydt-20260802-210836",
+      "ok": 10,
+      "trials": 10,
+      "perfect": true,
+      "avg_ms": 4258.1,
+      "texts": [
+        "How are you doing today?"
+      ]
+    }
+  ],
+  "winners": [
+    {
+      "engine": "http:http://127.0.0.1:8090",
+      "fixture": "haydt-20260802-210836",
+      "ok": 10,
+      "trials": 10,
+      "perfect": true,
+      "avg_ms": 4258.1,
+      "texts": [
+        "How are you doing today?"
+      ]
+    }
+  ]
+}

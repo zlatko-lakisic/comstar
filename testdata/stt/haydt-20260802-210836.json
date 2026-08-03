@@ -1,0 +1,17 @@
+{
+  "file": "haydt-20260802-210836.wav",
+  "transcript": "How are you doing today",
+  "source": "parecord",
+  "path": "parecord→wav",
+  "speaker": "zlatko",
+  "captured_at": "2026-08-02T21:08:36-04:00",
+  "device": "Logitech C525",
+  "rate": 16000,
+  "channels": 1,
+  "sampwidth": 2,
+  "frames": 64000,
+  "duration_s": 4.0,
+  "peak": 0.5774,
+  "rms": 0.0474,
+  "notes": "Parecord sidestep — crystal clear playback, but NOT the bridge path. Does not count toward live 10/10 gate."
+}

@@ -125,6 +125,8 @@ void _apply(AttentionMachine machine, AttentionEvent event) {
 void _engageAndListen(AttentionMachine machine) {
   _apply(machine, const PersonDetected(0.8));
   _apply(machine, const FaceRecognized('zlatko', 0.9));
+  // Greeter finished — unlock mic before a spoken turn.
+  _apply(machine, const PlaybackEnded());
   _apply(machine, const WakeWord(0.9));
 }
 
@@ -177,14 +179,32 @@ void main() {
       expect(m.context.cachedUserid, 'zlatko');
     });
 
+    test('engaged + SpeechStart → listening (face-addressable)', () {
+      final m = _machine();
+      _apply(m, const PersonDetected(0.8));
+      _apply(m, const FaceRecognized('zlatko', 0.9));
+      _apply(m, const PlaybackEnded());
+      final t = m.handle(const SpeechStart());
+      expect(t.to, isA<Listening>());
+      // Mic already armed by follow-up window → promote, else start fresh.
+      expect(
+        _hasEffectType<StartListening>(t.effects) ||
+            _hasEffectType<PromoteListening>(t.effects),
+        isTrue,
+      );
+    });
+
     test('engaged + SpeechStart during follow-up → listening', () {
       final m = _machine();
       _apply(m, const PersonDetected(0.8));
       _apply(m, const FaceRecognized('zlatko', 0.9));
+      _apply(m, const PlaybackEnded());
       m.context.followUpOpen = true;
+      m.context.followUpListening = true;
+      m.context.followUpMicArmedAtMs = m.context.clock.nowMs - 2500;
       final t = m.handle(const SpeechStart());
       expect(t.to, isA<Listening>());
-      expect(_hasEffectType<StartListening>(t.effects), isTrue);
+      expect(_hasEffectType<PromoteListening>(t.effects), isTrue);
     });
 
     test('noticed + FaceUnknown + greet → engaged guest', () {
@@ -220,6 +240,9 @@ void main() {
       final m = _machine();
       _apply(m, const PersonDetected(0.8));
       _apply(m, const FaceRecognized('zlatko', 0.9));
+      _apply(m, const PlaybackEnded());
+      // Clear follow-up arm so WakeWord takes the fresh-listen path.
+      m.context.followUpListening = false;
       final t = m.handle(const WakeWord(0.9));
       expect(t.to, isA<Listening>());
       expect(_hasEffectType<StartListening>(t.effects), isTrue);
@@ -230,7 +253,9 @@ void main() {
       final m = _machine(faceAttentionTrigger: true);
       _apply(m, const PersonDetected(0.8));
       _apply(m, const FaceRecognized('zlatko', 0.9));
+      _apply(m, const PlaybackEnded());
       m.context.gazeDetected = true;
+      m.context.followUpListening = false;
       final t = m.handle(const SpeechStart());
       expect(t.to, isA<Listening>());
       expect(_hasEffectType<StartListening>(t.effects), isTrue);
@@ -257,14 +282,15 @@ void main() {
       expect(_hasEffectType<CallStt>(t.effects), isTrue);
     });
 
-    test('listening + Tick max utterance → responding', () {
+    test('listening + Tick max utterance → stays listening pending STT', () {
       final clock = FakeClock();
       final m = _machine(clock: clock);
       _engageAndListen(m);
       clock.advance(16 * 1000);
       final t = m.handle(const Tick());
-      expect(t.to, isA<Responding>());
+      expect(t.to, isA<Listening>());
       expect(_hasEffectType<FinalizeCapture>(t.effects), isTrue);
+      expect(_hasEffectType<CallStt>(t.effects), isTrue);
     });
 
     test('listening + TranscriptReady non-empty → responding', () {
@@ -344,6 +370,8 @@ void main() {
       expect(m.state, isA<Noticed>());
       _apply(m, const FaceRecognized('zlatko', 0.92));
       expect(m.state, isA<Engaged>());
+      _apply(m, const PlaybackEnded());
+      m.context.followUpListening = false;
       _apply(m, const WakeWord(0.88));
       expect(m.state, isA<Listening>());
       _apply(m, const SpeechEnd(800));

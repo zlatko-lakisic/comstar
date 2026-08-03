@@ -12,6 +12,9 @@ Environment=COMSTAR_WAKEWORD_MODEL=/opt/comstar/src/models/hey_comstar.onnx
 # Ambient/Noticed so this cannot race face recognition into a silent guest session.
 Environment=COMSTAR_FORCE_WAKE_SCORE=0.99
 Environment=COMSTAR_LOG=info
+Environment=COMSTAR_VAD_SILENCE_MS=1000
+# C525 at ≥150% clips idle hiss into permanent VAD "speech" → empty STT.
+ExecStartPre=/usr/bin/pactl set-source-volume @DEFAULT_SOURCE@ 80%
 ExecStart=/opt/comstar/src/terminal/audio/.venv/bin/python __main__.py
 Restart=on-failure
 RestartSec=5

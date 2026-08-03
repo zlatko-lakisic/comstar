@@ -143,10 +143,9 @@ class VisionPoller {
   Future<void> _recognize(Uint8List frame) async {
     final matches = await client.recognizeFace(frame);
     if (matches.isEmpty) {
-      final vote = identity.recordUnknown();
-      if (vote is IdentityVoteUnknown) {
-        _emit(const VisionFaceUnknown());
-      }
+      // No face this frame (angle/blur/cutoff). Keep vote progress while the
+      // person is still present — wiping here blocked engagement whenever CPAI
+      // flipped between success and unsuccessful on adjacent frames.
       return;
     }
 

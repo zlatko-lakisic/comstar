@@ -1,0 +1,142 @@
+{
+  "trials": 10,
+  "fixtures": [
+    "haydt-20260802-210836"
+  ],
+  "results": [
+    {
+      "engine": "faster_whisper:base:{\"beam_size\": 1, \"best_of\": 1, \"temperature\": 0.0, \"vad_filter\": false}",
+      "fixture": "haydt-20260802-210836",
+      "ok": 10,
+      "trials": 10,
+      "perfect": true,
+      "avg_ms": 8414.9,
+      "texts": [
+        "How are you doing today?"
+      ]
+    },
+    {
+      "engine": "faster_whisper:base:{\"beam_size\": 5, \"vad_filter\": false}",
+      "fixture": "haydt-20260802-210836",
+      "ok": 10,
+      "trials": 10,
+      "perfect": true,
+      "avg_ms": 8981.3,
+      "texts": [
+        "How are you doing today?"
+      ]
+    },
+    {
+      "engine": "faster_whisper:base:{\"beam_size\": 5, \"vad_filter\": true}",
+      "fixture": "haydt-20260802-210836",
+      "ok": 10,
+      "trials": 10,
+      "perfect": true,
+      "avg_ms": 8795.4,
+      "texts": [
+        "How are you doing today?"
+      ]
+    },
+    {
+      "engine": "faster_whisper:tiny:{\"beam_size\": 1, \"best_of\": 1, \"temperature\": 0.0, \"vad_filter\": false}",
+      "fixture": "haydt-20260802-210836",
+      "ok": 10,
+      "trials": 10,
+      "perfect": true,
+      "avg_ms": 4325.5,
+      "texts": [
+        "How are you doing today?"
+      ]
+    },
+    {
+      "engine": "faster_whisper:tiny:{\"beam_size\": 5, \"vad_filter\": false}",
+      "fixture": "haydt-20260802-210836",
+      "ok": 10,
+      "trials": 10,
+      "perfect": true,
+      "avg_ms": 4246.7,
+      "texts": [
+        "How are you doing today?"
+      ]
+    },
+    {
+      "engine": "faster_whisper:tiny:{\"beam_size\": 5, \"vad_filter\": true}",
+      "fixture": "haydt-20260802-210836",
+      "ok": 10,
+      "trials": 10,
+      "perfect": true,
+      "avg_ms": 4347.9,
+      "texts": [
+        "How are you doing today?"
+      ]
+    }
+  ],
+  "winners": [
+    {
+      "engine": "faster_whisper:base:{\"beam_size\": 1, \"best_of\": 1, \"temperature\": 0.0, \"vad_filter\": false}",
+      "fixture": "haydt-20260802-210836",
+      "ok": 10,
+      "trials": 10,
+      "perfect": true,
+      "avg_ms": 8414.9,
+      "texts": [
+        "How are you doing today?"
+      ]
+    },
+    {
+      "engine": "faster_whisper:base:{\"beam_size\": 5, \"vad_filter\": false}",
+      "fixture": "haydt-20260802-210836",
+      "ok": 10,
+      "trials": 10,
+      "perfect": true,
+      "avg_ms": 8981.3,
+      "texts": [
+        "How are you doing today?"
+      ]
+    },
+    {
+      "engine": "faster_whisper:base:{\"beam_size\": 5, \"vad_filter\": true}",
+      "fixture": "haydt-20260802-210836",
+      "ok": 10,
+      "trials": 10,
+      "perfect": true,
+      "avg_ms": 8795.4,
+      "texts": [
+        "How are you doing today?"
+      ]
+    },
+    {
+      "engine": "faster_whisper:tiny:{\"beam_size\": 1, \"best_of\": 1, \"temperature\": 0.0, \"vad_filter\": false}",
+      "fixture": "haydt-20260802-210836",
+      "ok": 10,
+      "trials": 10,
+      "perfect": true,
+      "avg_ms": 4325.5,
+      "texts": [
+        "How are you doing today?"
+      ]
+    },
+    {
+      "engine": "faster_whisper:tiny:{\"beam_size\": 5, \"vad_filter\": false}",
+      "fixture": "haydt-20260802-210836",
+      "ok": 10,
+      "trials": 10,
+      "perfect": true,
+      "avg_ms": 4246.7,
+      "texts": [
+        "How are you doing today?"
+      ]
+    },
+    {
+      "engine": "faster_whisper:tiny:{\"beam_size\": 5, \"vad_filter\": true}",
+      "fixture": "haydt-20260802-210836",
+      "ok": 10,
+      "trials": 10,
+      "perfect": true,
+      "avg_ms": 4347.9,
+      "texts": [
+        "How are you doing today?"
+      ]
+    }
+  ]
+}

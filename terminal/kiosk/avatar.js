@@ -1,173 +1,151 @@
-import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-
 /**
- * COMSTAR avatar renderer.
+ * COMSTAR avatar renderer (2D).
  *
- * Renders a static mech-head GLB with the ComStar starburst as an additively
- * blended child plane. The head has no rig and no blend shapes by design: the
- * expressive channels are (a) the starburst, driven by attention state and
- * speech amplitude, and (b) head yaw, driven by the face bounding box that
- * CodeProject.AI already returns.
+ * Renders the ComStar starburst as live inline SVG. No WebGL, no GLB, no blend
+ * shapes. The expressive channels are:
  *
- * The GLB is optional. If it fails to load, or WebGL never comes up, the
- * starburst renders alone on a dark field and everything else keeps working.
- * See IMPLEMENTATION_PLAN M7.5: the avatar must never be able to take down the
- * voice assistant.
+ *   - ring rotation and brightness, driven by attention state
+ *   - halo swell, driven by mic level while listening
+ *   - core pulse, driven by speech amplitude read from an AnalyserNode on the
+ *     audio element we are already playing (so it cannot drift out of sync)
+ *   - a small parallax offset, driven by the face bounding box CodeProject.AI
+ *     already returns
+ *
+ * The emblem renders alone on a dark field. There is no background image and
+ * no 3D model: the mark is the avatar.
+ *
+ * Public API is identical to the WebGL renderer, so the two are swappable
+ * without touching index.html or bridge_client.js.
  */
 
+import { resolveEmblem } from './presets.js';
+
 const STATE_PARAMS = {
-  ambient:    { ringSpin: 0.06, opacity: 0.30, scale: 0.86, keyLight: 0.25, sway: 1.0 },
-  noticed:    { ringSpin: 0.50, opacity: 0.62, scale: 0.94, keyLight: 0.60, sway: 0.4 },
-  engaged:    { ringSpin: 0.00, opacity: 1.00, scale: 1.00, keyLight: 1.00, sway: 0.15 },
-  listening:  { ringSpin: 0.12, opacity: 1.00, scale: 1.00, keyLight: 1.00, sway: 0.15 },
-  responding: { ringSpin: 0.20, opacity: 1.00, scale: 1.00, keyLight: 1.00, sway: 0.15 },
+  //            spin  opacity  scale  sway
+  // Ambient spin kept low — Pi GPU was pegged at 100% from continuous SVG work.
+  ambient:    { spin: 2,  op: 0.30, sc: 0.86, sway: 0.55 },
+  noticed:    { spin: 18, op: 0.62, sc: 0.94, sway: 0.35 },
+  engaged:    { spin: 0,  op: 1.00, sc: 1.00, sway: 0.12 },
+  listening:  { spin: 8,  op: 1.00, sc: 1.00, sway: 0.12 },
+  responding: { spin: 14, op: 1.00, sc: 1.00, sway: 0.12 },
 };
 
-const HEAD_GLB = './assets/comstar-head.glb';
-const STARBURST_SVG = './assets/starburst.svg';
-
-const MAX_YAW = THREE.MathUtils.degToRad(25);
-const MAX_PITCH = THREE.MathUtils.degToRad(10);
-const GAZE_DAMPING = 2.5;
 const STATE_DAMPING = 3.5;
+const GAZE_DAMPING = 2.5;
+const MAX_DRIFT = 18;      // user units the emblem leans toward a person
+const METER_CIRCUM = 2 * Math.PI * 226;
 
 export class ComstarAvatar {
-  constructor(canvas, opts = {}) {
-    this.canvas = canvas;
+  /**
+   * @param {HTMLElement} container  element to mount into; sized by CSS
+   * @param {object} opts
+   * @param {(type:string,data:object)=>void} opts.onEvent
+   * @param {string} [opts.emblem='starburst']  preset name, or raw SVG markup
+   * @param {number}  [opts.emblemScale=0.62] emblem size relative to the panel;
+   *                   lower on portrait panels, the emblem must not touch the edges
+   * @param {number}  [opts.bloom=0] halo blur in SVG user units (0 disables).
+   *                   User units, not CSS px, so it is invariant to panel size.
+   * @param {number}  [opts.maxFps=24] hard cap for the animation loop (Pi GPU).
+   */
+  constructor(container, opts = {}) {
+    this.container = container;
     this.onEvent = opts.onEvent || (() => {});
+    this.emblemScale = opts.emblemScale ?? 0.62;
+    this.bloom = opts.bloom ?? 0;
+    this.maxFps = Math.max(8, Math.min(60, opts.maxFps ?? 12));
+    this.emblem = resolveEmblem(opts.emblem);
+
     this.state = 'ambient';
-    this.headLoaded = false;
-
-    this.gaze = { x: 0, y: 0 };
-    this.gazeTarget = { x: 0, y: 0 };
-
+    this.thinking = false;
     this.amplitude = 0;
     this.micLevel = 0;
-    this.thinking = false;
-    this.clock = new THREE.Clock();
-    this.t = 0;
-
+    this.gaze = { x: 0, y: 0 };
+    this.gazeTarget = { x: 0, y: 0 };
     this.cur = { ...STATE_PARAMS.ambient };
 
-    this._initScene();
-    this._initStarburst();
-    this._loadHead();
+    this._spinCore = 0;
+    this._spinHalo = 0;
+    this._t = 0;
+    this._last = performance.now();
+    this._fps = this.maxFps;
+    this._frameBound = this._frame.bind(this);
+    this._raf = 0;
+    this._visible = typeof document === 'undefined'
+      ? true
+      : document.visibilityState !== 'hidden';
+
+    this._build();
     this._initAudio();
-
-    this._onResize = this._resize.bind(this);
-    window.addEventListener('resize', this._onResize);
-    this._resize();
-    this.renderer.setAnimationLoop(this._frame.bind(this));
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', () => {
+        this._visible = document.visibilityState !== 'hidden';
+        if (this._visible && !this._raf) {
+          this._last = performance.now();
+          this._raf = requestAnimationFrame(this._frameBound);
+        }
+      });
+    }
+    this._raf = requestAnimationFrame(this._frameBound);
   }
 
-  // ---------------------------------------------------------------- scene
+  // ------------------------------------------------------------------ DOM
 
-  _initScene() {
-    this.renderer = new THREE.WebGLRenderer({
-      canvas: this.canvas,
-      antialias: true,
-      powerPreference: 'high-performance',
+  _build() {
+    this.container.innerHTML = '';
+    Object.assign(this.container.style, {
+      position: 'relative', overflow: 'hidden', background: '#060d16',
     });
-    // Pi 4 has no headroom for supersampling. Cap hard.
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.shadowMap.enabled = false;
 
-    this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x060d16);
-
-    this.camera = new THREE.PerspectiveCamera(28, 1, 0.1, 100);
-    this.camera.position.set(0, 0, 4.2);
-
-    this.headGroup = new THREE.Group();
-    this.scene.add(this.headGroup);
-
-    this.ambientLight = new THREE.HemisphereLight(0x9fd0ff, 0x101820, 0.55);
-    this.scene.add(this.ambientLight);
-
-    this.keyLight = new THREE.DirectionalLight(0xdceeff, 1.6);
-    this.keyLight.position.set(1.4, 1.8, 2.4);
-    this.scene.add(this.keyLight);
-
-    this.rimLight = new THREE.DirectionalLight(0x5aa9e6, 1.0);
-    this.rimLight.position.set(-2.2, 0.6, -1.6);
-    this.scene.add(this.rimLight);
-
-    this.canvas.addEventListener('webglcontextlost', (e) => {
-      e.preventDefault();
-      this.onEvent('error', { code: 'webgl_context_lost', message: 'WebGL context lost' });
-      setTimeout(() => window.location.reload(), 1500);
+    const uid = `cs${(ComstarAvatar._n = (ComstarAvatar._n || 0) + 1)}`;
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('viewBox', '0 0 512 512');
+    svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+    svg.setAttribute('role', 'img');
+    Object.assign(svg.style, {
+      position: 'absolute', inset: '0', width: '100%', height: '100%',
     });
-  }
+    svg.innerHTML = `
+      <title>COMSTAR</title>
+      <defs>
+        <filter id="${uid}-bloom" x="-60%" y="-60%" width="220%" height="220%"
+                color-interpolation-filters="sRGB">
+          <feGaussianBlur stdDeviation="${this.bloom}"/>
+        </filter>
+      </defs>
+      <g class="cs-shift" transform="translate(256,256)">
+        <g class="cs-halo">${this.emblem}</g>
+        <g class="cs-core">${this.emblem}</g>
+        <circle class="cs-meter" r="226" fill="none" stroke="#7fc4ff"
+                stroke-width="6" stroke-linecap="round"
+                stroke-dasharray="0 ${METER_CIRCUM}"
+                transform="rotate(-90)" opacity="0"/>
+      </g>`;
+    this.container.appendChild(svg);
 
-  // ------------------------------------------------------------ starburst
+    this.shift = svg.querySelector('.cs-shift');
+    this.halo = svg.querySelector('.cs-halo');
+    this.core = svg.querySelector('.cs-core');
+    this.meter = svg.querySelector('.cs-meter');
 
-  _initStarburst() {
-    const tex = new THREE.TextureLoader().load(STARBURST_SVG);
-    tex.colorSpace = THREE.SRGBColorSpace;
+    // Halo is a blurred twin of the core. feGaussianBlur is the expensive
+    // part on VideoCore — keep stdDeviation low, or bloom=0 to skip entirely.
+    if (this.bloom > 0) {
+      this.halo.setAttribute('filter', `url(#${uid}-bloom)`);
+    } else {
+      // No bloom → drop the second emblem so we do not double SVG work.
+      this.halo.style.display = 'none';
+    }
 
-    this.starburst = new THREE.Group();
-
-    // Fake bloom: a larger, dimmer copy behind the sharp one. Two additive
-    // quads cost effectively nothing; a real post-process bloom pass does not
-    // survive VideoCore VI at 24fps.
-    const halo = new THREE.Mesh(
-      new THREE.PlaneGeometry(3.4, 3.4),
-      new THREE.MeshBasicMaterial({
-        map: tex, transparent: true, blending: THREE.AdditiveBlending,
-        depthWrite: false, opacity: 0.28,
-      })
-    );
-    const core = new THREE.Mesh(
-      new THREE.PlaneGeometry(2.6, 2.6),
-      new THREE.MeshBasicMaterial({
-        map: tex, transparent: true, blending: THREE.AdditiveBlending,
-        depthWrite: false, opacity: 1.0,
-      })
-    );
-    this.halo = halo;
-    this.core = core;
-    this.starburst.add(halo, core);
-
-    // Sits in front of the faceplate, parented to the head so it turns with it.
-    this.starburst.position.set(0, 0.05, 0.85);
-    this.headGroup.add(this.starburst);
-  }
-
-  // ----------------------------------------------------------------- head
-
-  _loadHead() {
-    new GLTFLoader().load(
-      HEAD_GLB,
-      (gltf) => {
-        const head = gltf.scene;
-        this._frameObject(head, 2.2);
-        this.headGroup.add(head);
-        this.head = head;
-        this.headLoaded = true;
-        this.onEvent('head.loaded', {});
-      },
-      undefined,
-      () => {
-        // Starburst-only mode. Deliberately not fatal.
-        this.headLoaded = false;
-        this.onEvent('error', {
-          code: 'glb_load_failed',
-          message: 'Head GLB missing; running starburst-only',
-        });
-      }
-    );
-  }
-
-  /** Scale and centre an arbitrary GLB so its height fills `targetHeight`. */
-  _frameObject(obj, targetHeight) {
-    const box = new THREE.Box3().setFromObject(obj);
-    const size = box.getSize(new THREE.Vector3());
-    const center = box.getCenter(new THREE.Vector3());
-    const scale = targetHeight / (size.y || 1);
-    obj.scale.setScalar(scale);
-    obj.position.sub(center.multiplyScalar(scale));
+    // Both hooks are optional; a preset may use neither.
+    this.haloRings = this.halo.querySelector('.cs-rings');
+    this.coreRings = this.core.querySelector('.cs-rings');
+    this.bars = this.bloom > 0
+      ? [
+          ...this.core.querySelectorAll('.cs-bars rect'),
+          ...this.halo.querySelectorAll('.cs-bars rect'),
+        ]
+      : [...this.core.querySelectorAll('.cs-bars rect')];
   }
 
   // ---------------------------------------------------------------- audio
@@ -176,14 +154,12 @@ export class ComstarAvatar {
     this.audio = new Audio();
     this.audio.crossOrigin = 'anonymous';
     this.audio.preload = 'auto';
-    this._audioWired = false;
-    this._speakStarted = false;
+    this._wired = false;
+    this._speaking = false;
+    this._started = false;
 
     this.audio.addEventListener('playing', () => {
-      if (!this._speakStarted) {
-        this._speakStarted = true;
-        this.onEvent('speak.started', {});
-      }
+      if (!this._started) { this._started = true; this.onEvent('speak.started', {}); }
     });
     this.audio.addEventListener('ended', () => this._endSpeak());
     this.audio.addEventListener('error', () => {
@@ -192,24 +168,22 @@ export class ComstarAvatar {
     });
   }
 
-  /** Lazily built: AudioContext cannot be created before a user gesture on
-   *  some platforms, and the kiosk has no gestures. Built on first speak. */
+  /** Built lazily: AudioContext construction is refused before a user gesture
+   *  on some platforms, and a kiosk never receives one. */
   _ensureAnalyser() {
-    if (this._audioWired) return;
+    if (this._wired) return;
+    this._wired = true;
     try {
-      this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      const src = this.audioCtx.createMediaElementSource(this.audio);
-      this.analyser = this.audioCtx.createAnalyser();
+      this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const src = this.ctx.createMediaElementSource(this.audio);
+      this.analyser = this.ctx.createAnalyser();
       this.analyser.fftSize = 256;
       this.analyser.smoothingTimeConstant = 0.75;
       this._bins = new Uint8Array(this.analyser.frequencyBinCount);
       src.connect(this.analyser);
-      this.analyser.connect(this.audioCtx.destination);
-      this._audioWired = true;
-    } catch (err) {
-      // No analyser: the core simply won't pulse. Speech still plays.
-      this.analyser = null;
-      this._audioWired = true;
+      this.analyser.connect(this.ctx.destination);
+    } catch {
+      this.analyser = null;   // speech still plays, only the pulse is lost
     }
   }
 
@@ -221,41 +195,30 @@ export class ComstarAvatar {
       const v = (this._bins[i] - 128) / 128;
       sum += v * v;
     }
-    // RMS, lifted with a curve so quiet speech still reads visually.
+    // RMS, lifted so quiet speech still reads visually across a room.
     return Math.min(1, Math.sqrt(sum / this._bins.length) * 3.2);
   }
 
   _endSpeak() {
     if (!this._speaking) return;
     this._speaking = false;
-    this._speakStarted = false;
+    this._started = false;
     this.amplitude = 0;
     this.onEvent('speak.ended', {});
   }
 
-  // ------------------------------------------------------------ public API
+  // ----------------------------------------------------------- public API
 
-  setState(state) {
-    if (!STATE_PARAMS[state]) return;
-    this.state = state;
-  }
+  setState(state) { if (STATE_PARAMS[state]) this.state = state; }
 
-  setThinking(active) {
-    this.thinking = !!active;
-  }
+  setThinking(active) { this.thinking = !!active; }
 
-  setMicLevel(level) {
-    this.micLevel = THREE.MathUtils.clamp(level || 0, 0, 1);
-  }
+  setMicLevel(level) { this.micLevel = Math.min(1, Math.max(0, level || 0)); }
 
-  /**
-   * Point the head at someone.
-   * @param {number} x  normalised horizontal position, -1 (left) to 1 (right)
-   * @param {number} y  normalised vertical position, -1 (down) to 1 (up)
-   */
+  /** @param {number} x -1 (left) to 1 (right) @param {number} y -1 to 1 */
   setGaze(x, y = 0) {
-    this.gazeTarget.x = THREE.MathUtils.clamp(x, -1, 1);
-    this.gazeTarget.y = THREE.MathUtils.clamp(y, -1, 1);
+    this.gazeTarget.x = Math.min(1, Math.max(-1, x));
+    this.gazeTarget.y = Math.min(1, Math.max(-1, y));
   }
 
   /** Convert a CodeProject.AI bounding box into a gaze target. */
@@ -267,9 +230,9 @@ export class ComstarAvatar {
 
   speak(audioUrl) {
     this._ensureAnalyser();
-    if (this.audioCtx && this.audioCtx.state === 'suspended') this.audioCtx.resume();
+    if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
     this._speaking = true;
-    this._speakStarted = false;
+    this._started = false;
     this.audio.src = audioUrl;
     this.audio.play().catch(() => {
       this.onEvent('error', { code: 'autoplay_blocked', message: 'Playback rejected' });
@@ -285,47 +248,42 @@ export class ComstarAvatar {
   }
 
   stats() {
-    let vendor = 'unknown';
-    try {
-      const gl = this.renderer.getContext();
-      const ext = gl.getExtension('WEBGL_debug_renderer_info');
-      if (ext) {
-        vendor = gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) || vendor;
-      } else {
-        vendor = gl.getParameter(gl.VENDOR) || vendor;
-      }
-    } catch (_) {
-      /* ignore */
-    }
     return {
-      headLoaded: this.headLoaded,
-      webglVendor: vendor,
-      fps: Math.round(this._fps || 0),
+      webglVendor: 'svg',
+      fps: Math.round(this._fps),
     };
   }
 
   dispose() {
-    this.renderer.setAnimationLoop(null);
-    window.removeEventListener('resize', this._onResize);
-    this.renderer.dispose();
+    cancelAnimationFrame(this._raf);
+    this._raf = 0;
+    this.container.innerHTML = '';
   }
 
   // ----------------------------------------------------------------- loop
 
-  _resize() {
-    const w = this.canvas.clientWidth || window.innerWidth;
-    const h = this.canvas.clientHeight || window.innerHeight;
-    this.renderer.setSize(w, h, false);
-    this.camera.aspect = w / h;
-    // Portrait panels need a slightly wider vertical FOV so the head fills the frame.
-    this.camera.fov = w < h ? 36 : 28;
-    this.camera.updateProjectionMatrix();
+  _targetFps() {
+    // Idle ambient is mostly decorative — run cooler on the Pi.
+    if (this.state === 'ambient' && !this.thinking) return Math.min(12, this.maxFps);
+    if (this.state === 'engaged' && !this.thinking) return Math.min(18, this.maxFps);
+    return this.maxFps;
   }
 
-  _frame() {
-    const dt = Math.min(this.clock.getDelta(), 0.1);
-    this.t += dt;
-    this._fps = this._fps ? this._fps * 0.9 + (1 / dt) * 0.1 : 1 / dt;
+  _frame(now) {
+    this._raf = 0;
+    if (!this._visible) return;
+
+    const minDt = 1 / this._targetFps();
+    const elapsed = (now - this._last) / 1000;
+    if (elapsed < minDt * 0.92) {
+      this._raf = requestAnimationFrame(this._frameBound);
+      return;
+    }
+
+    const dt = Math.min(elapsed, 0.1);
+    this._last = now;
+    this._t += dt;
+    this._fps = this._fps * 0.85 + (1 / Math.max(dt, 1e-3)) * 0.15;
 
     const target = STATE_PARAMS[this.state];
     const k = 1 - Math.exp(-STATE_DAMPING * dt);
@@ -339,36 +297,60 @@ export class ComstarAvatar {
       this.amplitude *= 0.9;
     }
 
-    // Ambient breathes; every other state holds still.
-    const breathe = 1 + Math.sin(this.t * 0.4) * 0.03 * this.cur.sway;
+    const breathe = 1 + Math.sin(this._t * 0.4) * 0.03 * this.cur.sway;
+    const base = this.cur.sc * breathe;
+    const mic = this.state === 'listening' ? this.micLevel : 0;
+    const useHalo = this.bloom > 0;
 
-    // Listening turns the outer ring into a level meter by scaling the halo.
-    const listenPulse = this.state === 'listening' ? this.micLevel * 0.10 : 0;
+    // Thinking counter-rotates the halo rings against the core rings.
+    this._spinCore += this.cur.spin * dt;
+    if (this.coreRings) {
+      this.coreRings.setAttribute('transform', `rotate(${this._spinCore.toFixed(2)})`);
+    }
+    if (useHalo && this.haloRings) {
+      this._spinHalo -= this.cur.spin * dt * (this.thinking ? 1.8 : 0.55);
+      this.haloRings.setAttribute('transform', `rotate(${this._spinHalo.toFixed(2)})`);
+    }
 
-    // Thinking counter-rotates the halo against the core.
-    const spin = this.cur.ringSpin * dt;
-    this.core.rotation.z += spin;
-    this.halo.rotation.z -= spin * (this.thinking ? 1.8 : 0.5);
+    // Spectrum presets: each bar reacts with its own phase so the ring reads
+    // as a waveform rather than a single ring breathing in and out.
+    if (this.bars.length) {
+      const drive = Math.max(this.amplitude, mic * 0.7);
+      for (let i = 0; i < this.bars.length; i++) {
+        const phase = Math.sin(this._t * 6 + i * 0.9) * 0.5 + 0.5;
+        this.bars[i].setAttribute('height',
+          (18 + drive * (26 + phase * 62)).toFixed(1));
+      }
+    }
 
-    const s = this.cur.scale * breathe;
-    this.core.scale.setScalar(s * (1 + this.amplitude * 0.16));
-    this.halo.scale.setScalar(s * (1 + this.amplitude * 0.30 + listenPulse));
-    this.core.material.opacity = Math.min(1, this.cur.opacity + this.amplitude * 0.4);
-    this.halo.material.opacity = Math.min(0.9, this.cur.opacity * 0.28 + this.amplitude * 0.45 + listenPulse * 2);
+    const coreScale = base * (1 + this.amplitude * 0.16);
+    this.core.setAttribute('transform', `scale(${coreScale.toFixed(4)})`);
+    this.core.setAttribute('opacity', Math.min(1, this.cur.op + this.amplitude * 0.4));
+    if (useHalo) {
+      const haloScale = base * (1 + this.amplitude * 0.30 + mic * 0.12);
+      this.halo.setAttribute('transform', `scale(${haloScale.toFixed(4)})`);
+      this.halo.setAttribute('opacity',
+        Math.min(0.62, this.cur.op * 0.22 + this.amplitude * 0.34 + mic * 0.26));
+    }
 
-    this.keyLight.intensity = 0.25 + this.cur.keyLight * 1.45;
-    this.rimLight.intensity = 0.3 + this.cur.keyLight * 0.9;
+    this.meter.setAttribute('opacity', this.state === 'listening' ? 1 : 0);
+    if (this.state === 'listening') {
+      this.meter.setAttribute('stroke-dasharray',
+        `${(mic * METER_CIRCUM).toFixed(1)} ${METER_CIRCUM}`);
+    }
 
-    // Gaze, damped so the head eases rather than snapping.
+    // Gaze, damped so the emblem eases rather than snapping.
     const g = 1 - Math.exp(-GAZE_DAMPING * dt);
     this.gaze.x += (this.gazeTarget.x - this.gaze.x) * g;
     this.gaze.y += (this.gazeTarget.y - this.gaze.y) * g;
 
-    const idleYaw = Math.sin(this.t * 0.23) * 0.04 * this.cur.sway;
-    const idlePitch = Math.sin(this.t * 0.31) * 0.02 * this.cur.sway;
-    this.headGroup.rotation.y = this.gaze.x * MAX_YAW + idleYaw;
-    this.headGroup.rotation.x = -this.gaze.y * MAX_PITCH + idlePitch;
+    const idleX = Math.sin(this._t * 0.23) * 4 * this.cur.sway;
+    const idleY = Math.sin(this._t * 0.31) * 3 * this.cur.sway;
+    const dx = this.gaze.x * MAX_DRIFT + idleX;
+    const dy = -this.gaze.y * MAX_DRIFT * 0.5 + idleY;
+    this.shift.setAttribute('transform',
+      `translate(${(256 + dx).toFixed(2)},${(256 + dy).toFixed(2)}) scale(${this.emblemScale})`);
 
-    this.renderer.render(this.scene, this.camera);
+    this._raf = requestAnimationFrame(this._frameBound);
   }
 }

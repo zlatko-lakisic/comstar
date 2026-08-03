@@ -1,41 +1,28 @@
 #!/usr/bin/env python3
-"""Minimal OpenAI-compatible STT server for COMSTAR dev (POST /v1/audio/transcriptions).
+"""COMSTAR STT — sherpa-onnx Moonshine (OpenAI-compatible POST /v1/audio/transcriptions).
 
-Requires faster-whisper. Bind 127.0.0.1:8090 by default.
+Pi-tuned replacement for faster-whisper. No PyTorch.
 
-Usage:
-  python3 -m venv .venv-stt && source .venv-stt/bin/activate
-  pip install -r scripts/requirements-stt.txt
-  python scripts/stt_server.py
+  pip install -r scripts/requirements-sherpa.txt
+  COMSTAR_SHERPA_STT_DIR=/opt/comstar/models/sherpa/stt-moonshine-base \\
+    python scripts/stt_server.py
 
-Then set COMSTAR_STT_URL=http://127.0.0.1:8090 on the bridge.
+Env:
+  COMSTAR_SHERPA_STT_DIR  model directory (preprocess/encode/… onnx + tokens.txt)
+  COMSTAR_STT_THREADS     onnx threads (default 2)
 """
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
-import tempfile
+import time
+import wave
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-
-
-def _require_faster_whisper():
-    try:
-        from faster_whisper import WhisperModel  # noqa: F401
-    except ImportError as exc:
-        print(
-            "faster-whisper is not installed.\n"
-            "  pip install -r scripts/requirements-stt.txt\n"
-            "Then re-run this script.",
-            file=sys.stderr,
-        )
-        raise SystemExit(2) from exc
-    from faster_whisper import WhisperModel
-
-    return WhisperModel
 
 
 def _parse_multipart(body: bytes, content_type: str) -> dict[str, Any]:
@@ -61,19 +48,117 @@ def _parse_multipart(body: bytes, content_type: str) -> dict[str, Any]:
     return parts
 
 
+def _wav_to_float32(path: Path) -> tuple[Any, int]:
+    import numpy as np
+
+    with wave.open(str(path), "rb") as w:
+        rate = w.getframerate()
+        ch = w.getnchannels()
+        sw = w.getsampwidth()
+        n = w.getnframes()
+        raw = w.readframes(n)
+    if sw != 2:
+        raise ValueError(f"unsupported sampwidth={sw}")
+    samples = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
+    if ch > 1:
+        samples = samples.reshape(-1, ch).mean(axis=1)
+    return samples, rate
+
+
+def _find_moonshine(dir_path: Path) -> dict[str, Path]:
+    """Resolve Moonshine v1 (4 onnx) or v2 (encoder+decoder) layouts."""
+    # v1 int8 layout from sherpa releases
+    v1 = {
+        "preprocessor": dir_path / "preprocess.onnx",
+        "encoder": dir_path / "encode.int8.onnx",
+        "uncached_decoder": dir_path / "uncached_decode.int8.onnx",
+        "cached_decoder": dir_path / "cached_decode.int8.onnx",
+        "tokens": dir_path / "tokens.txt",
+    }
+    if all(p.is_file() for p in v1.values()):
+        return {"kind": "v1", **v1}  # type: ignore[dict-item]
+
+    # alternate non-int8 names
+    v1b = {
+        "preprocessor": dir_path / "preprocess.onnx",
+        "encoder": dir_path / "encode.onnx",
+        "uncached_decoder": dir_path / "uncached_decode.onnx",
+        "cached_decoder": dir_path / "cached_decode.onnx",
+        "tokens": dir_path / "tokens.txt",
+    }
+    if all(p.is_file() for p in v1b.values()):
+        return {"kind": "v1", **v1b}  # type: ignore[dict-item]
+
+    enc = next(dir_path.glob("encoder*"), None)
+    dec = next(dir_path.glob("decoder*"), None)
+    tok = dir_path / "tokens.txt"
+    if enc and dec and tok.is_file():
+        return {"kind": "v2", "encoder": enc, "decoder": dec, "tokens": tok}
+
+    raise FileNotFoundError(f"No Moonshine model files in {dir_path}")
+
+
 class SttHandler(BaseHTTPRequestHandler):
-    model_name = "base"
-    _model = None
+    model_dir: Path | None = None
+    threads = 2
+    _recognizer = None
 
     @classmethod
     def load_model(cls) -> None:
-        if cls._model is not None:
+        if cls._recognizer is not None:
             return
-        WhisperModel = _require_faster_whisper()
-        cls._model = WhisperModel(cls.model_name, device="cpu", compute_type="int8")
+        try:
+            import sherpa_onnx
+        except ImportError as exc:
+            print(
+                "sherpa-onnx missing. pip install -r scripts/requirements-sherpa.txt",
+                file=sys.stderr,
+            )
+            raise SystemExit(2) from exc
+
+        assert cls.model_dir is not None
+        files = _find_moonshine(cls.model_dir)
+        t0 = time.time()
+        if files["kind"] == "v1":
+            cls._recognizer = sherpa_onnx.OfflineRecognizer.from_moonshine(
+                preprocessor=str(files["preprocessor"]),
+                encoder=str(files["encoder"]),
+                uncached_decoder=str(files["uncached_decoder"]),
+                cached_decoder=str(files["cached_decoder"]),
+                tokens=str(files["tokens"]),
+                num_threads=cls.threads,
+                provider="cpu",
+            )
+        else:
+            cls._recognizer = sherpa_onnx.OfflineRecognizer.from_moonshine_v2(
+                encoder=str(files["encoder"]),
+                decoder=str(files["decoder"]),
+                tokens=str(files["tokens"]),
+                num_threads=cls.threads,
+                provider="cpu",
+            )
+        print(
+            f"[stt] moonshine {files['kind']} loaded from {cls.model_dir} "
+            f"in {time.time() - t0:.1f}s threads={cls.threads}",
+            file=sys.stderr,
+        )
 
     def log_message(self, fmt: str, *args: Any) -> None:
-        sys.stderr.write("%s - - [%s] %s\n" % (self.address_string(), self.log_date_time_string(), fmt % args))
+        sys.stderr.write(
+            "%s - - [%s] %s\n"
+            % (self.address_string(), self.log_date_time_string(), fmt % args)
+        )
+
+    def do_GET(self) -> None:  # noqa: N802
+        if self.path in ("/", "/health"):
+            body = b'{"ok":true,"engine":"sherpa-moonshine"}'
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        self.send_error(404, "Not found")
 
     def do_POST(self) -> None:  # noqa: N802
         if self.path != "/v1/audio/transcriptions":
@@ -99,41 +184,39 @@ class SttHandler(BaseHTTPRequestHandler):
             return
 
         self.load_model()
-        assert self._model is not None
+        assert self._recognizer is not None
 
-        suffix = ".wav"
-        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-            tmp.write(file_bytes)
-            tmp_path = Path(tmp.name)
+        Path("/tmp/comstar-last-utterance.wav").write_bytes(file_bytes)
+        tmp = Path("/tmp/comstar-stt-in.wav")
+        tmp.write_bytes(file_bytes)
 
+        text = ""
+        t0 = time.time()
         try:
-            # Keep a copy for debugging empty transcripts on the Pi.
-            debug_path = Path("/tmp/comstar-last-utterance.wav")
-            debug_path.write_bytes(file_bytes)
+            samples, rate = _wav_to_float32(tmp)
+            # Very short / near-silent → empty (Moonshine is less hallucinatory
+            # than Whisper, but still skip obvious blanks).
+            import numpy as np
 
-            segments, info = self._model.transcribe(
-                str(tmp_path),
-                language="en",
-                task="transcribe",
-                # Short / quiet webcam clips get wiped by Silero VAD inside whisper.
-                vad_filter=False,
-                beam_size=1,
-                best_of=1,
-                temperature=0.0,
-                condition_on_previous_text=False,
-                no_speech_threshold=0.5,
-                # Reject long single-character loops ("aaaa…") from hum/clipping.
-                compression_ratio_threshold=2.0,
-                log_prob_threshold=-0.8,
-            )
-            text = " ".join(segment.text.strip() for segment in segments).strip()
+            rms = float(np.sqrt(np.mean(np.square(samples)))) if samples.size else 0.0
+            if samples.size < rate * 0.25 or rms < 0.008:
+                print(f"[stt] skip short/quiet bytes={len(file_bytes)} rms={rms:.4f}", file=sys.stderr)
+                text = ""
+            else:
+                stream = self._recognizer.create_stream()
+                stream.accept_waveform(rate, samples)
+                self._recognizer.decode_stream(stream)
+                text = (stream.result.text or "").strip()
             print(
-                f"[stt] bytes={len(file_bytes)} lang={getattr(info, 'language', '?')} "
-                f"prob={getattr(info, 'language_probability', 0):.2f} text={text!r}",
+                f"[stt] bytes={len(file_bytes)} rms={rms:.4f} "
+                f"ms={(time.time() - t0) * 1000:.0f} text={text!r}",
                 file=sys.stderr,
             )
+        except Exception as exc:  # noqa: BLE001
+            print(f"[stt] error: {exc}", file=sys.stderr)
+            text = ""
         finally:
-            tmp_path.unlink(missing_ok=True)
+            tmp.unlink(missing_ok=True)
 
         payload = json.dumps({"text": text}).encode("utf-8")
         self.send_response(200)
@@ -142,30 +225,37 @@ class SttHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
-    def do_GET(self) -> None:  # noqa: N802
-        if self.path in ("/", "/health"):
-            body = b'{"ok":true}'
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-            return
-        self.send_error(404, "Not found")
-
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8090)
-    parser.add_argument("--model", default="base", help="faster-whisper model size/name")
+    parser.add_argument(
+        "--model-dir",
+        default=os.environ.get(
+            "COMSTAR_SHERPA_STT_DIR",
+            "/opt/comstar/models/sherpa/stt-moonshine-base",
+        ),
+    )
+    parser.add_argument(
+        "--threads",
+        type=int,
+        default=int(os.environ.get("COMSTAR_STT_THREADS", "2")),
+    )
     args = parser.parse_args()
 
-    SttHandler.model_name = args.model
+    SttHandler.model_dir = Path(args.model_dir)
+    SttHandler.threads = max(1, args.threads)
+    if not SttHandler.model_dir.is_dir():
+        print(f"Model dir missing: {SttHandler.model_dir}", file=sys.stderr)
+        print("Run scripts/install_sherpa_models.sh first.", file=sys.stderr)
+        return 1
+
+    # Eager load so first request is not a multi-second stall.
+    SttHandler.load_model()
+
     server = ThreadingHTTPServer((args.host, args.port), SttHandler)
-    print(f"COMSTAR STT listening on http://{args.host}:{args.port}", file=sys.stderr)
-    print("  POST /v1/audio/transcriptions  (multipart file field)", file=sys.stderr)
-    print("  COMSTAR_STT_URL=http://127.0.0.1:8090", file=sys.stderr)
+    print(f"COMSTAR STT (sherpa/moonshine) on http://{args.host}:{args.port}", file=sys.stderr)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

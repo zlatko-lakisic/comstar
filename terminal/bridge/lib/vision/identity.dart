@@ -32,9 +32,16 @@ class IdentityResolver {
 
   /// Positive recognition refreshes TTL; person detection alone does not.
   IdentityVoteResult recordMatch(String userid, double confidence) {
-    if (confidence < config.faceConfidence || ! _isKnownUserid(userid)) {
+    if (!_isKnownUserid(userid)) {
       _resetVotes();
       return const IdentityVoteUnknown();
+    }
+
+    // Below threshold: ignore this frame but keep vote progress. Previously
+    // we wiped votes and emitted Unknown, which blocked engagement when CPAI
+    // hovered just under face_confidence (e.g. 0.48 vs 0.55).
+    if (confidence < config.faceConfidence) {
+      return const IdentityVotePending();
     }
 
     if (_pendingUserid == userid) {

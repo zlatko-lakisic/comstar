@@ -5,9 +5,11 @@ After=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=/opt/comstar/src
-ExecStart=/opt/comstar/.venv-stt/bin/python scripts/stt_server.py --host 127.0.0.1 --port 8090 --model tiny
+ExecStart=/opt/comstar/.venv-stt/bin/python scripts/stt_server_whisper.py --host 127.0.0.1 --port 8090 --model tiny --beam-size 5
 Restart=on-failure
 RestartSec=5
+Environment=COMSTAR_WHISPER_MODEL=tiny
+Environment=COMSTAR_WHISPER_BEAM=5
 Environment=OMP_NUM_THREADS=2
 
 [Install]

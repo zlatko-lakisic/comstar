@@ -82,12 +82,13 @@ void main() {
       expect(identity.isResolved, isFalse);
     });
 
-    test('low confidence match resets votes', () {
+    test('low confidence match keeps vote progress', () {
       identity.recordMatch('zlatko', 0.9);
-      identity.recordMatch('zlatko', 0.1);
+      // Below threshold must not wipe votes (was blocking ~0.48 vs 0.55).
+      expect(identity.recordMatch('zlatko', 0.1), isA<IdentityVotePending>());
       identity.recordMatch('zlatko', 0.9);
-      identity.recordMatch('zlatko', 0.9);
-      expect(identity.isResolved, isFalse);
+      final third = identity.recordMatch('zlatko', 0.9);
+      expect(third, isA<IdentityVoteRecognized>());
     });
   });
 }

@@ -15,8 +15,8 @@ vision:
   ambient_fps: 1                             # 0.2–5
   engaged_fps: 3                             # ambient_fps–10
   person_confidence: 0.60                    # 0.3–0.95
-  face_confidence: 0.55                      # 0.3–0.95
-  recognize_votes: 3                         # 1–10 consecutive matches
+  face_confidence: 0.40                      # 0.3–0.95
+  recognize_votes: 2                         # 1–10 consecutive matches
   identity_ttl_seconds: 300
 
 audio:
@@ -35,7 +35,7 @@ avatar:
                                              # e.g. /opt/comstar/models/en_US-lessac-medium.onnx
 
 attention:
-  face_attention_trigger: false
+  face_attention_trigger: true
   stranger_mode: restricted                    # restricted | greet | ignore
 
 # Dev-mode LAN binding — production must keep bind_lan: false.
