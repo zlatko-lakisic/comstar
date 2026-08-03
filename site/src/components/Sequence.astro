@@ -1,0 +1,80 @@
+---
+const beats = [
+  {
+    title: 'You walk in',
+    body: 'The camera sees a person. Nothing has been recorded.',
+    time: '0.0s',
+    art: 'walk',
+  },
+  {
+    title: 'It recognises you',
+    body: 'Your face opens your session, with your memory and your tools.',
+    time: '1.4s',
+    art: 'face',
+  },
+  {
+    title: 'You ask',
+    body: '"Hey COMSTAR, what\'s on my calendar this afternoon?"',
+    time: '3.1s',
+    art: 'ask',
+  },
+  {
+    title: 'It answers',
+    body: 'Out loud, while the emblem pulses with the words.',
+    time: '11.8s',
+    art: 'speak',
+  },
+];
+---
+<section class="section" id="sequence">
+  <div class="wrap reveal">
+    <p class="eyebrow">The fifteen seconds</p>
+    <h2>Walk up. Get answered.</h2>
+    <p class="lede">
+      The product is a sequence. These timestamps are the latency budget
+      COMSTAR is built to defend.
+    </p>
+    <div class="beats">
+      {beats.map((b, i) => (
+        <article class="beat">
+          <div class="beat-art" aria-hidden="true">
+            {b.art === 'walk' && (
+              <svg viewBox="0 0 64 64" fill="none">
+                <circle cx="32" cy="32" r="22" stroke="#3DDCFF" stroke-opacity="0.35" stroke-width="1.5"/>
+                <circle cx="32" cy="22" r="6" stroke="#E6EDF3" stroke-width="1.5"/>
+                <path d="M20 48c2-8 8-12 12-12s10 4 12 12" stroke="#E6EDF3" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+            )}
+            {b.art === 'face' && (
+              <svg viewBox="0 0 64 64" fill="none">
+                <rect x="14" y="14" width="36" height="36" rx="8" stroke="#3DDCFF" stroke-width="1.5"/>
+                <circle cx="32" cy="30" r="8" stroke="#E6EDF3" stroke-width="1.5"/>
+                <path d="M22 46c2-5 6-8 10-8s8 3 10 8" stroke="#E6EDF3" stroke-width="1.5" stroke-linecap="round"/>
+                <path d="M44 18l6-6M50 18l-6-6" stroke="#3DDCFF" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+            )}
+            {b.art === 'ask' && (
+              <svg viewBox="0 0 64 64" fill="none">
+                <path d="M16 28c0-8 7-14 16-14s16 6 16 14-7 14-16 14c-2 0-4-.3-6-.8L16 46l2-8.5C17 35 16 31.5 16 28z" stroke="#E6EDF3" stroke-width="1.5"/>
+                <circle cx="26" cy="28" r="1.5" fill="#3DDCFF"/>
+                <circle cx="32" cy="28" r="1.5" fill="#3DDCFF"/>
+                <circle cx="38" cy="28" r="1.5" fill="#3DDCFF"/>
+              </svg>
+            )}
+            {b.art === 'speak' && (
+              <svg viewBox="0 0 64 64" fill="none">
+                <circle cx="32" cy="32" r="10" stroke="#3DDCFF" stroke-width="1.5"/>
+                <path d="M32 10v6M32 48v6M10 32h6M48 32h6M16 16l4 4M44 44l4 4M16 48l4-4M44 20l4-4" stroke="#A8B6C4" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+            )}
+          </div>
+          <span class="beat-num">{i + 1}</span>
+          <h3>{b.title}</h3>
+          <p>{b.body}</p>
+          <time>{b.time}</time>
+        </article>
+      ))}
+    </div>
+    <p class="target-note">Target times — labelled until M8 walk-up UAT is measured.</p>
+  </div>
+</section>

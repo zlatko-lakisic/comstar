@@ -1,0 +1,29 @@
+---
+const stack = [
+  { name: 'agentic-orchestration', href: 'https://github.com/zlatko-lakisic/agentic-orchestration' },
+  { name: 'AO Reach', href: 'https://github.com/zlatko-lakisic/agentic-orchestration-reach' },
+  { name: 'CodeProject.AI', href: 'https://github.com/codeproject/CodeProject.AI-Server' },
+  { name: 'openWakeWord', href: 'https://github.com/dscripka/openWakeWord' },
+  { name: 'faster-whisper', href: 'https://github.com/SYSTRAN/faster-whisper' },
+  { name: 'Piper', href: 'https://github.com/rhasspy/piper' },
+  { name: 'Chromium', href: 'https://www.chromium.org/' },
+];
+---
+<section class="section" id="built-on">
+  <div class="wrap reveal">
+    <p class="eyebrow">Built on</p>
+    <h2>Standing on open tools.</h2>
+    <ul class="stack-list">
+      {stack.map((s) => (
+        <li><a href={s.href} rel="noopener noreferrer">{s.name}</a></li>
+      ))}
+    </ul>
+    <p class="inspiration">
+      <a href="https://protohologram.com/" rel="noopener noreferrer">Proto Hologram</a>
+      proved that an embodied presence in a room is categorically different from
+      a screen. It costs between $10,000 and $250,000, runs a closed operating
+      system, and will not let you put your own agent behind it.
+      <strong>This is the open version.</strong>
+    </p>
+  </div>
+</section>

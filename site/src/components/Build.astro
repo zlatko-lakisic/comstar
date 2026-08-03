@@ -1,0 +1,53 @@
+---
+const rows = [
+  { part: 'Raspberry Pi 4 (4GB)', have: '', buy: '$55' },
+  { part: 'USB webcam', have: '', buy: '$30' },
+  { part: 'Microphone (ReSpeaker Lite recommended)', have: '', buy: '$25' },
+  { part: 'Small HDMI panel', have: '', buy: '$50' },
+  { part: 'Powered speakers', have: '', buy: '$20' },
+  { part: 'A machine with an NVIDIA GPU', have: 'varies', buy: '' },
+];
+const wiki = 'https://github.com/zlatko-lakisic/comstar/wiki';
+---
+<section class="section" id="build">
+  <div class="wrap reveal">
+    <p class="eyebrow">Build one</p>
+    <h2>About $200 and a weekend</h2>
+    <table class="bom">
+      <thead>
+        <tr>
+          <th>Part</th>
+          <th>Have already</th>
+          <th>Need to buy</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r) => (
+          <tr>
+            <td>{r.part}</td>
+            <td>{r.have}</td>
+            <td>{r.buy}</td>
+          </tr>
+        ))}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="2">Roughly $180 plus a server</td>
+          <td></td>
+        </tr>
+      </tfoot>
+    </table>
+    <div class="caveat">
+      The GPU box is the real requirement. COMSTAR is a thin terminal: the Pi
+      handles capture and display, and a machine with an NVIDIA card does the
+      thinking, seeing and speaking. If you already run a home server with a
+      GPU for Frigate, Ollama, or Plex transcoding, you have it. If you don’t,
+      that’s the cost of the project.
+    </div>
+    <div class="btn-row">
+      <a class="btn btn-primary" href={`${wiki}/Getting-Started`}>Getting started</a>
+      <a class="btn btn-ghost" href={`${wiki}/Hardware`}>Full parts list</a>
+      <a class="btn btn-ghost" href={`${wiki}/Architecture`}>Architecture</a>
+    </div>
+  </div>
+</section>

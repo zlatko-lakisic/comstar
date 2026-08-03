@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="COMSTAR">
+  <rect width="64" height="64" rx="10" fill="#06080B"/>
+  <g fill="none" stroke="#3DDCFF" stroke-linecap="round">
+    <path d="M32 8 L32 56" stroke-width="2.5"/>
+    <path d="M8 32 L56 32" stroke-width="2.5"/>
+    <path d="M14 14 L50 50" stroke-width="2"/>
+    <path d="M50 14 L14 50" stroke-width="2"/>
+    <path d="M32 16 L44 32 L32 48 L20 32 Z" stroke-width="2.2" fill="#3DDCFF" fill-opacity="0.18"/>
+  </g>
+  <circle cx="32" cy="32" r="4" fill="#F0A202"/>
+</svg>

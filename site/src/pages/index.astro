@@ -1,0 +1,100 @@
+---
+import Hero from '../components/Hero.astro';
+import Sequence from '../components/Sequence.astro';
+import Utterances from '../components/Utterances.astro';
+import Identity from '../components/Identity.astro';
+import Capabilities from '../components/Capabilities.astro';
+import Privacy from '../components/Privacy.astro';
+import Presets from '../components/Presets.astro';
+import Build from '../components/Build.astro';
+import Status from '../components/Status.astro';
+import BuiltOn from '../components/BuiltOn.astro';
+import FAQ from '../components/FAQ.astro';
+import Specs from '../components/Specs.astro';
+import '../styles/comstar.css';
+
+const siteUrl = 'https://zlatko-lakisic.github.io/comstar/';
+const title = 'COMSTAR — It knows who just walked in';
+const description =
+  'An always-on AI terminal for one room in your house. It sees you, greets you by name, listens when you speak, and answers out loud. Open source, about $200 in parts.';
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#06080B" />
+    <link rel="canonical" href={siteUrl} />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={siteUrl} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={`${siteUrl}media/og.png`} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={`${siteUrl}media/og.png`} />
+
+    <link rel="icon" href={`${import.meta.env.BASE_URL}media/favicon.svg`} type="image/svg+xml" />
+  </head>
+  <body>
+    <header class="hero" id="hero">
+      <div class="wrap hero-inner">
+        <Hero id="hero-stage" />
+        <h1>It knows who just walked in.</h1>
+        <p class="hero-sub">
+          An always-on AI terminal for one room in your house. It sees you,
+          greets you by name, listens when you speak, and answers out loud.
+          Runs entirely on hardware you already own.
+        </p>
+        <div class="btn-row">
+          <a class="btn btn-primary" href="#build">Build one</a>
+          <a class="btn btn-ghost" href="#sequence">See it work</a>
+          <a
+            class="btn btn-ghost"
+            href="https://github.com/zlatko-lakisic/comstar"
+            rel="noopener noreferrer"
+          >GitHub</a>
+        </div>
+        <p class="hero-meta">Open source · Apache-2.0 · about $200 in parts</p>
+      </div>
+    </header>
+
+    <main>
+      <Sequence />
+      <Utterances />
+      <Identity />
+      <Capabilities />
+      <Privacy />
+      <Presets />
+      <Build />
+      <Status />
+      <BuiltOn />
+      <FAQ />
+      <Specs />
+    </main>
+
+    <footer class="site-footer">
+      <div class="wrap">
+        <nav aria-label="Footer">
+          <a href="https://github.com/zlatko-lakisic/comstar">GitHub</a>
+          <a href="https://github.com/zlatko-lakisic/comstar/wiki">Docs</a>
+          <a href="#build">Build</a>
+          <a href="#faq">FAQ</a>
+          <a href="#specs">Specs</a>
+        </nav>
+        <p class="tm-note">
+          Apache-2.0. Not a mystical AI — a tool you engineered.
+          “ComStar” and the ComStar starburst are BattleTech IP
+          (Topps / Catalyst Game Labs), used affectionately in a personal,
+          non-commercial project.
+        </p>
+      </div>
+    </footer>
+
+    <script type="module" src={`${import.meta.env.BASE_URL}product.js`}></script>
+  </body>
+</html>

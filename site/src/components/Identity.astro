@@ -1,0 +1,42 @@
+---
+const sessions = [
+  { initials: 'ZL', name: 'You', detail: 'Full calendar · mail · lights · memory' },
+  { initials: 'AL', name: 'Partner', detail: 'Their session · their tools · their history' },
+  { initials: '?', name: 'Guest', detail: 'Talks. No calendar. No mail. No lights.', guest: true },
+];
+---
+<section class="section" id="identity">
+  <div class="wrap identity-grid reveal">
+    <div class="identity-copy">
+      <p class="eyebrow">It knows who's talking</p>
+      <h2>Every other smart display waits to be spoken to.</h2>
+      <p>
+        An Echo Show has a camera. A Nest Hub has a camera. Neither one changes
+        who it is when you walk up.
+      </p>
+      <p>
+        COMSTAR does. The face it recognises becomes the identity of the
+        conversation, so your history, your calendar, your mail and your
+        smart home are yours. Your partner walks up and gets theirs.
+      </p>
+      <p>
+        A guest walks up and gets a guest's version: it will talk to them,
+        and it will not touch your calendar, your mail, or your lights.
+      </p>
+      <p>
+        Nobody has to log in. Nobody has to say a name. It just knows.
+      </p>
+    </div>
+    <div class="session-panels" aria-label="Three people, three sessions">
+      {sessions.map((s) => (
+        <div class:list={['session-panel', { guest: s.guest }]}>
+          <div class="face">{s.initials}</div>
+          <div>
+            <strong>{s.name}</strong>
+            <span>{s.detail}</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>

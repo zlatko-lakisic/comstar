@@ -1,4 +1,4 @@
-.PHONY: doctor bridge-dev kiosk-dev audio-sync deploy logs test stt-dev verify-cpai ao-hello
+.PHONY: doctor bridge-dev kiosk-dev audio-sync deploy logs test stt-dev verify-cpai ao-hello site-dev site-build
 
 ROOT := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 REMOTE ?= comstar
@@ -38,3 +38,9 @@ verify-cpai:
 
 ao-hello:
 	@cd spike && dart run reach_hello.dart
+
+site-dev: ## product page at :4321
+	cd site && npm run dev
+
+site-build: ## build product page to site/dist
+	cd site && npm run build

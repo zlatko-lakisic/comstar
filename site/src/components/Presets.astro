@@ -1,0 +1,34 @@
+---
+const presets = [
+  { id: 'starburst', label: 'Starburst' },
+  { id: 'reactor', label: 'Reactor' },
+  { id: 'sentinel', label: 'Sentinel' },
+  { id: 'spectrum', label: 'Spectrum' },
+  { id: 'instrument', label: 'Instrument' },
+];
+---
+<section class="section" id="presets">
+  <div class="wrap reveal">
+    <p class="eyebrow">Make it yours</p>
+    <h2>The face is an SVG. The brain is rewriteable.</h2>
+    <p class="lede">
+      The voice is a config line. COMSTAR is a face for agentic-orchestration,
+      so anything you can teach that engine, this thing can say out loud.
+      Swap the wake word. Swap the model. Add a tool. Point it at a different
+      orchestrator entirely. It’s Apache-2.0. Nothing is gated.
+    </p>
+    <div class="presets-grid" role="group" aria-label="Emblem presets">
+      {presets.map((p, i) => (
+        <button
+          type="button"
+          class="preset-btn"
+          data-preset={p.id}
+          aria-pressed={i === 0 ? 'true' : 'false'}
+        >
+          <div class="preset-stage" data-preset-stage={p.id}></div>
+          {p.label}
+        </button>
+      ))}
+    </div>
+  </div>
+</section>

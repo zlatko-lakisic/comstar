@@ -1,0 +1,51 @@
+---
+const working = [
+  'Person detection and face recognition',
+  'Identity-mapped sessions',
+  'Attention state machine',
+  'Orchestration round trip',
+  'Speech in and out',
+  'Avatar, Google pairing, terminal control',
+];
+const unfinished = [
+  'Wake word model untrained — bring-up uses a key press',
+  'Room-distance microphone testing not done',
+  'No 24-hour soak test yet',
+  'One person has used it',
+];
+---
+<section class="section" id="status">
+  <div class="wrap reveal">
+    <div class="status-box">
+      <p class="eyebrow amber">Where this actually is</p>
+      <h2>Pre-alpha. Here is exactly what that means.</h2>
+      <div class="status-cols">
+        <div>
+          <h3>Working now</h3>
+          <ul>
+            {working.map((x) => <li>{x}</li>)}
+          </ul>
+        </div>
+        <div>
+          <h3>Not finished</h3>
+          <ul>
+            {unfinished.map((x) => <li>{x}</li>)}
+          </ul>
+        </div>
+      </div>
+      <p style="color: var(--fg-muted); margin: 0 0 1rem; max-width: 44rem;">
+        If you build one this month, you are building a preview. That is the
+        honest position, and it’s why every decision is written down: the
+        architecture records, the interface contracts, the test plan, and a
+        tracker that says what percentage of each milestone is done.
+      </p>
+      <div class="progress" aria-label="Phase 1 progress approximately 75 percent">
+        <div class="progress-label">
+          <span>Phase 1</span>
+          <span>~75% · M0–M3 complete</span>
+        </div>
+        <div class="progress-bar"><span></span></div>
+      </div>
+    </div>
+  </div>
+</section>

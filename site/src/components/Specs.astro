@@ -1,0 +1,30 @@
+---
+const specs = [
+  ['Terminal', 'Raspberry Pi 4 Model B, 4 GB+ (8 GB recommended for heavy local avatar)'],
+  ['Camera', 'UVC webcam (bring-up: Logitech C525) — vision only'],
+  ['Microphone', 'Dedicated array preferred (ReSpeaker Lite / XMOS); webcam mic for bring-up only'],
+  ['Display', 'HDMI panel, roughly 800×480 to 1280×720'],
+  ['Audio out', 'HDMI or powered speakers via kiosk Chromium (ADR 0001)'],
+  ['AI server', 'NVIDIA GPU host — CodeProject.AI, AO, preferred speech sidecars'],
+  ['Ports (Pi)', 'Bridge HTTP :8776 · kiosk WS :8777 · audio WS :8778'],
+  ['Ports (Ada)', 'AO :8765 · CPAI :32168 · STT :8090 · TTS :8091'],
+  ['Languages', 'Dart (bridge) · Python (audio, speech) · Chromium kiosk'],
+  ['Licence', 'Apache-2.0'],
+];
+---
+<section class="section" id="specs">
+  <div class="wrap reveal">
+    <p class="eyebrow">Specs</p>
+    <h2>The parts, at the bottom.</h2>
+    <table class="specs">
+      <tbody>
+        {specs.map(([k, v]) => (
+          <tr>
+            <th scope="row">{k}</th>
+            <td>{v}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+</section>

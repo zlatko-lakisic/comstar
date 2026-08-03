@@ -1,0 +1,50 @@
+---
+const cards = [
+  {
+    title: 'Greets you by name',
+    body: 'Face recognition runs the moment someone enters frame. No wake word needed to be noticed.',
+  },
+  {
+    title: 'Keeps talking after the first question',
+    body: 'Ask a follow-up for ten seconds after any answer without repeating the wake word.',
+  },
+  {
+    title: 'Reads your calendar and mail',
+    body: 'Pair Google once from the screen with a QR code. Guests can’t.',
+  },
+  {
+    title: 'Runs your house',
+    body: 'Home Assistant, and anything else you expose as a tool.',
+  },
+  {
+    title: 'Can look around the room',
+    body: 'Vision is a tool it can decide to use mid-answer, not a fixed prompt.',
+  },
+  {
+    title: "Shows what it's doing",
+    body: 'The emblem tells you at a glance: idle, watching, listening, thinking, speaking.',
+  },
+  {
+    title: 'Goes to sleep when asked',
+    body: 'Say so and it goes dormant until the wake word. Not a setting buried in an app.',
+  },
+  {
+    title: 'Wears whatever face you give it',
+    body: "Five emblems ship. It's an SVG file. Change it.",
+  },
+];
+---
+<section class="section" id="capabilities">
+  <div class="wrap reveal">
+    <p class="eyebrow">Capabilities</p>
+    <h2>What it is for, not what chip is inside.</h2>
+    <div class="cards">
+      {cards.map((c) => (
+        <article class="card">
+          <h3>{c.title}</h3>
+          <p>{c.body}</p>
+        </article>
+      ))}
+    </div>
+  </div>
+</section>

@@ -1,0 +1,65 @@
+name: Product site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - 'terminal/kiosk/avatar.js'
+      - 'terminal/kiosk/presets.js'
+      - '.github/workflows/site.yml'
+  pull_request:
+    paths: ['site/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-product
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      - name: Install and build
+        working-directory: site
+        run: |
+          npm ci || npm install
+          npm run build
+
+      - name: Check page weight
+        run: |
+          SIZE=$(du -sk site/dist | cut -f1)
+          echo "Built site: ${SIZE} KB"
+          if [ "$SIZE" -gt 5120 ]; then
+            echo "::error::Site is ${SIZE} KB (limit ~5 MB soft). Check assets."
+            exit 1
+          fi
+
+      - uses: actions/upload-pages-artifact@v3
+        if: github.ref == 'refs/heads/main'
+        with:
+          path: site/dist
+
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

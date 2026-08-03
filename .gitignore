@@ -14,3 +14,6 @@ __pycache__
 spike/.dart_tool
 .venv-stt
 handoffs/**/*.md
+site/node_modules/
+site/dist/
+site/.astro/

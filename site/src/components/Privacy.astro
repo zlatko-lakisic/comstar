@@ -1,0 +1,50 @@
+---
+const inside = [
+  'Wake word detection',
+  'Camera frames',
+  'Your face',
+  'Your voice',
+  'Transcripts',
+  'The model',
+  'Your calendar and mail',
+];
+const outside = [
+  'Nothing.',
+  'No account.',
+  'No subscription.',
+  'No telemetry.',
+  'No vendor.',
+];
+---
+<section class="section" id="privacy">
+  <div class="wrap reveal">
+    <p class="eyebrow">Privacy</p>
+    <h2>Nothing leaves your house.</h2>
+    <div class="privacy-split">
+      <div class="privacy-col">
+        <h3>Inside your house</h3>
+        <ul>
+          {inside.map((x) => <li>{x}</li>)}
+        </ul>
+      </div>
+      <div class="privacy-col out">
+        <h3>Leaving your house</h3>
+        <ul>
+          {outside.map((x) => <li>{x}</li>)}
+        </ul>
+      </div>
+    </div>
+    <div class="privacy-points">
+      <p>
+        The wake word runs on the terminal itself. Audio sits in memory and is
+        never written to disk. Nothing is transmitted until you have actually
+        addressed it.
+      </p>
+      <p>
+        There is a hardware mute. Software mute is not a promise you can make
+        to a guest standing in your kitchen.
+      </p>
+      <p class="privacy-punch">You can unplug your router and it still answers.</p>
+    </div>
+  </div>
+</section>

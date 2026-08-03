@@ -1,0 +1,54 @@
+---
+const faqs = [
+  {
+    q: 'Can this replace my Echo Show?',
+    a: 'No. It does not do music streaming, shopping, phone timers, or third-party skills ecosystems. What it does that they cannot: recognise who walked in, open a per-person agent session with their memory and tools, look around the room mid-answer, and stay entirely on your LAN.',
+  },
+  {
+    q: 'Do I need an NVIDIA GPU?',
+    a: 'Yes, effectively. The Pi is a thin terminal. Vision, preferred speech, and orchestration run on a machine with a GPU. Without one you can still develop on a Mac with local fallbacks, but the production path assumes Ada-class hardware on the LAN.',
+  },
+  {
+    q: 'How fast is it, really?',
+    a: 'The budget is under 15 seconds end-to-end, ideally under 6. Orchestration (MCP tool calls) dominates. STT is about 1–5 s depending on Ada GPU vs Pi CPU fallback. Numbers on the walk-up strip are targets until M8 UAT is measured.',
+  },
+  {
+    q: 'Is it always recording?',
+    a: 'No. The wake word runs locally on the terminal. Capture audio lives in a ring buffer in memory and is not written to disk. Nothing is sent for transcription until you have actually addressed it.',
+  },
+  {
+    q: 'What about my guests?',
+    a: 'An unrecognised face opens a restricted guest session automatically. It will talk. It will not touch your calendar, mail, or smart-home tools. No configuration required.',
+  },
+  {
+    q: 'Can I use a different LLM?',
+    a: 'Yes. The orchestrator is model-agnostic. Point agentic-orchestration at whatever backend you already run.',
+  },
+  {
+    q: 'Why is it called COMSTAR?',
+    a: 'BattleTech. This is a personal, non-commercial project. “ComStar” and the ComStar starburst are BattleTech IP (Topps / Catalyst Game Labs), used affectionately.',
+  },
+  {
+    q: 'Can I buy one?',
+    a: 'No. It is a build. The parts list and getting-started guide are free and ungated.',
+  },
+  {
+    q: 'Why not just use Home Assistant Voice?',
+    a: 'You should, if what you want is a reliable local voice assistant for the house. Voice Preview Edition is a real product with real support, and today it is the better voice controller. COMSTAR is a different thing: an addressable presence with identity and an agent behind it. Buy Voice PE for lights and timers. Build COMSTAR if you want something that knows who just walked in.',
+  },
+];
+---
+<section class="section" id="faq">
+  <div class="wrap reveal">
+    <p class="eyebrow">Questions</p>
+    <h2>Ask the sceptical ones.</h2>
+    <div class="faq">
+      {faqs.map((f) => (
+        <details>
+          <summary>{f.q}</summary>
+          <p>{f.a}</p>
+        </details>
+      ))}
+    </div>
+  </div>
+</section>
