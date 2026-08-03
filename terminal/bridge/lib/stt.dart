@@ -42,7 +42,7 @@ class HttpSttClient implements SttClient {
     }
 
     final uri = Uri.parse('$baseUrl/v1/audio/transcriptions');
-    final wav = _pcmToWav(pcm, sampleRate: sampleRate);
+    final wav = pcmToWav(pcm, sampleRate: sampleRate);
     final request = http.MultipartRequest('POST', uri)
       ..fields['model'] = model
       ..files.add(
@@ -80,7 +80,7 @@ class HttpSttClient implements SttClient {
 }
 
 /// Writes mono s16le PCM into a minimal WAV container for STT upload.
-Uint8List _pcmToWav(Uint8List pcm, {required int sampleRate}) {
+Uint8List pcmToWav(Uint8List pcm, {required int sampleRate}) {
   const channels = 1;
   const bitsPerSample = 16;
   final byteRate = sampleRate * channels * bitsPerSample ~/ 8;

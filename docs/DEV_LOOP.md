@@ -6,8 +6,8 @@ Three machines on one LAN:
   MacBook (dev)              Raspberry Pi 4 (terminal)         AI server (RTX 4000 Ada)
   ├ Cursor / editor          ├ camera, mic, speaker, screen    ├ agentic-orchestration
   ├ bridge (dev mode)   ◄──► ├ comstar-audio                   ├ CodeProject.AI :32168
-  ├ kiosk / Chrome      ◄──► ├ Chromium kiosk                  └ (no STT/TTS — on Pi)
-  ├ local STT/TTS (:8090/91) ├ comstar-stt / comstar-tts
+  ├ kiosk / Chrome      ◄──► ├ Chromium kiosk                  ├ speech sidecars :8090/91
+  ├ local STT/TTS (:8090/91) ├ optional comstar-stt/tts        └ (AO hello.speech)
   └ test runners             └ comstar-bridge (prod)
      comstar-dev.lan            comstar.lan                       ai-server.lan
 ```

@@ -3,7 +3,12 @@
 **Audience:** an AI coding agent (Cursor / Claude Code) plus one human operator.
 **Companions:** `AGENTS.md` (rules), `docs/CONTRACTS.md` (interfaces), `docs/TESTING.md` (test suite + UAT scripts), `docs/IMPLEMENTATION_TRACKER.md` (live status).
 
-> **Architecture note (2026-08):** STT/TTS run on the Pi (`comstar-stt` / `comstar-tts`), not on the AI server. Vision (CPAI) and orchestration (AO) remain on the Ada host. Prefer the tracker + RUNBOOK over milestone text where they diverge.
+> **Architecture note (2026-08-03):** Speech **compute** prefers AO-advertised
+> sidecars on the AI server via Reach `SpeechClient` (AO ≥ 1.28 / Reach ≥ 0.2).
+> Pi keeps capture/VAD/wake/playback. `COMSTAR_STT_URL` / `COMSTAR_TTS_URL` remain
+> fallback for Mac/dev. See `docs/adr/0003-speech-on-ada.md`. Vision (CPAI) and
+> orchestration (AO) remain on the Ada host. Prefer the tracker + RUNBOOK over
+> milestone text where they diverge.
 
 ---
 

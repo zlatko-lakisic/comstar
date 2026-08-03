@@ -50,8 +50,13 @@ Production configs must ship with `dev.bind_lan: false`.
 
 ## Architecture (speech vs brain)
 
-- **On Pi:** capture, VAD, wake word, kiosk, **STT** (`comstar-stt` / faster-whisper), **TTS** (`comstar-tts` / Piper).
-- **On AI server:** AO Reach + CodeProject.AI (detection + face). Do not move STT/TTS to the Ada host unless the human explicitly asks.
+- **On Pi:** capture, VAD, wake word, kiosk, playback. Thin I/O terminal.
+- **On AI server:** AO Reach (incl. optional speech sidecars) + CodeProject.AI
+  (detection + face). Prefer `SessionBridge.speechClient` for STT/TTS when AO ≥ 1.28
+  advertises `hello.speech`; else fall back to `COMSTAR_STT_URL` / `COMSTAR_TTS_URL`
+  (local `comstar-stt` / `comstar-tts` or Mac bring-up).
+- Do **not** ferry PCM on the Reach WebSocket or route turns through the planner
+  just for STT. See `docs/adr/0003-speech-on-ada.md`.
 - STT accuracy: label **live bridge** fixtures (`testdata/stt/`). Parecord goldens are smoke-only.
 
 ## Secrets

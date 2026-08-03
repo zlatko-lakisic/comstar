@@ -10,9 +10,13 @@ class FakeReachBridge implements ReachSessionBridge {
   String? lastAgentId;
   List<String>? lastMcpIds;
   String? lastText;
+  SpeechClient? fakeSpeech;
 
   @override
   bool get isActive => active;
+
+  @override
+  SpeechClient? get speechClient => fakeSpeech;
 
   @override
   Future<void> start({

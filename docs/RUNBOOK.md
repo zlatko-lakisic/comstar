@@ -13,8 +13,9 @@ Hardware baseline: `docs/BASELINES.md`. Dev workflow: `docs/DEV_LOOP.md`.
 | `/opt/comstar/src/config/comstar.yaml` | Production config (created from example on first deploy; not in git) |
 | `/opt/comstar/src/models/` | Wake-word ONNX, avatar GLB (not in repo) |
 | SSH `comstar` | `md-admin@192.168.89.34` (key auth) |
-| Local TTS | `comstar-tts` on `127.0.0.1:8091` (Piper via sherpa-onnx) |
-| Local STT | `comstar-stt` on `127.0.0.1:8090` (faster-whisper `tiny`, beam 5) |
+| Local TTS | Optional fallback: `comstar-tts` on `127.0.0.1:8091` (Piper via sherpa-onnx) |
+| Local STT | Optional fallback: `comstar-stt` on `127.0.0.1:8090` (faster-whisper) |
+| Production speech | Prefer AO-advertised sidecars on Ada (Reach `SpeechClient`); see §3 |
 | Local speaker | `COMSTAR_LOCAL_SPEAKER=1` plays via `paplay` when kiosk absent |
 | Camera source | `COMSTAR_CAMERA_SOURCE` (alias: `COMSTAR_CAMERA_INPUT`) — e.g. `/dev/video0` |
 | Mic source | `COMSTAR_MIC_SOURCE` — sounddevice index or name substring (e.g. `C525`) |
@@ -57,8 +58,12 @@ curl -sS -X POST http://10.0.10.16:32168/v1/vision/face/list | jq .
 Ensure `loginctl enable-linger md-admin` is set once, then:
 
 ```bash
-systemctl --user enable --now comstar-bridge comstar-audio comstar-kiosk comstar-stt comstar-tts
-systemctl --user status comstar-bridge comstar-audio comstar-kiosk comstar-stt comstar-tts
+# Prefer Reach speech when Ada advertises hello.speech (AO ≥ 1.28).
+# Local STT/TTS units are optional fallback / Mac bring-up:
+systemctl --user enable --now comstar-bridge comstar-audio comstar-kiosk
+# Optional until Ada speech is proven:
+# systemctl --user enable --now comstar-stt comstar-tts
+systemctl --user status comstar-bridge comstar-audio comstar-kiosk
 ```
 
 Unit files live in `deploy/systemd/`. Copy or symlink into
@@ -111,22 +116,43 @@ make audio-sync
 
 ---
 
-## 3. Speech (STT + TTS on the Pi)
+## 3. Speech (STT + TTS)
 
-Production speech stays **on the Pi** (not on the AI server):
+**Preferred (production):** AO ≥ 1.28 advertises speech on WebSocket `hello`. After
+`SessionBridge.start`, the bridge uses `speechClient.transcribe` /
+`speechClient.synthesize` (OpenAI-compatible HTTP to Ada sidecars). See
+`docs/adr/0003-speech-on-ada.md`.
+
+On the AI server (same host as AO `:8765`):
+
+```bash
+# Sidecars — see vendor AO speech/README.md
+python speech/stt_server.py --host 0.0.0.0 --port 8090 --model base --device cuda
+AGENTIC_SPEECH_TTS_MODEL_DIR=… python speech/tts_server.py --host 0.0.0.0 --port 8091
+
+# Engine env (restart orchestration.serve)
+export AGENTIC_SPEECH_ENABLED=1
+export AGENTIC_SPEECH_ADVERTISE_STT_URL=http://<ada-lan-ip>:8090
+export AGENTIC_SPEECH_ADVERTISE_TTS_URL=http://<ada-lan-ip>:8091
+# optional: AGENTIC_SPEECH_TOKEN=...
+```
+
+Confirm WS `hello` includes `"speech": { "enabled": true, "sttBaseUrl": "...", "ttsBaseUrl": "..." }`.
+
+**Fallback (Mac / offline / speech disabled on AO):**
 
 | Service | Unit | Port | Script |
 |---|---|---|---|
 | STT | `comstar-stt` | `127.0.0.1:8090` | `scripts/stt_server_whisper.py --model tiny --beam-size 5` |
 | TTS | `comstar-tts` | `127.0.0.1:8091` | `scripts/tts_server.py` |
 
-The bridge POSTs WAV to `$COMSTAR_STT_URL/v1/audio/transcriptions` and fetches
-speech from `$COMSTAR_TTS_URL/v1/audio/speech`.
+The bridge uses `$COMSTAR_STT_URL` / `$COMSTAR_TTS_URL` when `speechClient == null`.
+Optional `COMSTAR_SPEECH_TOKEN` (or `AGENTIC_SPEECH_TOKEN`) for sidecar bearer auth.
 
 Live path (what product accuracy means):
 
 ```
-mic → comstar-audio (VAD) → bridge PCM → HttpSttClient WAV → STT → transcript
+mic → comstar-audio (VAD) → bridge PCM → Reach SpeechClient or HttpSttClient → transcript
 ```
 
 STT is **batch after VAD end**, not streaming. Debug WAV: `/tmp/comstar-last-utterance.wav`.
@@ -237,8 +263,9 @@ make deploy
 COMSTAR is designed for local-first operation:
 
 - **Vision:** frames go to CodeProject.AI on the LAN only; no cloud upload in Phase 1.
-- **Audio:** utterances go to on-Pi STT (`COMSTAR_STT_URL`, usually `127.0.0.1:8090`);
-  ring buffer is in-memory only (never written to disk by default). Live archives under
+- **Audio:** wake/VAD stay on-Pi; utterance PCM goes to the STT in use — Ada sidecars
+  when Reach `speechClient` is set, else `COMSTAR_STT_URL` (often local `127.0.0.1:8090`).
+  Ring buffer is in-memory only (never written to disk by default). Live archives under
   `/opt/comstar/testdata/stt/live/` are optional debug captures.
 - **Orchestration:** AO Reach on the LAN; guest/restricted mode limits MCP tools.
 
@@ -275,8 +302,8 @@ make logs            # merged journal tail (when configured)
 | Bridge WS (kiosk) | `127.0.0.1:8777` | kiosk connects, `ready` logged |
 | Bridge WS (audio) | `127.0.0.1:8778` | audio process connects |
 | Dev inject | `127.0.0.1:8779` | dev only |
-| STT | `127.0.0.1:8090` | `curl http://127.0.0.1:8090/health` → faster-whisper tiny |
-| TTS | `127.0.0.1:8091` | `curl http://127.0.0.1:8091/health` (or POST `/v1/audio/speech`) |
+| STT | Ada `:8090` or local | `curl http://<stt-host>:8090/health`; bridge log `speech_reach` vs `speech_fallback` |
+| TTS | Ada `:8091` or local | `curl http://<tts-host>:8091/health` (or POST `/v1/audio/speech`) |
 | AO Reach | `10.0.10.16:8765` | `spike/reach_hello.dart` |
 | CodeProject.AI | `10.0.10.16:32168` | `scripts/verify_cpai.sh` |
 
@@ -286,7 +313,7 @@ make logs            # merged journal tail (when configured)
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| Empty / junk STT | STT down, wrong engine, or short utterance | `systemctl --user status comstar-stt`; check `/tmp/comstar-last-utterance.wav`; raise finalize threshold |
+| Empty / junk STT | STT down, wrong engine, or short utterance | Check Ada speech `/health` or `systemctl --user status comstar-stt`; `/tmp/comstar-last-utterance.wav`; raise finalize threshold |
 | Fast speech cut early | VAD silence too aggressive | Raise `COMSTAR_VAD_SILENCE_MS` (e.g. 1200); hysteresis is in `terminal/audio/vad.py` |
 | Empty STT on Mac | `COMSTAR_STT_URL` unset or STT down | `make stt-dev`, export URL |
 | Wake never fires | Stub model / missing ONNX | Train ONNX, or `COMSTAR_FORCE_WAKE_SCORE=0.99`, or inject `WakeWord` on `:8779` |

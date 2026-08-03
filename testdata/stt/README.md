@@ -1,8 +1,9 @@
 # STT fixtures and benches
 
-Production STT is **faster-whisper `tiny`** on the Pi (`comstar-stt` →
-`scripts/stt_server_whisper.py`). Moonshine (`scripts/stt_server.py`) is kept for
-comparison only.
+Production STT prefers **AO-advertised sidecars** on the AI server (Reach
+`SpeechClient`). Local faster-whisper (`comstar-stt` /
+`scripts/stt_server_whisper.py`) remains the env-URL fallback for Mac/dev.
+Moonshine (`scripts/stt_server.py`) is kept for comparison only.
 
 ## Correct testing
 
@@ -11,7 +12,7 @@ Replaying one WAV ten times proves **determinism**, not product accuracy.
 Score the live path:
 
 ```
-mic → comstar-audio → bridge PCM → HttpSttClient WAV → STT
+mic → comstar-audio → bridge PCM → Reach SpeechClient or HttpSttClient → STT
 ```
 
 Labeled fixtures are `*.wav` + sibling `*.json`:

@@ -1,8 +1,8 @@
 # COMSTAR — Hardware & Environment Baselines
 
-Captured during bring-up on **2026-08-01 / 2026-08-02**; speech path updated **2026-08-03**
-(STT/TTS on Pi, not AI server).  
-Companion docs: `docs/CONTRACTS.md`, `docs/IMPLEMENTATION_PLAN.md` (M0.5), `docs/DEV_LOOP.md`, `docs/RUNBOOK.md`.
+Captured during bring-up on **2026-08-01 / 2026-08-02**; speech path updated
+**2026-08-03** (prefer Ada speech sidecars via Reach; local STT/TTS fallback).  
+Companion docs: `docs/CONTRACTS.md`, `docs/IMPLEMENTATION_PLAN.md` (M0.5), `docs/DEV_LOOP.md`, `docs/RUNBOOK.md`, `docs/adr/0003-speech-on-ada.md`.
 
 Do **not** store passwords or tokens in this file. SSH access should use keys (see §Access).
 
@@ -12,7 +12,7 @@ Do **not** store passwords or tokens in this file. SSH access should use keys (s
 
 | Field | Value |
 |---|---|
-| Role | COMSTAR terminal (I/O + on-box STT/TTS; AO + vision on AI server) |
+| Role | COMSTAR terminal (I/O; speech compute prefers Ada; AO + vision on AI server) |
 | Hostname | `comstar-ai` |
 | Model | **Raspberry Pi 4 Model B Rev 1.5** |
 | Revision | `c03115` |
@@ -191,7 +191,7 @@ Same host (`10.0.10.16`) runs multiple services:
 | CodeProject.AI | `http://10.0.10.16:32168` | **VERIFIED** — YOLO + Face on GPU |
 | agentic-orchestration | `http://10.0.10.16:8765` | **VERIFIED** — v1.27.4, overlay+tunnel, Reach hello |
 | Ollama | `http://10.0.10.16:11434` | up (`qwen2.5:14b` present) |
-| STT / TTS | **on the Pi**, not this host | `comstar-stt` `:8090` (faster-whisper tiny); `comstar-tts` `:8091` (Piper/sherpa). Mac `make stt-dev` for local bring-up. |
+| STT / TTS | **Prefer Ada speech sidecars** (AO ≥ 1.28 / Reach `SpeechClient`) | Advertise `AGENTIC_SPEECH_*` on this host. Local Pi/Mac `comstar-stt`/`comstar-tts` remain fallback via `COMSTAR_*_URL`. |
 | CompreFace | `http://10.0.10.16:8000` | Present (SPA); not used by COMSTAR (CPAI is vision) |
 
 ### CodeProject.AI
@@ -218,7 +218,7 @@ Same host (`10.0.10.16`) runs multiple services:
 | Flags | session overlay + MCP tunnel confirmed via Reach (`overlay=true tunnel=true`) |
 | Live COMSTAR overlays (2026-08-02) | `client.greeter` → “Welcome, Zlatko!” (~0.85s); `client.voice_responder` → spoken confirm (~1.0s); guest greeter OK |
 | Hosted MCP catalog (known ids) | `fetch_url`, `filesystem_local`, `home_assistant`, `media_audio_transcribe`, `media_understand`, `media_video_analyze` — **no** `memory` / `time` / `math` / `vision` on this host |
-| STT via AO | `media_audio_transcribe` available as MCP; **COMSTAR voice path uses on-Pi STT**, not AO |
+| STT via AO | Prefer Reach `SpeechClient` → AO-packaged HTTP sidecars (not MCP/planner). `media_audio_transcribe` MCP exists but is **not** the COMSTAR voice path. |
 
 ### Modules verified against live traffic
 
@@ -302,7 +302,7 @@ Ordered summary of operator actions during this bring-up:
 | Dart / Node / jq / deploy root | Ready (`/opt/comstar/src`) |
 | systemd linger + units | Ready (bridge, audio, kiosk, stt, tts) |
 | AO Reach | Ready (`10.0.10.16:8765`) |
-| On-Pi STT / TTS | Ready (`:8090` / `:8091`) |
+| Speech (Ada sidecars + Pi/Mac fallback) | Prefer Reach when advertised; local `:8090`/`:8091` for bring-up |
 | Audio routing ADR (kiosk sink) | Accepted (ADR 0001) |
 | TalkingHead on-device fps | **Not measured** (GLB open) |
 | Face enrollment | `zlatko` enrolled; walk-up UAT open |

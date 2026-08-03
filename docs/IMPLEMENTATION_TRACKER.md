@@ -76,8 +76,9 @@
 - [x] Dart / Node / jq on Pi
 - [x] linger enabled
 - [x] AO overlay + tunnel
-- [x] STT via on-Pi `scripts/stt_server_whisper.py` (`comstar-stt` :8090)
-- [x] TTS via on-Pi `scripts/tts_server.py` (`comstar-tts` :8091)
+- [x] STT via on-Pi `scripts/stt_server_whisper.py` (`comstar-stt` :8090) — fallback
+- [x] TTS via on-Pi `scripts/tts_server.py` (`comstar-tts` :8091) — fallback
+- [x] Prefer Reach `SpeechClient` (AO ≥ 1.28 / Reach ≥ 0.2); env URL fallback
 
 ---
 
@@ -129,10 +130,12 @@ Scaffold, config, WS, vision client, attention machine, deploy/doctor — shippe
 - [x] Coordinator wiring + `speak.ended` watchdog
 - [x] Follow-up window (listen without wake)
 - [x] `scripts/latency_report.py`
-- [x] Pi-local STT always-on (`comstar-stt`, faster-whisper tiny)
-- [x] Pi-local TTS always-on (`comstar-tts`, sherpa Piper)
-- [ ] ≥10 labeled live-bridge STT fixtures + `--require-live 10`
+- [x] Prefer Reach `SpeechClient` when AO advertises `hello.speech` (ADR 0003)
+- [x] Env URL fallback (`COMSTAR_STT_URL` / `COMSTAR_TTS_URL`) for Mac/dev
+- [x] Pi-local STT/TTS units retained as optional fallback
+- [ ] ≥10 labeled live-bridge STT fixtures + `--require-live 10` (re-bench vs Ada)
 - [ ] 20 consecutive spoken UAT
+- [ ] Disable always-on Pi `comstar-stt`/`comstar-tts` once Ada speech proven in prod
 
 ---
 

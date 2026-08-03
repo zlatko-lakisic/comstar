@@ -14,6 +14,7 @@ import 'package:comstar_bridge/http_audio_server.dart';
 import 'package:comstar_bridge/local_ws.dart';
 import 'package:comstar_bridge/log.dart';
 import 'package:comstar_bridge/session.dart';
+import 'package:comstar_bridge/speech_routing.dart';
 import 'package:comstar_bridge/stt.dart';
 import 'package:comstar_bridge/tts.dart';
 import 'package:comstar_bridge/vision/camera.dart';
@@ -68,10 +69,16 @@ Future<void> main(List<String> arguments) async {
   }
 
   final session = ComstarSession(config: config);
-  final stt = HttpSttClient();
-  final tts = createTtsEngine(
-    engine: config.avatar.tts,
-    piperVoice: config.avatar.piperVoice,
+  final stt = PreferReachSttClient(
+    speechClientOf: () => session.speechClient,
+    fallback: HttpSttClient(),
+  );
+  final tts = PreferReachTts(
+    speechClientOf: () => session.speechClient,
+    fallback: createTtsEngine(
+      engine: config.avatar.tts,
+      piperVoice: config.avatar.piperVoice,
+    ),
   );
   final repoRoot = File(configPath).absolute.parent.parent.path;
   final kioskDir = Directory('$repoRoot/terminal/kiosk');

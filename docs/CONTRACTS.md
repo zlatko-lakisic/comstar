@@ -186,6 +186,14 @@ voice_responder ~1.0s. Host MCP catalog ids: `fetch_url`, `filesystem_local`,
 `media_video_analyze`. Do **not** request `memory` / `time` / `math` / `vision`
 on this host — AO rejects the turn.
 
+**Speech (AO ≥ 1.28 / Reach ≥ 0.2):** when `hello.speech.enabled` is true,
+`SessionBridge.speechClient` is non-null. STT/TTS then use OpenAI-compatible HTTP
+to the advertised sidecar URLs (AO-packaged on the AI server). PCM leaves the Pi
+over LAN to those URLs — same trust boundary as CPAI/AO. Do **not** ferry PCM on
+the Reach WebSocket or route turns through the planner solely for STT.
+When `speechClient == null` (older AO, speech disabled, or session not started),
+fall back to `COMSTAR_STT_URL` / `COMSTAR_TTS_URL` (local Pi or Mac bring-up).
+
 ### Connection
 
 ```dart
@@ -200,6 +208,8 @@ await bridge.start(
       'x-warpgate-token': cfg.orchestration.token,
     },
     ttlSeconds: cfg.orchestration.ttlSeconds,
+    // Optional when Ada sets AGENTIC_SPEECH_TOKEN:
+    // speechToken: Platform.environment['COMSTAR_SPEECH_TOKEN'],
   ),
   overlayRoot: cfg.orchestration.overlayRoot,
   mcpBootstrap: ComstarMcpBootstrap(cfg),
@@ -215,6 +225,20 @@ final result = await bridge.directAgent(
   mcpProviderIds: ['client.terminal', 'vision', 'memory', 'home_assistant', 'time', 'math'],
 );
 ```
+
+### Speech (preferred path)
+
+```dart
+final speech = bridge.speechClient;
+if (speech != null) {
+  final text = await speech.transcribe(wavBytes);
+  final wav = await speech.synthesize(replyText);
+} else {
+  // COMSTAR_STT_URL / COMSTAR_TTS_URL HTTP clients
+}
+```
+
+Overlay / `direct_agent` must keep working when `speechClient == null`.
 
 ### Session lifecycle rules
 

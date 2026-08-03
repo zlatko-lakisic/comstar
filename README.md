@@ -65,7 +65,7 @@ COMSTAR is the open version. Commodity parts, a GPU you already own, and an orch
 | | |
 |---|---|
 | **Local by default** | Nothing leaves the LAN unless you explicitly wire it to. |
-| **Thin client, fat brain** | The Pi does I/O plus on-box speech (STT/TTS). AO + vision inference stay on the AI server. |
+| **Thin client, fat brain** | The Pi does I/O (capture, wake, VAD, kiosk, playback). Speech compute prefers AO-advertised sidecars on the AI server; local STT/TTS remain a fallback. |
 | **Identity is the session** | Face recognition isn't decoration — it selects the AO session and its memory. |
 | **The room is a tool** | Presence and vision are MCP tools the planner can call, not context you prepend. |
 | **Latency is a feature** | If a response takes longer than ~15s, the interaction is broken. Budget accordingly. |
@@ -84,16 +84,12 @@ flowchart TB
     speakers["Speakers"]
 
     audio["comstar-audio<br/>wake word + VAD"]
-    stt["comstar-stt<br/>faster-whisper tiny<br/>:8090"]
-    tts["comstar-tts<br/>Piper / sherpa<br/>:8091"]
-    bridge["comstar-bridge Dart<br/>attention / vision / STT / TTS<br/>ao_reach / WS / HTTP"]
+    bridge["comstar-bridge Dart<br/>attention / vision / speech clients<br/>ao_reach / WS / HTTP"]
     kiosk["Chromium kiosk<br/>SVG avatar<br/>HTTP :8776 / WS :8777"]
 
     cam -->|"ffmpeg JPEG in-process"| bridge
     mic --> audio
     audio -->|"WS :8778 PCM"| bridge
-    bridge -->|"POST /v1/audio/transcriptions"| stt
-    bridge -->|"POST /v1/audio/speech"| tts
     bridge -->|"speak + audioUrl"| kiosk
     kiosk --> display
     kiosk -->|"HTMLAudio"| speakers
@@ -101,21 +97,26 @@ flowchart TB
 
   subgraph server ["AI server - RTX 4000 Ada"]
     direction TB
-    ao["agentic-orchestration v1.27+<br/>:8765<br/>planner / agents / session memory"]
+    ao["agentic-orchestration v1.28+<br/>:8765<br/>planner / agents / session memory"]
+    stt["AO speech STT sidecar<br/>faster-whisper<br/>:8090"]
+    tts["AO speech TTS sidecar<br/>Piper<br/>:8091"]
     cpai["CodeProject.AI<br/>:32168<br/>YOLO detect + Face recognize"]
   end
 
   bridge -->|"HTTP detect / recognize"| cpai
   bridge -->|"HTTP/WS session overlay"| ao
+  ao -.->|"hello.speech URLs"| bridge
+  bridge -->|"POST /v1/audio/transcriptions"| stt
+  bridge -->|"POST /v1/audio/speech"| tts
 ```
 
 | Runs on the Pi | Runs on the AI server |
 |---|---|
-| Camera grab, mic, wake, VAD, kiosk | CodeProject.AI (YOLO + face) |
-| STT `:8090`, TTS `:8091` | agentic-orchestration `:8765` |
-| Bridge (attention + clients) | Hosted MCPs (e.g. Home Assistant) |
+| Camera grab, mic, wake, VAD, kiosk, playback | CodeProject.AI (YOLO + face) |
+| Bridge (attention + clients); optional local STT/TTS fallback | agentic-orchestration `:8765` + speech sidecars `:8090`/`:8091` |
+| | Hosted MCPs (e.g. Home Assistant) |
 
-**The split:** the Pi captures, speaks, and transcribes. The server thinks (AO) and sees (CPAI). Speech stays on-box so the voice path does not depend on LAN bandwidth. The kiosk has no camera preview — the bridge owns the camera for vision only.
+**The split:** the Pi captures and plays. The server thinks (AO), sees (CPAI), and — when speech is enabled — transcribes/synthesizes via AO-advertised sidecars (`SessionBridge.speechClient`). Env `COMSTAR_STT_URL` / `COMSTAR_TTS_URL` remain for Mac/dev and when Ada speech is off. The kiosk has no camera preview — the bridge owns the camera for vision only.
 
 ---
 
@@ -169,9 +170,9 @@ Identity is cached with a TTL bound to continuous presence. Face recognition run
 | Vision | **CodeProject.AI Server** (`:32168`) | Already deployed, CUDA-backed, serving house cameras |
 | Wake word | [openWakeWord](https://github.com/dscripka/openWakeWord) | Free, local, custom words trainable from synthetic audio |
 | VAD | Energy VAD (Silero optional) | End-of-speech with start/continue hysteresis for fast talk |
-| STT | faster-whisper `tiny` on the Pi (`:8090`) | ~4s/utterance on Pi 4; selected via live fixture bench |
-| TTS | Piper via sherpa-onnx on the Pi (`:8091`) | OpenAI-compatible `/v1/audio/speech` |
-| Orchestration | [`agentic-orchestration`](https://github.com/zlatko-lakisic/agentic-orchestration) ≥ v1.27.0 | Planner, agents, MCP, KB, learning loop |
+| STT | AO speech sidecar (Reach `SpeechClient`) or local faster-whisper | Prefer Ada when `hello.speech`; env URL fallback |
+| TTS | AO speech sidecar or local Piper/sherpa | OpenAI-compatible `/v1/audio/speech` |
+| Orchestration | [`agentic-orchestration`](https://github.com/zlatko-lakisic/agentic-orchestration) ≥ v1.28.0 | Planner, agents, MCP, KB; speech advertise ≥ 1.28 |
 
 ---
 
@@ -184,10 +185,11 @@ comstar/
 │   ├── RUNBOOK.md
 │   └── adr/                     # architecture decision records
 ├── terminal/                    # everything that runs on the Pi
-│   ├── bridge/                  # Dart — attention, vision, STT/TTS, ao_reach
+│   ├── bridge/                  # Dart — attention, vision, speech routing, ao_reach
 │   │   ├── bin/comstar_bridge.dart
 │   │   ├── lib/
 │   │   │   ├── session.dart     # SessionBridge lifecycle + identity headers
+│   │   │   ├── speech_routing.dart  # Prefer Reach SpeechClient; env URL fallback
 │   │   │   ├── attention/       # state machine + coordinator
 │   │   │   ├── vision/          # ffmpeg camera + CodeProject.AI client
 │   │   │   └── local_ws.dart    # 127.0.0.1 WS for kiosk (:8777) + audio (:8778)
@@ -334,8 +336,9 @@ attention:
 | `COMSTAR_CAMERA_SOURCE` | Camera for ffmpeg grabber | `/dev/video0`, `avfoundation:1` (Mac) |
 | `COMSTAR_MIC_SOURCE` | Mic for `comstar-audio` | sounddevice index or name substring (`C525`) |
 | `COMSTAR_SPEAKER_SOURCE` | Local `paplay` sink when kiosk absent | Pulse/PipeWire sink name; empty = default |
-| `COMSTAR_STT_URL` | OpenAI-compatible STT base | `http://127.0.0.1:8090` |
-| `COMSTAR_TTS_URL` | OpenAI-compatible TTS base | `http://127.0.0.1:8091` |
+| `COMSTAR_STT_URL` | Fallback STT base when Reach speech absent | `http://127.0.0.1:8090` |
+| `COMSTAR_TTS_URL` | Fallback TTS base when Reach speech absent | `http://127.0.0.1:8091` |
+| `COMSTAR_SPEECH_TOKEN` | Optional bearer for AO speech sidecars | same as Ada `AGENTIC_SPEECH_TOKEN` |
 | `COMSTAR_LOCAL_SPEAKER` | Play TTS via `paplay` without kiosk | `1` |
 | `COMSTAR_VAD_SILENCE_MS` | End-of-speech silence | `1200` (Pi default override) |
 
@@ -434,12 +437,12 @@ Total target: **under 15 seconds**, ideally under 6.
 |---|---|---|
 | Wake word → capture start | ~50ms | local, negligible |
 | Utterance + VAD close | speech + ~1.2s silence | hysteresis VAD; tune `audio.vad_silence_ms` |
-| STT (faster-whisper `tiny`, Pi) | ~3–5s | batch after VAD end (not streamed); CPU-bound on Pi 4 |
+| STT (Reach → Ada sidecar, or local fallback) | ~1–5s | GPU on Ada preferred; Pi CPU `tiny` ~3–5s |
 | Orchestration | 2–10s | dominated by MCP calls; this is where the budget goes |
-| TTS (Piper/sherpa, Pi) | ~1s | roughly realtime; first chunk can start earlier |
+| TTS (Reach → Ada sidecar, or local Piper) | ~1s | roughly realtime; first chunk can start earlier |
 | Avatar render + playback | ~200ms | |
 
-STT on the Pi trades GPU latency for a self-contained voice path. Orchestration is still the main variable; if you're over budget after STT, the fix is MCP selection, not codec tuning.
+Prefer Ada speech when advertised; re-bench live fixtures after the move. Orchestration is still the main variable; if you're over budget after STT, the fix is MCP selection, not codec tuning.
 
 ---
 
@@ -447,8 +450,8 @@ STT on the Pi trades GPU latency for a self-contained voice path. Orchestration 
 
 This device has a camera and a microphone pointed at your home. The boundaries are deliberate:
 
-1. **The wake word and speech run on the Pi.** Audio is held in a rolling in-memory buffer and never persisted by default. STT/TTS are local HTTP on `127.0.0.1`. Nothing leaves the box until a session is active and AO needs the transcript.
-2. **No inference leaves the LAN.** Vision and orchestration run on the AI server; STT/TTS stay on the Pi. Nothing goes to the public cloud in Phase 1.
+1. **Wake word and capture stay on the Pi.** Audio is held in a rolling in-memory buffer and never persisted by default. After VAD end, utterance PCM is POSTed over LAN to the STT endpoint in use (AO-advertised sidecar on Ada when Reach speech is enabled; otherwise local `COMSTAR_STT_URL`, often `127.0.0.1`).
+2. **No inference leaves the LAN.** Vision, orchestration, and (when enabled) speech compute run on the AI server. Nothing goes to the public cloud in Phase 1. PCM leaving the Pi for Ada speech is the same trust boundary as CPAI frames.
 3. **Camera frames are transient.** Sent to CodeProject.AI for inference, not written to disk by COMSTAR.
 4. **Face descriptors live in CodeProject.AI**, on your server, under `userid`s you chose.
 5. **Transcripts are session-scoped** and retained under AO's session memory policy — configure retention there.
@@ -496,7 +499,7 @@ Be deliberate about this now, both because it's the right default and because it
 | 1 | Vision engine | CodeProject.AI Server | face-api.js, MediaPipe, custom InsightFace | Already deployed, GPU-backed, co-located with AO. Enrollment is a curl call. Deletes an entire subsystem. |
 | 2 | Transport to AO | AO Reach (WS + overlays + tunnel) | Plain REST `/voice/query` | Overlays give per-session agents; the tunnel lets the planner call Pi-local tools. REST can't express either. |
 | 3 | Client shell | Dart sidecar + Chromium kiosk | Pure Flutter, pure Electron | REACH is Dart; TalkingHead is browser JS. The sidecar keeps both native rather than forcing one into the other. |
-| 4 | Where inference runs | Split: AO + CPAI on AI server; STT/TTS on Pi | All-on-server speech, or all-on-Pi vision | Vision needs the Ada GPU; speech stays on-Pi so voice does not depend on LAN bandwidth. |
+| 4 | Where inference runs | Split: AO + CPAI + speech sidecars on AI server; Pi is I/O | All-on-Pi speech forever | Vision needs the Ada GPU; speech compute follows AO Option B (Reach-advertised sidecars). Local STT/TTS remain fallback. See ADR 0003. |
 | 5 | Wake word | openWakeWord | Porcupine, Precise | Free, local, custom phrases trainable from synthetic audio, no per-keyword licence. |
 | 6 | Duplex mode | Half (Phase 1) | Full duplex with AEC | Shared enclosure means acoustic echo; AEC on a USB mic with no reference channel is genuinely hard. Ship half, revisit. |
 | 7 | Identity source | Face → `x-agentic-user-name` | Prompt-prefixed context | Makes recognition load-bearing rather than cosmetic. Session memory scopes per person automatically. |
@@ -522,7 +525,7 @@ Longer-form records live in `docs/adr/`.
 
 **Lip-sync drifts.** Viseme quality depends on the TTS. Piper's timing is adequate; if you need better, the cloud engines expose richer viseme streams.
 
-**STT hallucinates or truncates fast speech.** Confirm `comstar-stt` health (`faster-whisper tiny`). Raise `COMSTAR_VAD_SILENCE_MS`. Score fixes with labeled **bridge** fixtures in `testdata/stt/`, not by replaying one golden WAV.
+**STT hallucinates or truncates fast speech.** Confirm Reach speech health (Ada sidecars `/health`) or local `comstar-stt` / `COMSTAR_STT_URL`. Raise `COMSTAR_VAD_SILENCE_MS`. Score fixes with labeled **bridge** fixtures in `testdata/stt/`, not by replaying one golden WAV.
 
 **Chrome shows no camera.** Expected in the kiosk — there is no webcam preview tile. The bridge owns the camera via ffmpeg (`COMSTAR_CAMERA_SOURCE`).
 

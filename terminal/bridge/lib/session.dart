@@ -1,10 +1,16 @@
+import 'dart:io';
+
 import 'package:ao_reach/ao_reach.dart';
 import 'package:comstar_bridge/config.dart';
 import 'package:comstar_bridge/log.dart';
+import 'package:comstar_bridge/speech_routing.dart';
 
 /// Thin interface over ao_reach [SessionBridge] for tests and stubs.
 abstract class ReachSessionBridge {
   bool get isActive;
+
+  /// Non-null after [start] when AO advertised speech sidecars on `hello`.
+  SpeechClient? get speechClient;
 
   Future<void> start({
     required ReachConnectionConfig config,
@@ -30,6 +36,9 @@ class AoReachSessionBridge implements ReachSessionBridge {
 
   @override
   bool get isActive => _inner.isActive;
+
+  @override
+  SpeechClient? get speechClient => _inner.speechClient;
 
   @override
   Future<void> start({
@@ -98,6 +107,9 @@ class ComstarSession {
   String? get userid => _userid;
   bool get guest => _guest;
 
+  /// Reach STT/TTS client when AO ≥ 1.28 advertised `hello.speech`; else null.
+  SpeechClient? get speechClient => _bridge.speechClient;
+
   static const voiceAgentId = 'client.voice_responder';
   static const greeterAgentId = 'client.greeter';
 
@@ -143,10 +155,27 @@ class ComstarSession {
         headers: headers,
         ttlSeconds: config.orchestration.ttlSeconds,
         questionIdPrefix: 'comstar',
+        speechToken: speechTokenFromEnv(),
       ),
       overlayRoot: config.orchestration.overlayRoot,
       mcpBootstrap: _mcpBootstrap,
     );
+
+    if (_bridge.speechClient != null) {
+      logInfo('speech_reach', 'Using AO-advertised speech sidecars', data: {
+        'stt': _bridge.speechClient!.capabilities.sttBaseUrl,
+        'tts': _bridge.speechClient!.capabilities.ttsBaseUrl,
+      });
+    } else {
+      logInfo(
+        'speech_fallback',
+        'No Reach speech; using COMSTAR_STT_URL / COMSTAR_TTS_URL',
+        data: {
+          'stt_env': Platform.environment['COMSTAR_STT_URL'] != null,
+          'tts_env': Platform.environment['COMSTAR_TTS_URL'] != null,
+        },
+      );
+    }
   }
 
   Future<void> close() async {
