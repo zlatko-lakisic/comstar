@@ -1,0 +1,14 @@
+# Comstar overlay MCP — started by ComstarMcpBootstrap (not AO disk catalog).
+# Reach packs agents from agent_providers/; tunnel MCP dicts come from bootstrap
+# extraMcps after LocalMcpHost.startNpxPackage.
+id: google_workspace
+description: Google Workspace (Gmail, Calendar, Drive) via Reach tunnel
+transport: stdio_tunnel
+alias: google_workspace
+npx_package: mcp-server-google-workspace@0.2.6
+env_from:
+  - GOOGLE_CLIENT_ID
+  - GOOGLE_CLIENT_SECRET
+  - GOOGLE_REFRESH_TOKEN
+requires_tokens: true
+guest_allowed: false

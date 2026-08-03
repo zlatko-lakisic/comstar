@@ -118,7 +118,8 @@ Scaffold, config, WS, vision client, attention machine, deploy/doctor — shippe
 - [x] Guest MCP excludes `home_assistant`
 - [x] Live greeter/voice against `10.0.10.16`
 - [x] Terminal MCP server stub (`mcp/terminal_mcp/server.py`)
-- [ ] Wire tunnel bootstrap into `ComstarMcpBootstrap`
+- [x] Google Workspace via off-the-shelf MCP + Reach tunnel (`client.google_workspace`)
+- [ ] Wire terminal tunnel bootstrap (`COMSTAR_TERMINAL_MCP=1`) when AO path is proven
 - [ ] Vision MCP hosted registration
 
 ---

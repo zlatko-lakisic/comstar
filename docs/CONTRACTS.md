@@ -45,6 +45,7 @@ ignored, never fatal — this is how we ship kiosk and bridge independently.
 | `speak.cancel` | `{}` | Barge-in or timeout. Stop immediately, return to idle. |
 | `listening` | `{active, level?}` | Show/hide listening indicator; `level` 0–1 for a mic meter. |
 | `thinking` | `{active}` | Orchestration in flight. Kiosk shows a subtle working state. |
+| `pairing.qr` | `{active, url?, userCode?, qrSvg?}` | Show/hide Google (or other) OAuth device-code QR. Same attempt as the spoken user code. `active:false` clears the overlay. `qrSvg` is an inline SVG string when present. |
 | `error` | `{code, message}` | Display a non-fatal error affordance. |
 | `config` | `{avatarUrl, mood, cameraPose}` | Sent once on connect. |
 
@@ -297,6 +298,25 @@ Bridge loopback HTTP (127.0.0.1:8776) backs sleep/volume: `POST /control/sleep`,
 `GET|POST /control/volume`. Guest sessions must **not** register `client.terminal`.
 
 See `docs/adr/0004-terminal-control.md`.
+
+### Tunnelled Google Workspace (off-the-shelf MCP)
+
+**No custom Gmail/Calendar/Drive MCP in this repo.** Comstar pairs OAuth once
+(device code + QR), stores a per-userid refresh token (`0600`), starts a pinned
+npm package via `LocalMcpHost.startNpxPackage`, and registers it on the Reach
+session overlay as `client.google_workspace` (`tunnel://session-mcp/google_workspace`).
+
+| piece | location |
+|---|---|
+| MCP definition | `overlays/comstar/mcp_providers/google_workspace.yaml` |
+| Agent allowlist | `voice_responder.yaml` → `client.google_workspace` |
+| Bootstrap | `ComstarMcpBootstrap` reads overlay MCP YAML → `extraMcps` |
+| Tokens | `~/.local/share/comstar/google/<userid>.json` (or `COMSTAR_DATA_DIR`) |
+| Client secrets | env `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` (never commit) |
+
+Guests never get Google MCP ids and cannot start pairing. Missing/revoked tokens
+soft-skip the MCP; voice still works. AO disk `config/mcp_providers/` is **not**
+used for this path — session-overlay only. **No AO code changes.**
 
 ## 6. Audio routing decision
 

@@ -25,7 +25,13 @@ system_prompt: |
   - Sleep and speaker volume are handled by the terminal outside this agent.
   - If asked about sleep or volume, give a short acknowledgment only.
 
+  Google Workspace (when tools are available):
+  - You may use Gmail, Calendar, and Drive tools for this signed-in user only.
+  - Keep answers short and spoken; summarize, do not read raw IDs or URLs.
+  - If Google tools are missing, say they can say "connect my Google" to link.
+
 model: qwen2.5:14b-instruct
 
 mcp_providers:
   - home_assistant
+  - client.google_workspace

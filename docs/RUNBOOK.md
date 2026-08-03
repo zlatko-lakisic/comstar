@@ -322,6 +322,33 @@ make logs            # merged journal tail (when configured)
 | Chrome has no camera preview | Expected — kiosk has no webcam tile | Confirm bridge ffmpeg / camera LED; set `COMSTAR_CAMERA_SOURCE` |
 | No greet-by-name | Face not enrolled | `enroll_face.sh` |
 | AO timeout / overlay missing | AI server unreachable or cwd-relative overlay | Check `10.0.10.16:8765`; run bridge from repo root or absolute `overlay_root` |
+| Google tools missing | Not paired / guest / MCP soft-skip | Say “connect my Google”; check `GOOGLE_CLIENT_*` env; tokens under `~/.local/share/comstar/google/` |
+| Pairing QR never shows | Kiosk outdated / `pairing.qr` dropped | Redeploy `terminal/kiosk/`; confirm bridge logs `google_pairing_start` |
+
+## 10. Google Workspace (mail / calendar / Drive)
+
+Comstar does **not** ship a custom Gmail MCP. It pairs once (voice + QR), stores a
+per-userid refresh token, runs pinned `mcp-server-google-workspace` via
+`LocalMcpHost.startNpxPackage`, and tunnels it to AO as `client.google_workspace`.
+
+1. Create a Google Cloud OAuth client (TVs / Limited Input or Desktop). Enable
+   Gmail, Calendar, and Drive APIs.
+2. Export `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` on the bridge host
+   (see `config/comstar.mac.env.example`). Never commit them.
+3. As a known face, say **“connect my Google”**. Enter the spoken code on your
+   phone or scan the on-screen QR.
+4. Tokens land in `~/.local/share/comstar/google/<userid>.json` (`0600`).
+5. Voice agent allowlist: `overlays/comstar/agent_providers/voice_responder.yaml`
+   → `client.google_workspace`. Guests never get Google tools.
+6. Unlink: say **“disconnect Google”**. Soft-fail if tokens are revoked — voice
+   still works; say connect again.
+
+Mac spike (optional, with a refresh token already in env):
+
+```bash
+GOOGLE_CLIENT_ID=… GOOGLE_CLIENT_SECRET=… GOOGLE_REFRESH_TOKEN=… \
+  npx -y mcp-server-google-workspace@0.2.6
+```
 
 ## Local STT note
 

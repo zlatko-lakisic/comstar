@@ -140,7 +140,21 @@ void main() {
 
       expect(fake.lastMcpIds, contains('home_assistant'));
       expect(fake.lastMcpIds, isNot(contains('client.terminal')));
+      expect(fake.lastMcpIds, isNot(contains('client.google_workspace')));
       expect(fake.lastMcpIds, equals(['home_assistant']));
+    });
+
+    test('known user MCP list includes google when registered', () async {
+      fake.fakeRegisteredMcpIds = const [
+        'client.terminal',
+        'client.google_workspace',
+      ];
+      await session.open(userid: 'zlatko', guest: false);
+      await session.directVoice('hello');
+
+      expect(fake.lastMcpIds, contains('home_assistant'));
+      expect(fake.lastMcpIds, contains('client.google_workspace'));
+      expect(fake.lastMcpIds, isNot(contains('client.terminal')));
     });
 
     test('known user MCP list includes home_assistant only for voice', () async {
@@ -149,13 +163,25 @@ void main() {
 
       expect(fake.lastMcpIds, contains('home_assistant'));
       expect(fake.lastMcpIds, isNot(contains('client.terminal')));
+      // Fake defaults register client.terminal only — google filtered out.
       expect(fake.lastMcpIds, equals(['home_assistant']));
     });
 
-    test('guest MCP list excludes terminal control', () async {
+    test('guest MCP list excludes google workspace and terminal', () async {
+      fake.fakeRegisteredMcpIds = const [
+        'client.google_workspace',
+        'client.terminal',
+      ];
       await session.open(userid: 'guest', guest: true);
       expect(session.mcpProvidersForVoice(), isEmpty);
-      expect(session.mcpProvidersForVoice(), isNot(contains('client.terminal')));
+      expect(
+        session.mcpProvidersForVoice(),
+        isNot(contains('client.google_workspace')),
+      );
+      expect(
+        session.mcpProvidersForVoice(),
+        isNot(contains('client.terminal')),
+      );
     });
 
     test('identity switch closes prior session', () async {

@@ -175,6 +175,38 @@
     background: rgba(48, 16, 12, 0.92);
     color: #ffd8d0;
   }
+  #pairing {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 1rem;
+    background: rgba(6, 13, 22, 0.82);
+    pointer-events: none;
+  }
+  #pairing.on { display: flex; }
+  #pairing-qr {
+    width: min(42vw, 14rem);
+    height: min(42vw, 14rem);
+    background: #f5f7fa;
+    border-radius: 0.5rem;
+    padding: 0.65rem;
+    box-sizing: border-box;
+  }
+  #pairing-qr svg { width: 100%; height: 100%; display: block; }
+  #pairing-code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: clamp(1.1rem, 4vw, 1.6rem);
+    letter-spacing: 0.18em;
+    color: #e8f1ff;
+  }
+  #pairing-hint {
+    font-size: 0.85rem;
+    color: rgba(180, 210, 240, 0.85);
+  }
   @keyframes phase-pulse {
     0%, 100% { transform: scale(1); opacity: 1; }
     50% { transform: scale(1.03); opacity: 0.88; }
@@ -217,6 +249,11 @@
 <div id="phase" data-phase="idle" aria-live="polite">
   <div class="label">Ready</div>
   <div class="detail"></div>
+</div>
+<div id="pairing" aria-live="polite">
+  <div id="pairing-qr"></div>
+  <div id="pairing-code"></div>
+  <div id="pairing-hint">Scan or enter the code on your phone</div>
 </div>
 <div id="chat" aria-live="polite">
   <div id="chat-log"></div>
@@ -380,6 +417,21 @@ const bridge = new BridgeClient(bridgeUrl, {
   thinking(d) {
     avatar.setThinking(!!d.active);
     if (d.active) setPhase('thinking', 'Talking to AO…');
+  },
+
+  'pairing.qr'(d) {
+    const el = document.getElementById('pairing');
+    const qr = document.getElementById('pairing-qr');
+    const code = document.getElementById('pairing-code');
+    if (!d || !d.active) {
+      el.classList.remove('on');
+      qr.innerHTML = '';
+      code.textContent = '';
+      return;
+    }
+    qr.innerHTML = d.qrSvg || '';
+    code.textContent = (d.userCode || '').toUpperCase();
+    el.classList.add('on');
   },
 
   phase(d) {

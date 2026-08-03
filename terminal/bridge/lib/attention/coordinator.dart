@@ -12,6 +12,10 @@ import 'package:comstar_bridge/attention/states.dart';
 import 'package:comstar_bridge/config.dart';
 import 'package:comstar_bridge/envelope.dart';
 import 'package:comstar_bridge/env_sources.dart';
+import 'package:comstar_bridge/google/device_pairing.dart';
+import 'package:comstar_bridge/google/qr_svg.dart';
+import 'package:comstar_bridge/google/token_store.dart';
+import 'package:comstar_bridge/google_intent.dart';
 import 'package:comstar_bridge/http_audio_server.dart';
 import 'package:comstar_bridge/local_ws.dart';
 import 'package:comstar_bridge/log.dart';
@@ -37,8 +41,12 @@ class AttentionCoordinator {
     TerminalControl? control,
     Clock? clock,
     this.fallbackAudioDir,
+    GoogleTokenStore? googleTokenStore,
+    GoogleDevicePairing? googlePairing,
   })  : clock = clock ?? SystemClock(),
         control = control ?? TerminalControl(),
+        googleTokens = googleTokenStore ?? GoogleTokenStore(),
+        googleOAuth = googlePairing ?? GoogleDevicePairing(),
         machine = AttentionMachine(
           config: config,
           clock: clock ?? SystemClock(),
@@ -56,6 +64,8 @@ class AttentionCoordinator {
   final TtsEngine tts;
   final HttpAudioServer audioServer;
   final TerminalControl control;
+  final GoogleTokenStore googleTokens;
+  final GoogleDevicePairing googleOAuth;
   final Clock clock;
   final AttentionMachine machine;
   final EffectRunner runner;
@@ -69,6 +79,7 @@ class AttentionCoordinator {
   vision.VisionPoller? _visionPoller;
   StreamSubscription<vision.VisionEvent>? _visionSub;
   Future<void>? _sessionOpenFuture;
+  Completer<void>? _googlePairingCancel;
 
   final _captureBuffer = BytesBuilder(); // copy:true — toBytes() must not wipe PCM
   var _capturePeakRms = 0.0;
@@ -162,6 +173,7 @@ class AttentionCoordinator {
         _sessionOpenFuture = session.open(userid: userid, guest: guest);
         unawaited(_sessionOpenFuture);
       case CloseSession():
+        _cancelGooglePairing();
         _sessionOpenFuture = null;
         unawaited(session.close());
       case StartListening(:final turnId):
@@ -276,6 +288,7 @@ class AttentionCoordinator {
             break;
         }
       case EnteredSleep():
+        _cancelGooglePairing();
         control.sleepEnter();
         _cancelSleepWakeVerify(stopListen: true);
         _followUpTimer?.cancel();
@@ -961,6 +974,9 @@ class AttentionCoordinator {
       final local = await _tryTerminalIntent(text, turnId);
       if (local) return;
 
+      final google = await _tryGoogleIntent(text, turnId);
+      if (google) return;
+
       final clipped =
           text.length > 500 ? '${text.substring(0, 500)}…' : text;
       logInfo('direct_agent', 'Calling voice agent', data: {
@@ -999,6 +1015,227 @@ class AttentionCoordinator {
       );
     } finally {
       turnSpan.close();
+    }
+  }
+
+  Future<bool> _tryGoogleIntent(String text, String turnId) async {
+    final intent = parseGoogleIntent(text);
+    if (intent == null) return false;
+
+    if (session.guest || session.userid == null) {
+      await _speakText(
+        'Google linking is only available when I recognize you.',
+        turnId,
+      );
+      return true;
+    }
+
+    final userid = session.userid!;
+    switch (intent.kind) {
+      case GoogleIntentKind.status:
+        final linked = await googleTokens.hasTokens(userid);
+        final registered =
+            session.mcpProvidersForVoice().contains('client.google_workspace');
+        final spoken = linked
+            ? (registered
+                ? 'Your Google account is connected.'
+                : 'I have your Google tokens, but Workspace tools are not active yet. Try again in a moment, or say connect my Google.')
+            : 'Google is not connected. Say connect my Google to link it.';
+        await _speakText(spoken, turnId);
+        return true;
+
+      case GoogleIntentKind.unlink:
+        await googleTokens.clear(userid);
+        _cancelGooglePairing();
+        try {
+          await session.close();
+          await session.open(userid: userid, guest: false);
+        } catch (e) {
+          logWarn('google_unlink_session', e.toString());
+        }
+        await _speakText(
+          'Okay, I disconnected Google for you.',
+          turnId,
+        );
+        return true;
+
+      case GoogleIntentKind.connect:
+        if (!googleOAuth.isConfigured) {
+          await _speakText(
+            'Google is not configured on this terminal yet.',
+            turnId,
+          );
+          return true;
+        }
+        await _startGooglePairing(userid, turnId);
+        return true;
+    }
+  }
+
+  /// Issues device code + QR, speaks instructions (ends the turn), then polls
+  /// in the background so orchestration timeout does not fire mid-pair.
+  Future<void> _startGooglePairing(String userid, String turnId) async {
+    _cancelGooglePairing();
+    final cancel = Completer<void>();
+    _googlePairingCancel = cancel;
+
+    try {
+      final code = await googleOAuth.begin();
+      final svg = qrSvg(code.verificationUrlComplete);
+      _broadcastKiosk(
+        Envelope.create(
+          type: 'pairing.qr',
+          turnId: turnId,
+          data: {
+            'active': true,
+            'url': code.verificationUrlComplete,
+            'userCode': code.userCode,
+            'qrSvg': svg,
+          },
+        ),
+      );
+
+      final spokenCode = GoogleDevicePairing.speakableUserCode(code.userCode);
+      final instructions =
+          'Open Google on your phone and enter code $spokenCode. '
+          'Or scan the QR code on the screen.';
+      logInfo('google_pairing_start', 'Device code issued', data: {
+        'userid': userid,
+        'user_code': code.userCode,
+      });
+      await _speakText(instructions, turnId);
+      unawaited(_finishGooglePairing(userid, code, cancel));
+    } catch (e) {
+      _clearPairingQr();
+      if (_googlePairingCancel == cancel) {
+        _googlePairingCancel = null;
+      }
+      logWarn('google_pairing_failed', e.toString(), data: {'userid': userid});
+      await _speakText(
+        'I could not start Google pairing right now.',
+        turnId,
+      );
+    }
+  }
+
+  Future<void> _finishGooglePairing(
+    String userid,
+    GoogleDeviceCode code,
+    Completer<void> cancel,
+  ) async {
+    try {
+      final result = await googleOAuth.waitForApproval(
+        code,
+        cancel: cancel.future,
+      );
+      _clearPairingQr();
+      if (_googlePairingCancel != cancel) return;
+
+      switch (result.outcome) {
+        case GooglePairingOutcome.success:
+          final refresh = result.tokens?.refreshToken;
+          if (refresh == null || refresh.isEmpty) {
+            await _announceEngaged(
+              'Google approved, but I did not get a refresh token. Try again.',
+            );
+            return;
+          }
+          await googleTokens.writeRefreshToken(userid, refresh);
+          try {
+            await session.close();
+            await session.open(userid: userid, guest: false);
+          } catch (e) {
+            logWarn('google_pair_session', e.toString());
+          }
+          final ok = session.mcpProvidersForVoice()
+              .contains('client.google_workspace');
+          await _announceEngaged(
+            ok
+                ? 'Google is connected. I can help with mail, calendar, and Drive.'
+                : 'Google tokens are saved. Workspace tools will be available shortly.',
+          );
+        case GooglePairingOutcome.timeout:
+          await _announceEngaged(
+            'Google pairing timed out. Say connect my Google to try again.',
+          );
+        case GooglePairingOutcome.denied:
+          await _announceEngaged(
+            'Google access was denied. Say connect my Google if you change your mind.',
+          );
+        case GooglePairingOutcome.cancelled:
+          break;
+        case GooglePairingOutcome.error:
+          await _announceEngaged(
+            'I could not finish Google pairing. '
+            '${result.message ?? "Try again later."}',
+          );
+      }
+    } catch (e) {
+      _clearPairingQr();
+      logWarn('google_pairing_poll', e.toString(), data: {'userid': userid});
+      await _announceEngaged('I could not finish Google pairing right now.');
+    } finally {
+      if (_googlePairingCancel == cancel) {
+        _googlePairingCancel = null;
+      }
+    }
+  }
+
+  void _cancelGooglePairing() {
+    final c = _googlePairingCancel;
+    if (c != null && !c.isCompleted) {
+      c.complete();
+    }
+    _googlePairingCancel = null;
+    _clearPairingQr();
+  }
+
+  void _clearPairingQr() {
+    _broadcastKiosk(
+      Envelope.create(
+        type: 'pairing.qr',
+        data: {'active': false},
+      ),
+    );
+  }
+
+  /// Turn reply via the attention machine (must be in Responding).
+  Future<void> _speakText(String spoken, String turnId) async {
+    final ttsSpan = Span('tts_total');
+    final path = await tts.synthesizeToFile(spoken);
+    _lastTtsTotal = Duration(milliseconds: ttsSpan.elapsedMs);
+    ttsSpan.close();
+    final audioUrl = audioServer.registerFile(path);
+    handle(ResponseReady(spoken, audioUrl));
+  }
+
+  /// Greeter-style announce while Engaged (pairing outcome after the turn).
+  Future<void> _announceEngaged(String spoken) async {
+    try {
+      machine.context.playing = true;
+      _sendAudio(
+        Envelope.create(type: 'wake.enable', data: {'enabled': false}),
+      );
+      final ttsSpan = Span('tts_total');
+      final path = await tts.synthesizeToFile(spoken);
+      _lastTtsTotal = Duration(milliseconds: ttsSpan.elapsedMs);
+      ttsSpan.close();
+      final audioUrl = audioServer.registerFile(path);
+      _beginSpeakWatchdog();
+      _broadcastPhase('speaking', detail: spoken);
+      _broadcastKiosk(
+        Envelope.create(
+          type: 'speak',
+          data: {'text': spoken, 'audioUrl': audioUrl},
+        ),
+      );
+      unawaited(_maybePlayLocal(audioUrl));
+    } catch (e) {
+      logWarn('google_announce', e.toString());
+      machine.context.playing = false;
+      _sendAudio(
+        Envelope.create(type: 'wake.enable', data: {'enabled': true}),
+      );
     }
   }
 
