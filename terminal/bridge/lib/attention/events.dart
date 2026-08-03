@@ -68,3 +68,13 @@ final class VisionDegraded extends AttentionEvent {
 final class VisionRecovered extends AttentionEvent {
   const VisionRecovered();
 }
+
+/// Terminal MCP / control HTTP requested dormant mode.
+final class EnterSleep extends AttentionEvent {
+  const EnterSleep();
+}
+
+/// Control HTTP requested leave sleep without a wake word.
+final class ExitSleep extends AttentionEvent {
+  const ExitSleep();
+}

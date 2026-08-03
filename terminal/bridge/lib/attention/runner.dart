@@ -24,6 +24,8 @@ class EffectRunner {
     this.onPromoteListening,
     this.onRunGreeter,
     this.onEmitState,
+    this.onEnteredSleep,
+    this.onExitedSleep,
   });
 
   final void Function(double fps)? onSetVisionFps;
@@ -44,6 +46,8 @@ class EffectRunner {
   final void Function(String userid)? onRunGreeter;
   final void Function(String state, String? userid, String? displayName)?
       onEmitState;
+  final void Function()? onEnteredSleep;
+  final void Function()? onExitedSleep;
 
   final dispatched = <Effect>[];
 
@@ -110,6 +114,12 @@ class EffectRunner {
       case EmitState(:final stateName, :final userid, :final displayName):
         onEmitState?.call(stateName, userid, displayName);
         logDebug('effect', 'EmitState', data: {'state': stateName});
+      case EnteredSleep():
+        onEnteredSleep?.call();
+        logDebug('effect', 'EnteredSleep');
+      case ExitedSleep():
+        onExitedSleep?.call();
+        logDebug('effect', 'ExitedSleep');
       case LogAttention(:final evt, :final msg, :final data):
         logWarn(evt, msg, data: data);
     }

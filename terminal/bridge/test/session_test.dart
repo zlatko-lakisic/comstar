@@ -128,12 +128,22 @@ void main() {
       expect(fake.lastMcpIds, isEmpty);
     });
 
-    test('known user MCP list includes home_assistant', () async {
+    test('known user MCP list includes home_assistant and client.terminal', () async {
       await session.open(userid: 'zlatko', guest: false);
       await session.directVoice('hello');
 
       expect(fake.lastMcpIds, contains('home_assistant'));
-      expect(fake.lastMcpIds, equals(['home_assistant']));
+      expect(fake.lastMcpIds, contains('client.terminal'));
+      expect(
+        fake.lastMcpIds,
+        equals(['home_assistant', 'client.terminal']),
+      );
+    });
+
+    test('guest MCP list excludes terminal control', () async {
+      await session.open(userid: 'guest', guest: true);
+      expect(session.mcpProvidersForVoice(), isEmpty);
+      expect(session.mcpProvidersForVoice(), isNot(contains('client.terminal')));
     });
 
     test('identity switch closes prior session', () async {

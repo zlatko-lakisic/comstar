@@ -286,8 +286,17 @@ Reachable only from the Pi, exposed to the orchestrator over
 | `play_tone` | `{tone}` | `{ok}` — `ack`, `error`, `attention` |
 | `mic_status` | `{}` | `{muted, deviceOk, lastWakeAgoMs}` |
 | `screen_state` | `{}` | `{on, brightness}` |
+| `sleep_enter` | `{}` | `{ok, state:"sleeping"}` — COMSTAR dormant (not OS suspend) |
+| `sleep_status` | `{}` | `{sleeping:bool}` |
+| `volume_get` | `{}` | `{percent:0-100, muted:bool}` — HDMI/speaker sink |
+| `volume_set` | `{percent:0-100}` | `{ok, percent, muted}` |
+| `volume_adjust` | `{delta:-100..100}` | `{ok, percent, muted}` |
+| `volume_mute` | `{muted:bool}` | `{ok, percent, muted}` |
 
----
+Bridge loopback HTTP (127.0.0.1:8776) backs sleep/volume: `POST /control/sleep`,
+`GET|POST /control/volume`. Guest sessions must **not** register `client.terminal`.
+
+See `docs/adr/0004-terminal-control.md`.
 
 ## 6. Audio routing decision
 
@@ -331,7 +340,10 @@ this and nothing more.
 
 ### States
 
-`ambient`, `noticed`, `engaged`, `listening`, `responding`
+`ambient`, `noticed`, `engaged`, `listening`, `responding`, `sleeping`
+
+Sleep is **not** OS suspend: processes keep running. In `sleeping`, vision and
+speech (except wake word) are ignored until `WakeWord` exits to `listening`.
 
 ### Inputs (events)
 
@@ -348,6 +360,7 @@ this and nothing more.
 | `PlaybackEnded` | kiosk |
 | `Tick` | injected clock, 10 Hz |
 | `Error(scope)` | any |
+| `EnterSleep` | terminal MCP `sleep_enter` / control HTTP |
 
 ### Transition table
 
@@ -369,18 +382,24 @@ this and nothing more.
 | responding | ResponseReady | — | responding | `speak` to kiosk |
 | responding | PlaybackEnded | — | engaged | open follow-up window, re-enable wake |
 | responding | Tick | elapsed > orchestration timeout | engaged | speak fallback line, re-enable wake |
+| any (not sleeping) | EnterSleep | — | sleeping | stop listen, cancel follow-up, wake armed, ignore vision |
+| sleeping | WakeWord | score ≥ threshold | listening | `listen.start` (keep session if open) |
+| sleeping | PersonDetected / Face* / Speech* | — | sleeping | ignored |
 | any | Error(fatal) | — | ambient | tear down session, log, re-arm |
 
 ### Invariants (asserted in tests, and at runtime in debug builds)
 
-1. An AO session exists **iff** state ∈ {engaged, listening, responding}.
-2. Wake word is armed **iff** state ∉ {listening} and not (half-duplex and playing).
+1. An AO session exists **iff** state ∈ {engaged, listening, responding}
+   (session may remain open while `sleeping` until TTL/absent teardown on wake path).
+2. Wake word is armed **iff** state ∉ {listening} and not (half-duplex and playing),
+   **or** state is `sleeping` (always armed).
 3. At most one in-flight `directAgent` call at any time.
 4. `turn_id` is non-null **iff** state ∈ {listening, responding}.
 5. Identity cache TTL is refreshed only by a positive `FaceRecognized`, never by
    `PersonDetected` alone.
 6. No transition takes longer than 50 ms of wall clock inside the state machine
    itself — all I/O is dispatched, never awaited, inside a transition.
+7. In `sleeping`, vision and VAD events are no-ops; only `WakeWord` exits.
 
 ---
 

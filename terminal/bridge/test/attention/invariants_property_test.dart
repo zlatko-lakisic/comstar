@@ -11,7 +11,7 @@ import 'package:test/test.dart';
 final _rng = Random(42);
 
 List<AttentionEvent> _randomEvent() {
-  final roll = _rng.nextInt(12);
+  final roll = _rng.nextInt(14);
   return switch (roll) {
     0 => [PersonDetected(0.5 + _rng.nextDouble() * 0.5)],
     1 => [const PersonAbsent()],
@@ -27,6 +27,8 @@ List<AttentionEvent> _randomEvent() {
       ],
     9 => [const Tick()],
     10 => [AttentionError('scope', fatal: _rng.nextBool())],
+    11 => [const EnterSleep()],
+    12 => [const ExitSleep()],
     _ => [const VisionDegraded(), const VisionRecovered()],
   };
 }

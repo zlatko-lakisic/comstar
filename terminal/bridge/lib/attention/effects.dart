@@ -96,3 +96,11 @@ final class LogAttention extends Effect {
   final String msg;
   final Map<String, dynamic>? data;
 }
+
+final class EnteredSleep extends Effect {
+  const EnteredSleep();
+}
+
+final class ExitedSleep extends Effect {
+  const ExitedSleep();
+}

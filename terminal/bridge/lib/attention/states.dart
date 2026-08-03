@@ -8,6 +8,7 @@ sealed class AttentionState {
         Engaged() => 'engaged',
         Listening() => 'listening',
         Responding() => 'responding',
+        Sleeping() => 'sleeping',
       };
 }
 
@@ -29,4 +30,8 @@ final class Listening extends AttentionState {
 
 final class Responding extends AttentionState {
   const Responding();
+}
+
+final class Sleeping extends AttentionState {
+  const Sleeping();
 }

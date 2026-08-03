@@ -133,20 +133,30 @@ class AttentionMachine {
       return _fatalError(from, effects);
     }
 
-    switch (context.state) {
-      case Ambient():
-        _handleAmbient(event, effects);
-      case Noticed():
-        _handleNoticed(event, effects);
-      case Engaged():
-        _handleEngaged(event, effects);
-      case Listening():
-        _handleListening(event, effects);
-      case Responding():
-        _handleResponding(event, effects);
-    }
+    if (event is EnterSleep) {
+      if (context.state is! Sleeping) {
+        _enterSleep(effects);
+      }
+    } else {
+      switch (context.state) {
+        case Ambient():
+          _handleAmbient(event, effects);
+        case Noticed():
+          _handleNoticed(event, effects);
+        case Engaged():
+          _handleEngaged(event, effects);
+        case Listening():
+          _handleListening(event, effects);
+        case Responding():
+          _handleResponding(event, effects);
+        case Sleeping():
+          _handleSleeping(event, effects);
+      }
 
-    _handleGlobalVision(event, effects);
+      if (context.state is! Sleeping) {
+        _handleGlobalVision(event, effects);
+      }
+    }
 
     final to = context.state;
     if (from.name != to.name) {
@@ -389,6 +399,57 @@ class AttentionMachine {
       default:
         break;
     }
+  }
+
+  void _handleSleeping(AttentionEvent event, List<Effect> effects) {
+    switch (event) {
+      case WakeWord():
+        effects.add(const ExitedSleep());
+        _enterListening(effects);
+      case ExitSleep():
+        effects.add(const ExitedSleep());
+        if (context.sessionOpen) {
+          context.state = const Engaged();
+          context.turnId = null;
+          context.sttPending = false;
+          context.playing = false;
+          context.followUpOpen = false;
+          context.followUpListening = false;
+          context.wakeEnabled = true;
+          effects.add(const EnableWake(true));
+          effects.add(SetVisionFps(context.config.vision.engagedFps));
+        } else {
+          _returnAmbient(effects, closeSession: false);
+          context.wakeEnabled = true;
+          effects.add(const EnableWake(true));
+        }
+      default:
+        // Vision, VAD, follow-up — ignored while dormant.
+        break;
+    }
+  }
+
+  void _enterSleep(List<Effect> effects) {
+    final stopMic = context.state is Listening || context.followUpListening;
+    if (stopMic) {
+      effects.add(const StopListening());
+    }
+    if (context.state is Responding || context.directAgentInFlight) {
+      context.directAgentInFlight = false;
+      effects.add(const SetThinking(false));
+    }
+    context.state = const Sleeping();
+    context.turnId = null;
+    context.sttPending = false;
+    context.playing = false;
+    context.followUpOpen = false;
+    context.followUpListening = false;
+    context.followUpOpenedAtMs = null;
+    context.followUpMicArmedAtMs = null;
+    context.wakeEnabled = true;
+    effects.add(const EnableWake(true));
+    effects.add(const EnteredSleep());
+    effects.add(SetVisionFps(context.config.vision.ambientFps));
   }
 
   Transition _fatalError(AttentionState from, List<Effect> effects) {

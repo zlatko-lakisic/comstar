@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
@@ -5,13 +6,16 @@ import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as shelf_io;
 
 import 'package:comstar_bridge/log.dart';
+import 'package:comstar_bridge/terminal_control.dart';
 
-/// Loopback HTTP server for TTS WAVs and (optionally) kiosk static assets.
+/// Loopback HTTP server for TTS WAVs, kiosk assets, and terminal control.
 class HttpAudioServer {
   HttpAudioServer({
     this.host = '127.0.0.1',
     this.port = 8776,
     this.kioskRoot,
+    this.control,
+    this.onSleepAction,
   });
 
   final String host;
@@ -19,6 +23,13 @@ class HttpAudioServer {
 
   /// Directory containing `index.html` / `avatar.js` / `bridge_client.js`.
   final String? kioskRoot;
+
+  /// Speaker volume + soft soft-state (CONTRACTS §5).
+  TerminalControl? control;
+
+  /// Called for sleep enter/exit so the attention machine can transition.
+  /// Returns true if the action was accepted.
+  Future<bool> Function(String action)? onSleepAction;
 
   HttpServer? _server;
   final _files = <String, String>{};
@@ -43,11 +54,16 @@ class HttpAudioServer {
   }
 
   Future<Response> _handle(Request request) async {
+    final path = request.url.path;
+
+    if (path == 'control/sleep' || path == 'control/volume') {
+      return _handleControl(request, path);
+    }
+
     if (request.method != 'GET') {
       return Response(405, body: 'Method not allowed');
     }
 
-    final path = request.url.path;
     if (path == 'kiosk' || path.startsWith('kiosk/')) {
       logDebug('kiosk_http', 'serve', data: {'path': path});
       return _serveKiosk(path);
@@ -70,6 +86,99 @@ class HttpAudioServer {
       },
     );
   }
+
+  Future<Response> _handleControl(Request request, String path) async {
+    final ctrl = control;
+    if (ctrl == null) {
+      return _json(503, {'ok': false, 'error': 'control_unavailable'});
+    }
+
+    if (path == 'control/sleep') {
+      if (request.method == 'GET') {
+        return _json(200, ctrl.sleepStatus());
+      }
+      if (request.method != 'POST') {
+        return Response(405, body: 'Method not allowed');
+      }
+      final body = await _readJson(request);
+      final action = (body['action'] ?? 'enter').toString();
+      if (action != 'enter' && action != 'exit') {
+        return _json(400, {'ok': false, 'error': 'bad_action'});
+      }
+      final hook = onSleepAction;
+      if (hook != null) {
+        final ok = await hook(action);
+        if (!ok) {
+          return _json(500, {'ok': false, 'error': 'sleep_action_failed'});
+        }
+      } else if (action == 'enter') {
+        ctrl.sleepEnter();
+      } else {
+        ctrl.sleepExit();
+      }
+      return _json(
+        200,
+        action == 'enter'
+            ? {'ok': true, 'state': 'sleeping'}
+            : {'ok': true, 'state': 'awake'},
+      );
+    }
+
+    // control/volume
+    if (request.method == 'GET') {
+      return _json(200, ctrl.volumeGet());
+    }
+    if (request.method != 'POST') {
+      return Response(405, body: 'Method not allowed');
+    }
+    final body = await _readJson(request);
+    final action = (body['action'] ?? 'set').toString();
+    Map<String, dynamic> result;
+    switch (action) {
+      case 'get':
+        result = ctrl.volumeGet();
+      case 'set':
+        final percent = body['percent'];
+        if (percent is! num) {
+          return _json(400, {'ok': false, 'error': 'percent_required'});
+        }
+        result = ctrl.volumeSet(percent.toInt());
+      case 'adjust':
+        final delta = body['delta'];
+        if (delta is! num) {
+          return _json(400, {'ok': false, 'error': 'delta_required'});
+        }
+        result = ctrl.volumeAdjust(delta.toInt());
+      case 'mute':
+        final muted = body['muted'];
+        if (muted is! bool) {
+          return _json(400, {'ok': false, 'error': 'muted_required'});
+        }
+        result = ctrl.volumeMute(muted);
+      default:
+        return _json(400, {'ok': false, 'error': 'bad_action'});
+    }
+    return _json(result['ok'] == true ? 200 : 500, result);
+  }
+
+  Future<Map<String, dynamic>> _readJson(Request request) async {
+    try {
+      final raw = await request.readAsString();
+      if (raw.trim().isEmpty) return {};
+      final decoded = jsonDecode(raw);
+      if (decoded is Map<String, dynamic>) return decoded;
+      if (decoded is Map) {
+        return decoded.map((k, v) => MapEntry(k.toString(), v));
+      }
+    } catch (_) {}
+    return {};
+  }
+
+  Response _json(int status, Map<String, dynamic> body) => Response(
+        status,
+        body: jsonEncode(body),
+        headers: {'Content-Type': 'application/json'},
+      );
 
   Future<Response> _serveKiosk(String urlPath) async {
     final root = kioskRoot;
@@ -123,7 +232,5 @@ class HttpAudioServer {
   Future<void> stop() async {
     await _server?.close(force: true);
     _server = null;
-    _files.clear();
-    logInfo('audio_http_stopped', 'TTS HTTP server stopped');
   }
 }

@@ -17,19 +17,22 @@ void assertInvariants(MachineContext ctx, {bool throwOnViolation = true}) {
 List<String> collectInvariantViolations(MachineContext ctx) {
   final violations = <String>[];
 
-  final sessionStates = ctx.state is Engaged ||
-      ctx.state is Listening ||
-      ctx.state is Responding;
-  final hasSession = ctx.sessionOpen;
+  // Sleeping may keep an AO session open until wake/exit tears it down.
+  if (ctx.state is! Sleeping) {
+    final sessionStates = ctx.state is Engaged ||
+        ctx.state is Listening ||
+        ctx.state is Responding;
+    final hasSession = ctx.sessionOpen;
 
-  if (hasSession != sessionStates) {
-    violations.add(
-      'sessionOpen ($hasSession) != state in engaged/listening/responding ($sessionStates)',
-    );
+    if (hasSession != sessionStates) {
+      violations.add(
+        'sessionOpen ($hasSession) != state in engaged/listening/responding ($sessionStates)',
+      );
+    }
   }
 
-  final wakeShouldBeArmed = ctx.state is! Listening &&
-      !(ctx.halfDuplex && ctx.playing);
+  final wakeShouldBeArmed = ctx.state is Sleeping ||
+      (ctx.state is! Listening && !(ctx.halfDuplex && ctx.playing));
   if (ctx.wakeEnabled != wakeShouldBeArmed) {
     violations.add(
       'wakeEnabled (${ctx.wakeEnabled}) != expected ($wakeShouldBeArmed)',

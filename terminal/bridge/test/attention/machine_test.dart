@@ -407,5 +407,47 @@ void main() {
         m.context.config.vision.ambientFps,
       );
     });
+
+    test('EnterSleep from engaged keeps session and arms wake', () {
+      final m = _machine();
+      _apply(m, const PersonDetected(0.85));
+      _apply(m, const FaceRecognized('zlatko', 0.9));
+      expect(m.state, isA<Engaged>());
+      expect(m.context.sessionOpen, isTrue);
+
+      final t = m.handle(const EnterSleep());
+      expect(m.state, isA<Sleeping>());
+      expect(m.context.sessionOpen, isTrue);
+      expect(m.context.wakeEnabled, isTrue);
+      expect(_hasEffectType<EnteredSleep>(t.effects), isTrue);
+      expect(_hasEffectType<EnableWake>(t.effects), isTrue);
+      assertInvariants(m.context);
+    });
+
+    test('Sleeping ignores face and VAD', () {
+      final m = _machine();
+      _apply(m, const EnterSleep());
+      _apply(m, const PersonDetected(0.99));
+      _apply(m, const FaceRecognized('zlatko', 0.99));
+      _apply(m, const SpeechStart());
+      _apply(m, const SpeechEnd(500));
+      expect(m.state, isA<Sleeping>());
+      expect(m.context.sessionOpen, isFalse);
+    });
+
+    test('WakeWord exits sleep to Listening', () {
+      final m = _machine();
+      _apply(m, const PersonDetected(0.85));
+      _apply(m, const FaceRecognized('zlatko', 0.9));
+      _apply(m, const EnterSleep());
+      expect(m.state, isA<Sleeping>());
+
+      final t = m.handle(const WakeWord(0.9));
+      expect(m.state, isA<Listening>());
+      expect(m.context.sessionOpen, isTrue);
+      expect(_hasEffectType<ExitedSleep>(t.effects), isTrue);
+      expect(_hasEffectType<StartListening>(t.effects), isTrue);
+      assertInvariants(m.context);
+    });
   });
 }

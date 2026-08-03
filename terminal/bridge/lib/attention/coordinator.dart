@@ -17,6 +17,7 @@ import 'package:comstar_bridge/local_ws.dart';
 import 'package:comstar_bridge/log.dart';
 import 'package:comstar_bridge/session.dart';
 import 'package:comstar_bridge/stt.dart';
+import 'package:comstar_bridge/terminal_control.dart';
 import 'package:comstar_bridge/tts.dart';
 import 'package:comstar_bridge/vision/vision_poller.dart' as vision;
 import 'package:path/path.dart' as p;
@@ -31,14 +32,20 @@ class AttentionCoordinator {
     required this.stt,
     required this.tts,
     required this.audioServer,
+    TerminalControl? control,
     Clock? clock,
     this.fallbackAudioDir,
   })  : clock = clock ?? SystemClock(),
+        control = control ?? TerminalControl(),
         machine = AttentionMachine(
           config: config,
           clock: clock ?? SystemClock(),
         ),
-        runner = EffectRunner();
+        runner = EffectRunner() {
+    this.control.loadPersistedVolume();
+    audioServer.control = this.control;
+    audioServer.onSleepAction = _onSleepHttp;
+  }
 
   final ComstarConfig config;
   final LocalWs ws;
@@ -46,6 +53,7 @@ class AttentionCoordinator {
   final SttClient stt;
   final TtsEngine tts;
   final HttpAudioServer audioServer;
+  final TerminalControl control;
   final Clock clock;
   final AttentionMachine machine;
   final EffectRunner runner;
@@ -254,12 +262,38 @@ class AttentionCoordinator {
             _broadcastPhase('engaged', detail: userid ?? '');
           case 'ambient':
             _broadcastPhase('idle', detail: '');
+          case 'sleeping':
+            _broadcastPhase('sleeping', detail: 'Sleeping…');
           default:
             break;
         }
+      case EnteredSleep():
+        control.sleepEnter();
+        _followUpTimer?.cancel();
+        _followUpTimer = null;
+        _broadcastPhase('sleeping', detail: 'Sleeping…');
+        _broadcastKiosk(
+          Envelope.create(type: 'listening', data: {'active': false}),
+        );
+      case ExitedSleep():
+        control.sleepExit();
       case LogAttention():
         break;
     }
+  }
+
+  Future<bool> _onSleepHttp(String action) async {
+    if (action == 'enter') {
+      handle(const EnterSleep());
+      return machine.state is Sleeping;
+    }
+    if (action == 'exit') {
+      if (machine.state is Sleeping) {
+        handle(const ExitSleep());
+      }
+      return machine.state is! Sleeping;
+    }
+    return false;
   }
 
   void _openFollowUpWindow() {

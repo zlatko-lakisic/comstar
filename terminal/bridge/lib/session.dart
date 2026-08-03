@@ -71,19 +71,63 @@ class AoReachSessionBridge implements ReachSessionBridge {
       );
 }
 
-/// MCP bootstrap for COMSTAR — terminal MCP tunnel added in M5.4.
+/// MCP bootstrap for COMSTAR — tunnelled `client.terminal` (M5.4 / ADR 0004).
 class ComstarMcpBootstrap implements SessionMcpBootstrap {
-  const ComstarMcpBootstrap(this.config);
+  ComstarMcpBootstrap(this.config);
 
   final ComstarConfig config;
+
+  /// When true, skip terminal MCP registration (CONTRACTS §5 guests).
+  bool guest = false;
 
   @override
   Future<SessionMcpBootstrapResult> prepare(
     LocalMcpHost host, {
     required bool mcpTunnel,
   }) async {
-    // Terminal MCP tunnel wiring lands in M5.4; agents-only for now.
-    return SessionMcpBootstrapResult.empty;
+    if (guest) {
+      return SessionMcpBootstrapResult.empty;
+    }
+    if (!mcpTunnel) {
+      return const SessionMcpBootstrapResult(
+        warnings: ['mcp tunnel disabled; terminal MCP not registered'],
+      );
+    }
+
+    try {
+      final mcpRoot = _resolveMcpRoot();
+      await host.startPythonModule(
+        alias: 'terminal',
+        module: 'terminal_mcp',
+        extraEnv: {
+          'PYTHONPATH': mcpRoot,
+          'COMSTAR_CONTROL_URL': 'http://127.0.0.1:8776',
+        },
+      );
+      return SessionMcpBootstrapResult(
+        mcps: [
+          sessionTunnelMcpEntry(
+            clientId: 'client.terminal',
+            description: 'COMSTAR terminal control (sleep, volume, display)',
+            alias: 'terminal',
+          ),
+        ],
+        activeTunnelBareIds: const ['terminal'],
+      );
+    } catch (e) {
+      logWarn('mcp_terminal_bootstrap', 'Terminal MCP unavailable: $e');
+      return SessionMcpBootstrapResult(
+        warnings: ['terminal MCP soft-fail: $e'],
+      );
+    }
+  }
+
+  /// Directory that contains the `terminal_mcp` package (`…/mcp`).
+  String _resolveMcpRoot() {
+    final overlay = Directory(config.orchestration.overlayRoot).absolute;
+    // overlays/comstar → repo root → mcp
+    final repoRoot = overlay.parent.parent;
+    return '${repoRoot.path}/mcp';
   }
 }
 
@@ -113,13 +157,13 @@ class ComstarSession {
   static const voiceAgentId = 'client.voice_responder';
   static const greeterAgentId = 'client.greeter';
 
-  /// Hosted MCP ids for known-user voice turns.
+  /// Hosted + tunnelled MCP ids for known-user voice turns.
   ///
   /// Do not list catalog-missing ids (`memory`, `time`, `math`, `vision`).
-  static const fullMcpProviders = <String>['home_assistant'];
+  static const fullMcpProviders = <String>['home_assistant', 'client.terminal'];
 
   static const guestMcpProviders = <String>[
-    // Restricted: no home_assistant / memory. Empty until tunnelled terminal MCP ships.
+    // Restricted: no home_assistant / terminal control.
   ];
 
   static const greeterMcpProviders = <String>[];
@@ -135,6 +179,11 @@ class ComstarSession {
 
     _userid = userid;
     _guest = guest;
+
+    final boot = _mcpBootstrap;
+    if (boot is ComstarMcpBootstrap) {
+      boot.guest = guest;
+    }
 
     final headers = <String, String>{
       'x-agentic-user-name': guest ? 'guest' : userid,
