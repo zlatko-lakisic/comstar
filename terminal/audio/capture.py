@@ -96,10 +96,12 @@ class AudioCapture:
         *,
         sample_rate: int = SAMPLE_RATE,
         block_ms: int = 100,
+        device: int | str | None = None,
         on_level: Callable[[float], None] | None = None,
     ) -> None:
         self.sample_rate = sample_rate
         self.block_ms = block_ms
+        self.device = device
         self.on_level = on_level
         self.ring = RingBuffer(sample_rate=sample_rate, seconds=RING_SECONDS)
         self._stream: sd.InputStream | None = None
@@ -117,6 +119,7 @@ class AudioCapture:
             channels=CHANNELS,
             dtype=DTYPE,
             blocksize=blocksize,
+            device=self.device,
             callback=self._callback,
         )
         self._stream.start()

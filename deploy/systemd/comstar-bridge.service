@@ -8,10 +8,14 @@ Type=simple
 WorkingDirectory=/opt/comstar/src/terminal/bridge
 Environment=COMSTAR_CONFIG=/opt/comstar/src/config/comstar.yaml
 Environment=COMSTAR_CPAI_URL=http://10.0.10.16:32168
+# Camera: /dev/video0 on Pi, or e.g. avfoundation:0 on Mac
+Environment=COMSTAR_CAMERA_SOURCE=/dev/video0
 Environment=COMSTAR_CAMERA_INPUT=/dev/video0
 Environment=COMSTAR_VISION=1
 Environment=COMSTAR_LOG=info
 Environment=COMSTAR_LOCAL_SPEAKER=1
+# Speaker sink for paplay fallback when no kiosk (PipeWire/Pulse name or default)
+# Environment=COMSTAR_SPEAKER_SOURCE=comstar_hdmi
 Environment=COMSTAR_STT_URL=http://127.0.0.1:8090
 Environment=PATH=/opt/comstar/bin:/usr/local/bin:/usr/bin:/bin
 Environment=LD_LIBRARY_PATH=/opt/comstar/bin

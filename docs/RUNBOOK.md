@@ -16,6 +16,9 @@ Hardware baseline: `docs/BASELINES.md`. Dev workflow: `docs/DEV_LOOP.md`.
 | Piper TTS | `/usr/local/bin/piper` → `/opt/comstar/bin/piper`; voice `/opt/comstar/models/en_US-lessac-medium.onnx` |
 | Local STT | `comstar-stt` on `127.0.0.1:8090` (faster-whisper `tiny`) |
 | Local speaker | `COMSTAR_LOCAL_SPEAKER=1` plays via `paplay` when kiosk absent |
+| Camera source | `COMSTAR_CAMERA_SOURCE` (alias: `COMSTAR_CAMERA_INPUT`) — e.g. `/dev/video0` |
+| Mic source | `COMSTAR_MIC_SOURCE` — sounddevice index or name substring (e.g. `C525`) |
+| Speaker source | `COMSTAR_SPEAKER_SOURCE` — Pulse/PipeWire sink for local `paplay` |
 | `~/.config/systemd/user/` | User units: `comstar-bridge`, `comstar-audio`, `comstar-kiosk` |
 
 Deploy from the Mac:
@@ -36,8 +39,8 @@ cd /opt/comstar/src
 ./scripts/enroll_face.sh <userid>
 ```
 
-Defaults: camera `/dev/video0`, CPAI `http://10.0.10.16:32168`. Override with
-`COMSTAR_CAMERA_DEVICE`, `CPAI_URL`, or `COMSTAR_ENROLL_DIR`.
+Defaults: camera `/dev/video0` (`COMSTAR_CAMERA_SOURCE`), CPAI `http://10.0.10.16:32168`.
+Override with `COMSTAR_CAMERA_SOURCE`, `CPAI_URL`, or `COMSTAR_ENROLL_DIR`.
 
 Verify with CPAI face list:
 

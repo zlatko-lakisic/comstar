@@ -8,6 +8,7 @@ import 'package:comstar_bridge/attention/coordinator.dart';
 import 'package:comstar_bridge/config.dart';
 import 'package:comstar_bridge/dev_inject.dart';
 import 'package:comstar_bridge/envelope.dart';
+import 'package:comstar_bridge/env_sources.dart';
 import 'package:comstar_bridge/host_metrics.dart';
 import 'package:comstar_bridge/http_audio_server.dart';
 import 'package:comstar_bridge/local_ws.dart';
@@ -110,7 +111,7 @@ Future<void> main(List<String> arguments) async {
 
   final visionEnabled = Platform.environment['COMSTAR_VISION'] == '1';
   if (visionEnabled) {
-    final cameraInput = Platform.environment['COMSTAR_CAMERA_INPUT'];
+    final cameraInput = cameraSource();
     final camera = cameraInput != null && cameraInput.isNotEmpty
         ? FfmpegCamera(input: cameraInput)
         : StubCamera();
@@ -254,7 +255,7 @@ Future<void> _runVisionOnce() async {
 
   final client = CpaiClient(config: vision);
   try {
-    final input = Platform.environment['COMSTAR_CAMERA_INPUT'];
+    final input = cameraSource();
     Uint8List frame;
     if (input != null && input.isNotEmpty) {
       final camera = FfmpegCamera(input: input);

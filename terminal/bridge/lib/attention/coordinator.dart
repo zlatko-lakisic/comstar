@@ -11,6 +11,7 @@ import 'package:comstar_bridge/attention/runner.dart';
 import 'package:comstar_bridge/attention/states.dart';
 import 'package:comstar_bridge/config.dart';
 import 'package:comstar_bridge/envelope.dart';
+import 'package:comstar_bridge/env_sources.dart';
 import 'package:comstar_bridge/http_audio_server.dart';
 import 'package:comstar_bridge/local_ws.dart';
 import 'package:comstar_bridge/log.dart';
@@ -923,10 +924,18 @@ class AttentionCoordinator {
     if (!allowLocal) return;
     final path = audioServer.filePathForUrl(audioUrl);
     if (path == null) return;
+    final sink = speakerSource();
     try {
-      final paplay = await Process.run('paplay', [path]);
+      final paplayArgs = <String>[
+        if (sink != null) ...['--device=$sink'],
+        path,
+      ];
+      final paplay = await Process.run('paplay', paplayArgs);
       if (paplay.exitCode == 0) {
-        logInfo('local_speaker', 'Played via paplay', data: {'path': path});
+        logInfo('local_speaker', 'Played via paplay', data: {
+          'path': path,
+          'speaker_source': sink ?? 'default',
+        });
         // Synthetic speak.ended if kiosk absent so follow-up can open.
         if (!ws.hasRole('kiosk')) {
           _cancelSpeakWatchdog();
@@ -934,9 +943,16 @@ class AttentionCoordinator {
         }
         return;
       }
-      final aplay = await Process.run('aplay', [path]);
+      final aplayArgs = <String>[
+        if (sink != null) ...['-D', sink],
+        path,
+      ];
+      final aplay = await Process.run('aplay', aplayArgs);
       if (aplay.exitCode == 0) {
-        logInfo('local_speaker', 'Played via aplay', data: {'path': path});
+        logInfo('local_speaker', 'Played via aplay', data: {
+          'path': path,
+          'speaker_source': sink ?? 'default',
+        });
         if (!ws.hasRole('kiosk')) {
           _cancelSpeakWatchdog();
           handle(const PlaybackEnded());
@@ -946,6 +962,7 @@ class AttentionCoordinator {
       logWarn('local_speaker_failed', 'paplay/aplay failed', data: {
         'paplay': paplay.exitCode,
         'aplay': aplay.exitCode,
+        'speaker_source': sink ?? 'default',
       });
     } catch (e) {
       logWarn('local_speaker_failed', e.toString());

@@ -9,6 +9,7 @@ from typing import Any
 
 from bridge_client import BridgeClient
 from capture import AudioCapture
+from devices import describe_input_device, mic_source_spec, resolve_sounddevice_input
 from log import log_info, log_warn
 from stream import PcmStreamer
 from vad import VadEngine
@@ -26,6 +27,13 @@ async def _main() -> None:
     force_wake_score = os.environ.get("COMSTAR_FORCE_WAKE_SCORE") or None
     if force_wake_score is not None and not force_wake_score.strip():
         force_wake_score = None
+
+    mic_spec = mic_source_spec()
+    try:
+        mic_device = resolve_sounddevice_input(mic_spec)
+    except Exception as exc:  # noqa: BLE001
+        log_warn("mic_source_invalid", str(exc), data={"spec": mic_spec})
+        raise
 
     client = BridgeClient()
     loop = asyncio.get_running_loop()
@@ -48,7 +56,7 @@ async def _main() -> None:
         await client.send_binary(data)
 
     try:
-        capture = AudioCapture(on_level=lambda _rms: None)
+        capture = AudioCapture(device=mic_device, on_level=lambda _rms: None)
         capture.start()
         vad = VadEngine(silence_ms=vad_silence_ms)
         wake = WakeWordEngine(wakeword_model, threshold=wakeword_threshold)
@@ -65,6 +73,8 @@ async def _main() -> None:
                 "wakeword_available": wake.available,
                 "force_wake": force_wake_score is not None,
                 "vad": "silero" if vad.using_silero else "energy",
+                "mic_source": mic_spec or "default",
+                "mic_device": describe_input_device(mic_device),
             },
         )
     except Exception as exc:  # noqa: BLE001

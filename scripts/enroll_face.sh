@@ -6,7 +6,7 @@ set -euo pipefail
 USERID="${1:-}"
 N="${2:-8}"
 CPAI_URL="${CPAI_URL:-http://10.0.10.16:32168}"
-DEVICE="${COMSTAR_CAMERA_DEVICE:-/dev/video0}"
+DEVICE="${COMSTAR_CAMERA_SOURCE:-${COMSTAR_CAMERA_DEVICE:-${COMSTAR_CAMERA_INPUT:-/dev/video0}}}"
 OUTDIR="${COMSTAR_ENROLL_DIR:-/tmp/comstar-enroll-$USERID}"
 
 if [[ -z "$USERID" ]]; then

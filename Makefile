@@ -31,7 +31,7 @@ logs:
 
 test:
 	cd terminal/bridge && dart test
-	cd terminal/audio && python3 -m unittest test_capture test_stream test_wakeword
+	cd terminal/audio && python3 -m unittest test_capture test_stream test_wakeword test_vad test_devices
 
 verify-cpai:
 	@CPAI_URL=$${CPAI_URL:-http://10.0.10.16:32168} ./scripts/verify_cpai.sh
