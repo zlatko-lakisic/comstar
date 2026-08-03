@@ -167,6 +167,20 @@ void main() {
       expect(fake.lastMcpIds, equals(['home_assistant']));
     });
 
+    test('google calendar utterance uses google MCP only', () async {
+      fake.fakeRegisteredMcpIds = const [
+        'client.google_workspace',
+        'client.terminal',
+      ];
+      await session.open(userid: 'zlatko', guest: false);
+      expect(
+        session.mcpProvidersForVoice(utterance: "What's on my calendar today?"),
+        equals(['client.google_workspace']),
+      );
+      await session.directVoice('What is on my Google Calendar today?');
+      expect(fake.lastMcpIds, equals(['client.google_workspace']));
+    });
+
     test('guest MCP list excludes google workspace and terminal', () async {
       fake.fakeRegisteredMcpIds = const [
         'client.google_workspace',

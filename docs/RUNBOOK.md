@@ -338,7 +338,16 @@ Requires **Node.js ≥20** (global `crypto`; mcp-proxy 5.12+):
 ```bash
 # Debian/Pi example (NodeSource 20.x), then:
 npm install --prefix ~/.local mcp-server-google-workspace@0.2.6
+bash scripts/patch_google_mcp_schema.sh   # CrewAI rejects union JSON Schema types
 node -v   # must be v20+
+```
+
+Live connectivity (read-only prompts):
+
+```bash
+bash scripts/google_workspace_e2e.sh
+# AO + tunnel (from terminal/bridge):
+#   dart run tool/google_workspace_ao_e2e.dart
 ```
 
 1. Create a Google Cloud OAuth client (**TVs and Limited Input devices**). Enable

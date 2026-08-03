@@ -17,6 +17,8 @@ import 'package:comstar_bridge/google/pairing_status.dart';
 import 'package:comstar_bridge/google/qr_svg.dart';
 import 'package:comstar_bridge/google/token_store.dart';
 import 'package:comstar_bridge/google_intent.dart';
+import 'package:comstar_bridge/google_data_intent.dart';
+import 'package:comstar_bridge/google/workspace_client.dart';
 import 'package:comstar_bridge/http_audio_server.dart';
 import 'package:comstar_bridge/local_ws.dart';
 import 'package:comstar_bridge/log.dart';
@@ -742,10 +744,23 @@ class AttentionCoordinator {
         );
         final alreadyFollowUp = machine.context.followUpListening ||
             machine.context.followUpOpen;
+        final micNeverArmed = machine.context.followUpMicArmedAtMs == null;
         handle(const PlaybackEnded());
-        // Defensive: if machine did not open follow-up (wrong state), open it.
-        // Skip if a premature watchdog already armed follow-up — do not double-arm.
+        // Defensive: open follow-up if the machine did not; re-open when a
+        // premature PlaybackEnded raced greeter (_followUpGen) and cancelled
+        // settle before the mic was armed.
         if (machine.state is Engaged &&
+            alreadyFollowUp &&
+            micNeverArmed &&
+            machine.context.followUpMicArmedAtMs == null) {
+          logWarn(
+            'followup_rearm',
+            'Re-opening follow-up after speak.ended (mic never armed)',
+          );
+          machine.context.followUpOpen = true;
+          machine.context.followUpOpenedAtMs = clock.nowMs;
+          _openFollowUpWindow();
+        } else if (machine.state is Engaged &&
             !machine.context.followUpListening &&
             !alreadyFollowUp) {
           logWarn('followup_fallback', 'Opening follow-up after speak.ended');
@@ -1058,12 +1073,15 @@ class AttentionCoordinator {
       final google = await _tryGoogleIntent(text, turnId);
       if (google) return;
 
+      final googleData = await _tryGoogleDataIntent(text, turnId);
+      if (googleData) return;
+
       final clipped =
           text.length > 500 ? '${text.substring(0, 500)}…' : text;
       logInfo('direct_agent', 'Calling voice agent', data: {
         'turn_id': turnId,
         'text': clipped,
-        'mcp': session.mcpProvidersForVoice(),
+        'mcp': session.mcpProvidersForVoice(utterance: text),
       });
       final response = await session.directVoice(text);
       if (response.trim().isEmpty) {
@@ -1098,6 +1116,89 @@ class AttentionCoordinator {
       );
     } finally {
       turnSpan.close();
+    }
+  }
+
+  Future<bool> _tryGoogleDataIntent(String text, String turnId) async {
+    final intent = parseGoogleDataIntent(text);
+    if (intent == null) return false;
+    if (session.guest || session.userid == null) {
+      await _speakText(
+        'Google data is only available when I recognize you.',
+        turnId,
+      );
+      return true;
+    }
+    if (!googleOAuth.isConfigured) {
+      await _speakText('Google is not configured on this terminal yet.', turnId);
+      return true;
+    }
+    final userid = session.userid!;
+    final refresh = await googleTokens.readRefreshToken(userid);
+    if (refresh == null || refresh.isEmpty) {
+      await _speakText(
+        'Google is not connected. Say connect my Google to link it.',
+        turnId,
+      );
+      return true;
+    }
+
+    final clientId = Platform.environment['GOOGLE_CLIENT_ID']?.trim() ?? '';
+    final clientSecret =
+        Platform.environment['GOOGLE_CLIENT_SECRET']?.trim() ?? '';
+    if (clientId.isEmpty || clientSecret.isEmpty) {
+      await _speakText('Google OAuth client is not configured.', turnId);
+      return true;
+    }
+
+    final gw = GoogleWorkspaceClient(
+      clientId: clientId,
+      clientSecret: clientSecret,
+      refreshToken: refresh,
+    );
+    try {
+      late final String spoken;
+      switch (intent.kind) {
+        case GoogleDataIntentKind.calendarToday:
+          final titles = await gw.listTodayEventTitles();
+          spoken = speakCalendarToday(titles);
+        case GoogleDataIntentKind.calendarList:
+          final names = await gw.listCalendarNames();
+          spoken = speakCalendarList(names);
+        case GoogleDataIntentKind.driveList:
+          final n = await gw.countDriveFiles();
+          spoken = speakDriveCount(n);
+        case GoogleDataIntentKind.gmailToday:
+          try {
+            final subjects = await gw.listRecentGmailSubjects();
+            spoken = speakGmailSubjects(subjects);
+          } catch (e) {
+            logWarn('google_gmail_read', e.toString());
+            spoken =
+                'Gmail is not authorized on this voice link. '
+                'Calendar still works. Gmail needs a Desktop OAuth token.';
+          }
+      }
+      logInfo('google_data_ok', 'Local Google read', data: {
+        'turn_id': turnId,
+        'kind': intent.kind.name,
+        'chars': spoken.length,
+        'preview': spoken.length > 160 ? '${spoken.substring(0, 160)}…' : spoken,
+      });
+      await _speakText(spoken, turnId);
+      return true;
+    } catch (e) {
+      logWarn('google_data_failed', e.toString(), data: {
+        'turn_id': turnId,
+        'kind': intent.kind.name,
+      });
+      await _speakText(
+        'I could not read that from Google right now. Try again in a moment.',
+        turnId,
+      );
+      return true;
+    } finally {
+      gw.close();
     }
   }
 

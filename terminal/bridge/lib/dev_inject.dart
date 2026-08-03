@@ -110,6 +110,10 @@ AttentionEvent? parseInjectEvent(String name, Map<String, dynamic> payload) {
       return const FaceUnknown();
     case 'WakeWord':
       return WakeWord((payload['score'] as num?)?.toDouble() ?? 0.8);
+    case 'ExitSleep':
+      return const ExitSleep();
+    case 'EnterSleep':
+      return const EnterSleep();
     case 'SpeechStart':
       return const SpeechStart();
     case 'SpeechEnd':

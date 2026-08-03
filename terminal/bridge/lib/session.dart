@@ -408,21 +408,42 @@ class ComstarSession {
     _guest = false;
   }
 
-  List<String> mcpProvidersForVoice() {
+  List<String> mcpProvidersForVoice({String? utterance}) {
     if (_guest) return List.unmodifiable(guestMcpProviders);
     final registered = _bridge.registeredMcpIds;
-    return [
+    final base = [
       for (final id in fullMcpProviders)
         if (!id.startsWith('client.') || registered.contains(id)) id,
     ];
+    // Home Assistant native MCP discovery often cancels before tunnel Google
+    // tools load; for Workspace questions attach Google alone.
+    if (utterance != null && _looksLikeGoogleWorkspace(utterance)) {
+      if (registered.contains('client.google_workspace')) {
+        return const ['client.google_workspace'];
+      }
+    }
+    return base;
+  }
+
+  static bool _looksLikeGoogleWorkspace(String text) {
+    final t = text.toLowerCase();
+    return RegExp(
+      r'\b(google|gmail|calendar|g-?cal|drive|workspace|inbox|email|e-?mail|'
+      r'meeting|appointments?|schedule)\b',
+    ).hasMatch(t);
   }
 
   Future<String> directVoice(String text) async {
+    final mcps = mcpProvidersForVoice(utterance: text);
+    final googleOnly = mcps.length == 1 && mcps.first == 'client.google_workspace';
+    final timeoutSec = googleOnly && config.orchestration.timeoutSeconds < 90
+        ? 90
+        : config.orchestration.timeoutSeconds;
     final result = await _bridge.directAgent(
       agentProviderId: voiceAgentId,
       text: text,
-      mcpProviderIds: mcpProvidersForVoice(),
-      timeout: Duration(seconds: config.orchestration.timeoutSeconds),
+      mcpProviderIds: mcps,
+      timeout: Duration(seconds: timeoutSec),
     );
     return result['text']?.toString() ?? '';
   }
