@@ -86,9 +86,7 @@ class GoogleDesktopUpgrade {
       );
       return;
     }
-    final handler = const Pipeline()
-        .addMiddleware(logRequests())
-        .addHandler(_router);
+    final handler = const Pipeline().addHandler(_router);
     // Bind LAN only when redirect base is not loopback — else localhost.
     final host = _bindHost();
     _server = await shelf_io.serve(handler, host, port);
@@ -109,8 +107,9 @@ class GoogleDesktopUpgrade {
     if (base.contains('127.0.0.1') || base.contains('localhost')) {
       return '127.0.0.1';
     }
-    // Triple-gate LAN bind: only when COMSTAR_ENV=dev (callback for house LAN).
-    if (Platform.environment['COMSTAR_ENV'] == 'dev') {
+    // Explicit opt-in — separate from WebSocket LAN triple-gate.
+    if (Platform.environment['COMSTAR_OAUTH_BIND_LAN'] == '1' ||
+        Platform.environment['COMSTAR_ENV'] == 'dev') {
       return '0.0.0.0';
     }
     return '127.0.0.1';
@@ -124,7 +123,38 @@ class GoogleDesktopUpgrade {
     if (request.method == 'GET' && path == 'oauth/google/start') {
       return _handleStart(request);
     }
+    if (request.method == 'POST' && path == 'oauth/google/resend') {
+      return _handleResend(request);
+    }
     return Response.notFound('Not found');
+  }
+
+  Future<Response> _handleResend(Request request) async {
+    try {
+      final raw = await request.readAsString();
+      final map = raw.trim().isEmpty
+          ? <String, dynamic>{}
+          : Map<String, dynamic>.from(jsonDecode(raw) as Map);
+      final userid = (map['userid']?.toString().trim().isNotEmpty == true)
+          ? map['userid'].toString().trim()
+          : 'zlatko';
+      final offer = await resendForUser(userid);
+      return Response.ok(
+        jsonEncode({
+          'ok': offer.emailed,
+          'skipped': offer.skipped,
+          'email': offer.email,
+          'reason': offer.reason,
+        }),
+        headers: {'content-type': 'application/json'},
+      );
+    } catch (e) {
+      logWarn('google_desktop_resend', e.toString());
+      return Response.internalServerError(
+        body: jsonEncode({'ok': false, 'error': e.toString()}),
+        headers: {'content-type': 'application/json'},
+      );
+    }
   }
 
   Future<Response> _handleStart(Request request) async {
@@ -197,8 +227,64 @@ class GoogleDesktopUpgrade {
     if (c != null && !c.isCompleted) c.complete(ok);
   }
 
-  /// After TV pairing: email Desktop link and wait (or soft-skip).
-  Future<GoogleDesktopUpgradeResult> offerAfterTvPairing({
+  /// Re-send Desktop upgrade email for an already-paired userid.
+  Future<GoogleDesktopUpgradeOffer> resendForUser(String userid) async {
+    final refresh = await tokens.readRefreshToken(userid);
+    if (refresh == null || refresh.isEmpty) {
+      return GoogleDesktopUpgradeOffer.skipped('no_refresh_token');
+    }
+    final kind = await tokens.readClientKind(userid);
+    final clientId = kind == GoogleOAuthClientKind.desktop
+        ? (desktopClientId ??
+            Platform.environment['GOOGLE_CLIENT_ID']?.trim() ??
+            '')
+        : (Platform.environment['GOOGLE_CLIENT_ID']?.trim() ?? '');
+    final clientSecret = kind == GoogleOAuthClientKind.desktop
+        ? (desktopClientSecret ??
+            Platform.environment['GOOGLE_CLIENT_SECRET']?.trim() ??
+            '')
+        : (Platform.environment['GOOGLE_CLIENT_SECRET']?.trim() ?? '');
+    if (clientId.isEmpty || clientSecret.isEmpty) {
+      return GoogleDesktopUpgradeOffer.skipped('no_client');
+    }
+    final access = await _refreshAccessToken(
+      refreshToken: refresh,
+      clientId: clientId,
+      clientSecret: clientSecret,
+    );
+    return offerAfterTvPairing(userid: userid, accessToken: access);
+  }
+
+  Future<String> _refreshAccessToken({
+    required String refreshToken,
+    required String clientId,
+    required String clientSecret,
+  }) async {
+    final resp = await _http.post(
+      Uri.parse('https://oauth2.googleapis.com/token'),
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: {
+        'client_id': clientId,
+        'client_secret': clientSecret,
+        'refresh_token': refreshToken,
+        'grant_type': 'refresh_token',
+      },
+    );
+    final body = jsonDecode(resp.body);
+    if (resp.statusCode < 200 || resp.statusCode >= 300 || body is! Map) {
+      throw StateError(
+        'refresh failed (${resp.statusCode}): ${resp.body}',
+      );
+    }
+    final access = body['access_token']?.toString() ?? '';
+    if (access.isEmpty) {
+      throw StateError('refresh missing access_token');
+    }
+    return access;
+  }
+
+  /// After TV pairing: email Desktop link; [done] completes when linked/expired.
+  Future<GoogleDesktopUpgradeOffer> offerAfterTvPairing({
     required String userid,
     required String? accessToken,
     String? packageRoot,
@@ -208,22 +294,12 @@ class GoogleDesktopUpgrade {
         'google_desktop_upgrade_skip',
         'SMTP/Desktop OAuth not fully configured',
       );
-      return const GoogleDesktopUpgradeResult(
-        emailed: false,
-        linked: false,
-        skipped: true,
-        reason: 'not_configured',
-      );
+      return GoogleDesktopUpgradeOffer.skipped('not_configured');
     }
 
     final email = await _fetchEmail(accessToken);
     if (email == null || email.isEmpty) {
-      return const GoogleDesktopUpgradeResult(
-        emailed: false,
-        linked: false,
-        skipped: true,
-        reason: 'no_email',
-      );
+      return GoogleDesktopUpgradeOffer.skipped('no_email');
     }
 
     final state = _newState();
@@ -256,12 +332,12 @@ class GoogleDesktopUpgrade {
       _pending.remove(state);
       _completers.remove(state);
       logWarn('google_desktop_email_failed', send.error ?? 'send failed');
-      return GoogleDesktopUpgradeResult(
+      return GoogleDesktopUpgradeOffer(
         emailed: false,
-        linked: false,
         skipped: false,
         reason: send.error ?? 'smtp_failed',
         email: email,
+        done: Future.value(false),
       );
     }
     logInfo('google_desktop_email_sent', 'Desktop upgrade email sent', data: {
@@ -269,17 +345,15 @@ class GoogleDesktopUpgrade {
       'to': email,
     });
 
-    // Wait in background until linked, expired, or timeout.
     unawaited(_expireLater(state, expires));
-    final linked = await completer.future.timeout(
-      Duration(minutes: ttlMinutes + 1),
-      onTimeout: () => false,
-    );
-    return GoogleDesktopUpgradeResult(
+    return GoogleDesktopUpgradeOffer(
       emailed: true,
-      linked: linked,
       skipped: false,
       email: email,
+      done: completer.future.timeout(
+        Duration(minutes: ttlMinutes + 1),
+        onTimeout: () => false,
+      ),
     );
   }
 
@@ -373,18 +447,26 @@ class GoogleDesktopUpgrade {
 ''';
 }
 
-class GoogleDesktopUpgradeResult {
-  const GoogleDesktopUpgradeResult({
+class GoogleDesktopUpgradeOffer {
+  GoogleDesktopUpgradeOffer({
     required this.emailed,
-    required this.linked,
     required this.skipped,
+    required this.done,
     this.reason,
     this.email,
   });
 
+  factory GoogleDesktopUpgradeOffer.skipped(String reason) =>
+      GoogleDesktopUpgradeOffer(
+        emailed: false,
+        skipped: true,
+        reason: reason,
+        done: Future.value(false),
+      );
+
   final bool emailed;
-  final bool linked;
   final bool skipped;
   final String? reason;
   final String? email;
+  final Future<bool> done;
 }

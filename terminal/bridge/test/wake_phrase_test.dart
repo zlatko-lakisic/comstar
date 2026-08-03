@@ -12,8 +12,14 @@ void main() {
   test('rejects bare hello / hey / noise', () {
     expect(isComstarWakePhrase('hello'), isFalse);
     expect(isComstarWakePhrase('hey'), isFalse);
-    expect(isComstarWakePhrase('comstar'), isFalse);
     expect(isComstarWakePhrase('hello there'), isFalse);
     expect(isComstarWakePhrase(''), isFalse);
+  });
+
+  test('accepts STT mishears of comstar', () {
+    expect(isComstarWakePhrase('hey com star'), isTrue);
+    expect(isComstarWakePhrase('hello come star'), isTrue);
+    expect(isComstarWakePhrase('comstar'), isTrue);
+    expect(isComstarWakePhrase('hi comstar'), isTrue);
   });
 }

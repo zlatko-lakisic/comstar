@@ -72,7 +72,7 @@ class SmtpMailer {
     }
     for (final file in inlineImages ?? const <File>[]) {
       if (!file.existsSync()) continue;
-      final cid = p.basename(file.path);
+      final cid = 'hero@comstar';
       message.attachments.add(
         FileAttachment(file)
           ..cid = '<$cid>'

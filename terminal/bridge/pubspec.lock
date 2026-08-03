@@ -188,10 +188,10 @@ packages:
     dependency: "direct main"
     description:
       name: mailer
-      sha256: "9f7213f57272c2a047f13ae89e68652d492f929d84ded9a618424b38da328f97"
+      sha256: c3b934c0e800ddc946167c0123a900eba5acd009abb73648d0191a742542f2b4
       url: "https://pub.dev"
     source: hosted
-    version: "7.2.0"
+    version: "6.6.0"
   matcher:
     dependency: transitive
     description:
@@ -256,14 +256,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.2.0"
-  punycoder:
-    dependency: transitive
-    description:
-      name: punycoder
-      sha256: "982734df864d9588eb13e28ac1c5a46b57e22117b3696032ac58739966cec190"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.3.0"
   qr:
     dependency: "direct main"
     description:
@@ -392,14 +384,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.4.0"
-  unorm_dart:
-    dependency: transitive
-    description:
-      name: unorm_dart
-      sha256: "0c69186b03ca6addab0774bcc0f4f17b88d4ce78d9d4d8f0619e30a99ead58e7"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.3.2"
   uuid:
     dependency: "direct main"
     description:

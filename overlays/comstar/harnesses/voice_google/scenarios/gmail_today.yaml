@@ -1,0 +1,10 @@
+id: gmail_today
+description: |
+  Ask about Gmail today (may be unauthorized on TV pairing).
+expected_output: >
+  Spoken subjects or a clear Desktop-token message — not invented mail.
+assertions:
+  - type: min_chars
+    value: 20
+fixtures:
+  inject_transcript: "What is in my Gmail today?"

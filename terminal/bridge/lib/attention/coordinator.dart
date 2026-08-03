@@ -13,6 +13,7 @@ import 'package:comstar_bridge/config.dart';
 import 'package:comstar_bridge/envelope.dart';
 import 'package:comstar_bridge/env_sources.dart';
 import 'package:comstar_bridge/google/device_pairing.dart';
+import 'package:comstar_bridge/google/desktop_upgrade.dart';
 import 'package:comstar_bridge/google/pairing_status.dart';
 import 'package:comstar_bridge/google/qr_svg.dart';
 import 'package:comstar_bridge/google/token_store.dart';
@@ -47,10 +48,12 @@ class AttentionCoordinator {
     this.fallbackAudioDir,
     GoogleTokenStore? googleTokenStore,
     GoogleDevicePairing? googlePairing,
+    GoogleDesktopUpgrade? googleDesktopUpgrade,
   })  : clock = clock ?? SystemClock(),
         control = control ?? TerminalControl(),
         googleTokens = googleTokenStore ?? GoogleTokenStore(),
         googleOAuth = googlePairing ?? GoogleDevicePairing(),
+        googleDesktop = googleDesktopUpgrade ?? GoogleDesktopUpgrade(),
         machine = AttentionMachine(
           config: config,
           clock: clock ?? SystemClock(),
@@ -70,6 +73,7 @@ class AttentionCoordinator {
   final TerminalControl control;
   final GoogleTokenStore googleTokens;
   final GoogleDevicePairing googleOAuth;
+  final GoogleDesktopUpgrade googleDesktop;
   final Clock clock;
   final AttentionMachine machine;
   final EffectRunner runner;
@@ -109,6 +113,7 @@ class AttentionCoordinator {
   var _sleepWakeVerifyInFlight = false;
   double _sleepWakeScore = 0.8;
   Timer? _sleepWakeTimer;
+  var _sleepWakeRestartCount = 0;
 
   Future<void> start({vision.VisionPoller? visionPoller}) async {
     await audioServer.start();
@@ -529,6 +534,7 @@ class AttentionCoordinator {
     if (_sleepWakeVerifyInFlight) return;
     _sleepWakeVerifyInFlight = true;
     _sleepWakeScore = score;
+    _sleepWakeRestartCount = 0;
     _captureBuffer.clear();
     _resetCaptureStats();
     final turnId = 'sleep-wake-${clock.nowMs}';
@@ -543,15 +549,17 @@ class AttentionCoordinator {
         turnId: turnId,
         data: {
           'turn_id': turnId,
-          'maxMs': 4000,
-          'preRollMs': 800,
-          'vadSettleMs': 0,
+          // Force-wake fires after the phrase; keep a long ring pre-roll so
+          // "hey comstar" is still in the buffer for STT confirm.
+          'maxMs': 7000,
+          'preRollMs': 2500,
+          'vadSettleMs': 300,
           'clearRing': false,
         },
       ),
     );
     _sleepWakeTimer?.cancel();
-    _sleepWakeTimer = Timer(const Duration(seconds: 5), () {
+    _sleepWakeTimer = Timer(const Duration(seconds: 8), () {
       unawaited(_finishSleepWakeVerify(reason: 'timeout'));
     });
   }
@@ -560,7 +568,6 @@ class AttentionCoordinator {
     if (!_sleepWakeVerifyInFlight) return;
     _sleepWakeTimer?.cancel();
     _sleepWakeTimer = null;
-    // Prevent re-entry while STT runs; still "in flight" until done.
     final score = _sleepWakeScore;
     _sendAudio(Envelope.create(type: 'listen.stop'));
     _broadcastKiosk(
@@ -574,16 +581,48 @@ class AttentionCoordinator {
 
     if (machine.state is! Sleeping) {
       _sleepWakeVerifyInFlight = false;
+      _sleepWakeRestartCount = 0;
       return;
     }
 
-    if (pcm.length < 16000 || peak < _speechPeakRms) {
+    // First eof often arrives before pre-roll speech is flushed — retry once.
+    if ((pcm.length < 32000 || peak < _speechPeakRms * 0.6) &&
+        _sleepWakeRestartCount < 1 &&
+        reason != 'timeout') {
+      _sleepWakeRestartCount++;
+      logInfo('sleep_wake_retry', 'Wake verify capture thin; listening again', data: {
+        'reason': reason,
+        'bytes': pcm.length,
+        'peak': peak,
+      });
+      final turnId = 'sleep-wake-${clock.nowMs}';
+      _sendAudio(
+        Envelope.create(
+          type: 'listen.start',
+          turnId: turnId,
+          data: {
+            'turn_id': turnId,
+            'maxMs': 7000,
+            'preRollMs': 2500,
+            'vadSettleMs': 300,
+            'clearRing': false,
+          },
+        ),
+      );
+      _sleepWakeTimer = Timer(const Duration(seconds: 8), () {
+        unawaited(_finishSleepWakeVerify(reason: 'timeout'));
+      });
+      return;
+    }
+
+    if (pcm.length < 16000 || peak < _speechPeakRms * 0.5) {
       logInfo('sleep_wake_reject', 'Wake verify too quiet / short', data: {
         'reason': reason,
         'bytes': pcm.length,
         'peak': peak,
       });
       _sleepWakeVerifyInFlight = false;
+      _sleepWakeRestartCount = 0;
       _broadcastPhase('sleeping', detail: 'Sleeping…');
       return;
     }
@@ -597,6 +636,7 @@ class AttentionCoordinator {
         'accepted': ok,
       });
       _sleepWakeVerifyInFlight = false;
+      _sleepWakeRestartCount = 0;
       if (ok && machine.state is Sleeping) {
         handle(WakeWord(score));
       } else {
@@ -604,6 +644,7 @@ class AttentionCoordinator {
       }
     } catch (e) {
       _sleepWakeVerifyInFlight = false;
+      _sleepWakeRestartCount = 0;
       logWarn('sleep_wake_stt_failed', e.toString());
       _broadcastPhase('sleeping', detail: 'Sleeping…');
     }
@@ -614,6 +655,7 @@ class AttentionCoordinator {
     _sleepWakeTimer = null;
     if (!_sleepWakeVerifyInFlight) return;
     _sleepWakeVerifyInFlight = false;
+    _sleepWakeRestartCount = 0;
     if (stopListen) {
       _sendAudio(Envelope.create(type: 'listen.stop'));
       _captureBuffer.clear();
@@ -1146,14 +1188,26 @@ class AttentionCoordinator {
     final clientId = Platform.environment['GOOGLE_CLIENT_ID']?.trim() ?? '';
     final clientSecret =
         Platform.environment['GOOGLE_CLIENT_SECRET']?.trim() ?? '';
-    if (clientId.isEmpty || clientSecret.isEmpty) {
+    final kind = await googleTokens.readClientKind(userid);
+    final deskId =
+        Platform.environment['GOOGLE_DESKTOP_CLIENT_ID']?.trim() ?? '';
+    final deskSecret =
+        Platform.environment['GOOGLE_DESKTOP_CLIENT_SECRET']?.trim() ?? '';
+    final useId = kind == GoogleOAuthClientKind.desktop && deskId.isNotEmpty
+        ? deskId
+        : clientId;
+    final useSecret =
+        kind == GoogleOAuthClientKind.desktop && deskSecret.isNotEmpty
+            ? deskSecret
+            : clientSecret;
+    if (useId.isEmpty || useSecret.isEmpty) {
       await _speakText('Google OAuth client is not configured.', turnId);
       return true;
     }
 
     final gw = GoogleWorkspaceClient(
-      clientId: clientId,
-      clientSecret: clientSecret,
+      clientId: useId,
+      clientSecret: useSecret,
       refreshToken: refresh,
     );
     try {
@@ -1454,7 +1508,11 @@ class AttentionCoordinator {
           );
 
           try {
-            await googleTokens.writeRefreshToken(userid, refresh);
+            await googleTokens.writeRefreshToken(
+              userid,
+              refresh,
+              client: GoogleOAuthClientKind.tv,
+            );
             await session.close();
             await session.open(userid: userid, guest: false);
           } catch (e) {
@@ -1474,16 +1532,27 @@ class AttentionCoordinator {
               .contains('client.google_workspace');
           _googlePairingUserCode = null;
           _broadcastPairingUi(active: false);
-          if (ok) {
-            _googlePhase = GooglePairingPhase.linked;
-            _googleLastError = null;
+          _googlePhase = GooglePairingPhase.linked;
+          _googleLastError = ok ? null : 'Workspace tools failed to start';
+
+          final offer = await googleDesktop.offerAfterTvPairing(
+            userid: userid,
+            accessToken: result.tokens?.accessToken,
+          );
+          if (offer.emailed) {
+            await _announceEngaged(
+              ok
+                  ? 'Google calendar is connected. I emailed you a link to '
+                      'enable Gmail and Drive — open it on your phone or computer.'
+                  : 'Your Google account is linked, but Workspace tools did not '
+                      'start. I still emailed you a link to finish Gmail and Drive.',
+            );
+            unawaited(_awaitDesktopUpgrade(offer));
+          } else if (ok) {
             await _announceEngaged(
               'Google is connected. I can help with calendar and Drive files.',
             );
           } else {
-            // Tokens are valid even if the local MCP process failed to start.
-            _googlePhase = GooglePairingPhase.linked;
-            _googleLastError = 'Workspace tools failed to start';
             await _announceEngaged(
               'Your Google account is linked, but Workspace tools did not start '
               'on this terminal. Say check google for status, or reconnect my Google.',
@@ -1504,6 +1573,26 @@ class AttentionCoordinator {
         _googlePairingCancel = null;
       }
     }
+  }
+
+  Future<void> _awaitDesktopUpgrade(GoogleDesktopUpgradeOffer offer) async {
+    final linked = await offer.done;
+    if (!linked) {
+      logInfo('google_desktop_upgrade_timeout', 'Desktop upgrade not completed');
+      return;
+    }
+    final userid = session.userid;
+    if (userid != null && !session.guest) {
+      try {
+        await session.close();
+        await session.open(userid: userid, guest: false);
+      } catch (e) {
+        logWarn('google_desktop_session', e.toString());
+      }
+    }
+    await _announceEngaged(
+      'Gmail and Drive are linked now. You can ask me about your inbox or files.',
+    );
   }
 
   void _cancelGooglePairing({bool announce = false}) {

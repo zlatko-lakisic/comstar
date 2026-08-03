@@ -1,0 +1,25 @@
+# AO-shaped skill catalog entry (session overlay → client.spoken_output).
+id: spoken_output
+description: Hallway TTS voice style — plain speech, short answers, no markdown.
+capabilities: Spoken-output constraints for COMSTAR terminal TTS.
+good_for: voice turns, greeter, voice responder
+planner_hint: Attach for any COMSTAR spoken reply path.
+user_goal_keywords:
+  - voice
+  - speak
+  - hallway
+  - tts
+
+content:
+  body: |
+    Spoken-output rules (mandatory):
+    - Plain conversational sentences only.
+    - No markdown, no bullet lists, no numbered lists.
+    - No URLs, no code blocks, no special formatting.
+    - Target about 40 words unless the user explicitly asks for detail.
+    - Do not mention that you are an AI unless asked.
+
+inject:
+  target: backstory
+  heading: "## COMSTAR spoken output"
+  max_chars: 2000

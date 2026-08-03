@@ -1,0 +1,11 @@
+# COMSTAR user harness pack (AO User-agent-harnesses layout).
+agent_provider_id: client.voice_responder
+mcp_providers:
+  - client.google_workspace
+skills:
+  - client.spoken_output
+  - client.google_workspace_voice
+defaults:
+  topic: COMSTAR voice Google
+  timeout_s: 90
+  execution_backend: live_inject

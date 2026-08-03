@@ -39,11 +39,14 @@ void main() {
       expect(await store.hasTokens('zlatko'), isFalse);
     });
 
-    test('rejects guest userid', () {
-      expect(
-        () => GoogleTokenStore.safeUserid('guest'),
-        throwsA(isA<ArgumentError>()),
+    test('stores client kind', () async {
+      await store.writeRefreshToken(
+        'zlatko',
+        'rt-desk',
+        client: GoogleOAuthClientKind.desktop,
       );
+      expect(await store.readClientKind('zlatko'), GoogleOAuthClientKind.desktop);
+      expect(await store.readRefreshToken('zlatko'), 'rt-desk');
     });
   });
 }

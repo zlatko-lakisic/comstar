@@ -1,0 +1,10 @@
+id: drive_list
+description: |
+  Ask what is in Google Drive (read-only connectivity).
+expected_output: >
+  Spoken Drive count or limited-access explanation — not a hard failure.
+assertions:
+  - type: min_chars
+    value: 20
+fixtures:
+  inject_transcript: "What is in my Google Drive?"

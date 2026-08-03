@@ -143,6 +143,7 @@ Future<void> main(List<String> arguments) async {
 
   final devInject = DevInjectServer(coordinator: coordinator);
   await devInject.start();
+  await coordinator.googleDesktop.start();
 
   // Push host CPU/mem to the kiosk sparkline (~1 Hz after first delta sample).
   final hostMetrics = HostMetrics();
@@ -173,6 +174,7 @@ Future<void> main(List<String> arguments) async {
     stopping = true;
     logInfo('shutdown', 'SIGTERM received, draining');
     healthTimer.cancel();
+    await coordinator?.googleDesktop.stop();
     await devInject.stop();
     await coordinator?.stop();
     stt.dispose();

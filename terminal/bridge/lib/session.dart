@@ -220,8 +220,22 @@ class ComstarMcpBootstrap implements SessionMcpBootstrap {
               break;
             }
             extraEnv[key] = token;
+            // Desktop-minted tokens must refresh with the Desktop client.
+            final kind = await tokenStore.readClientKind(uid);
+            if (kind == GoogleOAuthClientKind.desktop) {
+              final deskId =
+                  Platform.environment['GOOGLE_DESKTOP_CLIENT_ID']?.trim() ?? '';
+              final deskSecret =
+                  Platform.environment['GOOGLE_DESKTOP_CLIENT_SECRET']?.trim() ??
+                      '';
+              if (deskId.isNotEmpty && deskSecret.isNotEmpty) {
+                extraEnv['GOOGLE_CLIENT_ID'] = deskId;
+                extraEnv['GOOGLE_CLIENT_SECRET'] = deskSecret;
+              }
+            }
             continue;
           }
+          if (extraEnv.containsKey(key)) continue;
           final v = Platform.environment[key]?.trim() ?? '';
           if (v.isEmpty) {
             warnings.add('${def.id}: missing env $key');

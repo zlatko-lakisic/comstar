@@ -252,14 +252,16 @@ Overlay / `direct_agent` must keep working when `speechClient == null`.
 
 ### Overlay agents
 
-`overlays/comstar/agent_providers/voice_responder.yaml` — the conversational agent.
-Its system prompt must include a spoken-output constraint: no markdown, no lists,
-no URLs, target 40 words, because this text goes to a TTS engine and then to a
-person standing in a room.
+`overlays/comstar/` follows the AO catalog layout (`agent_providers/`,
+`agent_skills/`, `agent_harnesses/`, `harnesses/`, `mcp_providers/`). See
+`overlays/comstar/README.md`.
 
-`overlays/comstar/agent_providers/greeter.yaml` — generates the Engaged greeting.
-Separate agent because it must be fast (target <1.5s) and has a much smaller MCP
-set (`memory`, `time` only).
+`agent_providers/voice_responder.yaml` — conversational agent. Spoken-output and
+Google/tool guidance live in `agent_skills/` and are injected into `backstory` at
+pack time (AO `direct_agent` does not attach skills today).
+
+`agent_providers/greeter.yaml` — Engaged greeting (skill: `spoken_output`).
+Separate agent because it must be fast (target <1.5s) and has an empty MCP set.
 
 ---
 
@@ -308,16 +310,29 @@ session overlay as `client.google_workspace` (`tunnel://session-mcp/google_works
 
 | piece | location |
 |---|---|
-| MCP definition | `overlays/comstar/mcp_providers/google_workspace.yaml` |
-| Agent allowlist | `voice_responder.yaml` → `client.google_workspace` |
+| Overlay root | `overlays/comstar/` (AO-shaped catalogs) |
+| Agents | `agent_providers/*.yaml` → Reach `OverlayPacker` |
+| Skills | `agent_skills/*.yaml` → packer (`client.*` + backstory inject) |
+| Platform harness profiles | `agent_harnesses/` (`harness_profile:` on agents) |
+| User harness packs | `harnesses/<pack>/` (scenarios for live E2E) |
+| MCP definition | `mcp_providers/google_workspace.yaml` (tunnel bootstrap) |
+| Agent allowlist | `voice_responder.yaml` → `client.google_workspace` + skills |
 | Bootstrap | `ComstarMcpBootstrap` reads overlay MCP YAML → `extraMcps` |
 | Tokens | `~/.local/share/comstar/google/<userid>.json` (or `COMSTAR_DATA_DIR`) |
 | Client secrets | env `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` (never commit) |
 
-Guests never get Google MCP ids and cannot start pairing. Missing/revoked tokens
-soft-skip the MCP; voice still works. AO disk `config/mcp_providers/` is **not**
-used for this path — session-overlay only. **No AO code changes.**
-
+See `overlays/comstar/README.md`. Guests never get Google MCP ids and cannot start
+pairing. Missing/revoked tokens soft-skip the MCP; voice still works. AO disk
+`config/mcp_providers/` is **not** used for this path — session-overlay only.
+**No AO daemon catalog merge** for COMSTAR skills/MCP; Reach registers them on the
+session.
+After TV device pairing succeeds, the bridge may email a **Desktop OAuth**
+upgrade link (SMTP) to the Google account email so Gmail / full Drive can be
+granted. Env: `COMSTAR_SMTP_*`, `GOOGLE_DESKTOP_CLIENT_ID` /
+`GOOGLE_DESKTOP_CLIENT_SECRET`, `COMSTAR_OAUTH_REDIRECT_BASE`, optional
+`COMSTAR_OAUTH_BIND_LAN=1`. Callback listens on port **8781**. Token JSON may
+include `"client":"tv"|"desktop"` so MCP refresh uses the matching client
+secrets.
 ## 6. Audio routing decision
 
 **Status:** Resolved 2026-08-02 — **(a) Kiosk is the audio sink.** See

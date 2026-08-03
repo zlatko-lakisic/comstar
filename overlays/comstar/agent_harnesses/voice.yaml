@@ -1,0 +1,16 @@
+# Platform-style smoke profile for COMSTAR voice (AO agent_harnesses shape).
+id: voice
+smoke:
+  topic: Hallway voice smoke
+  description: >
+    In two short spoken sentences, greet the resident and ask how you can help.
+  expected_output: Plain speech greeting, no markdown.
+assertions:
+  - type: min_chars
+    value: 20
+  - type: forbids_regex
+    pattern: '(?i)(https?://|```|^\s*[-*]\s)'
+capability:
+  rubric: >
+    Score whether the reply is short, spoken-friendly, and free of markdown or URLs.
+  min_score: 0.5

@@ -9,7 +9,7 @@ class GoogleDesktopUpgradeEmail {
     required this.displayName,
     required this.authUrl,
     required this.expiresMinutes,
-    this.heroCid = 'comstar-hero-email.jpg',
+    this.heroCid = 'hero@comstar',
   });
 
   final String displayName;

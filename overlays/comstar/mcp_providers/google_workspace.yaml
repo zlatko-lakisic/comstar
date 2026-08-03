@@ -1,8 +1,20 @@
-# Comstar overlay MCP — started by ComstarMcpBootstrap (not AO disk catalog).
-# Reach packs agents from agent_providers/; tunnel MCP dicts come from bootstrap
-# extraMcps after LocalMcpHost.startNpxPackage.
+# Comstar overlay MCP — AO catalog metadata + COMSTAR tunnel bootstrap fields.
+# Reach OverlayPacker does not read this file; ComstarMcpBootstrap / mcp_yaml.dart does.
+# Session MCP id becomes client.google_workspace via tunnel://session-mcp/google_workspace.
 id: google_workspace
-description: Google Workspace (Gmail, Calendar, Drive) via Reach tunnel
+description: Google Workspace (Gmail, Calendar, Drive) via Reach stdio tunnel
+capabilities: List/search calendars and events; Drive files; Gmail when Desktop scopes granted
+good_for: calendar, gmail, drive, google workspace
+planner_hint: Attach for Google account questions when the resident is linked.
+user_goal_keywords:
+  - calendar
+  - gmail
+  - drive
+  - google
+  - inbox
+  - meeting
+
+# COMSTAR bridge bootstrap (not AO stdio/streamable_http)
 transport: stdio_tunnel
 alias: google_workspace
 npx_package: mcp-server-google-workspace@0.2.6

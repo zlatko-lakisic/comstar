@@ -1,0 +1,12 @@
+id: calendar_today
+description: |
+  Ask what is on the primary Google Calendar today (read-only).
+expected_output: >
+  Spoken summary of today's events, or that the calendar looks clear.
+assertions:
+  - type: min_chars
+    value: 20
+  - type: forbids_regex
+    pattern: '(?i)(no access|cannot access|don''t have access to (your )?calendar)'
+fixtures:
+  inject_transcript: "What is on my Google Calendar today?"

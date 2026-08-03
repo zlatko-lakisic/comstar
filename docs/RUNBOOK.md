@@ -353,19 +353,27 @@ bash scripts/google_workspace_e2e.sh
 1. Create a Google Cloud OAuth client (**TVs and Limited Input devices**). Enable
    Calendar and Drive APIs. Device-code pairing cannot request Gmail scopes
    (Google returns `invalid_scope`); voice+QR grants Calendar + `drive.file`.
-   For full Gmail access, mint a refresh token once with the Desktop client
-   (OAuth Playground) and place it in `~/.local/share/comstar/google/<userid>.json`.
-2. Export `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` on the bridge host
+2. Optional Desktop upgrade (Gmail / full Drive): create a **Web application**
+   OAuth client (Desktop clients often reject custom HTTPS redirects); set
+   `GOOGLE_DESKTOP_CLIENT_ID` / `GOOGLE_DESKTOP_CLIENT_SECRET`;
+   set `COMSTAR_OAUTH_REDIRECT_BASE=https://comstar.mostardesigns.com` (or your
+   HTTPS proxy origin) and register
+   `{base}/oauth/google/callback` on that client; set `COMSTAR_OAUTH_BIND_LAN=1`
+   so the proxy can reach Pi `:8781`. Configure SMTP:
+   `COMSTAR_SMTP_HOST`, `COMSTAR_SMTP_PORT` (587), `COMSTAR_SMTP_USER`,
+   `COMSTAR_SMTP_PASSWORD`, `COMSTAR_SMTP_FROM`. After TV pairing, COMSTAR emails
+   an HTML link with the hero banner; completing it stores
+   `"client":"desktop"` on the token file.
+3. Export `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` on the bridge host
    (Pi: `~/.config/comstar/google.env` via systemd drop-in; Mac:
    `config/comstar.mac.env`). Never commit them.
-3. As a known face, say **“connect my Google”**. Enter the spoken code on your
+4. As a known face, say **“connect my Google”**. Enter the spoken code on your
    phone or scan the on-screen QR.
-4. Tokens land in `~/.local/share/comstar/google/<userid>.json` (`0600`).
-5. Voice agent allowlist: `overlays/comstar/agent_providers/voice_responder.yaml`
+5. Tokens land in `~/.local/share/comstar/google/<userid>.json` (`0600`).
+6. Voice agent allowlist: `overlays/comstar/agent_providers/voice_responder.yaml`
    → `client.google_workspace`. Guests never get Google tools.
-6. Unlink: say **“disconnect Google”**. Soft-fail if tokens are revoked — voice
+7. Unlink: say **“disconnect Google”**. Soft-fail if tokens are revoked — voice
    still works; say connect again.
-
 “Check Google” / web search is **not** a Workspace tool. Ask for calendar events
 or Drive files that the linked account can access.
 

@@ -1,0 +1,18 @@
+id: google_workspace_voice
+description: How to use Google Workspace MCP tools in spoken hallway answers.
+capabilities: Calendar, Drive, and Gmail tool-use guidance for voice.
+good_for: calendar questions, gmail, drive, google workspace
+planner_hint: Attach when client.google_workspace is on the turn.
+user_goal_keywords:
+  - calendar
+  - gmail
+  - drive
+  - google
+
+content:
+  file: google_workspace_voice/instructions.md
+
+inject:
+  target: backstory
+  heading: "## Google Workspace (voice)"
+  max_chars: 4000

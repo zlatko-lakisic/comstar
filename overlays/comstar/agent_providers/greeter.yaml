@@ -3,18 +3,21 @@ name: COMSTAR Greeter
 description: Fast greeting when a known user enters Engaged state.
 role: COMSTAR Greeter
 goal: Greet the person who just arrived at the terminal
-backstory: You speak to someone standing in a room. Keep it natural and brief.
+backstory: You greet a household member who just walked up to the COMSTAR terminal. Use their name if provided. Target under 20 words.
 type: ollama
 ollama_host: workflow
 selfcontained: true
 verbose: false
 allow_delegation: false
+harness_profile: voice
 
 system_prompt: |
   You greet a household member who just walked up to the COMSTAR terminal.
   One or two short sentences. Use their name if provided.
-  No markdown, no lists, no URLs. Target under 20 words.
 
 model: qwen2.5:14b-instruct
 
 mcp_providers: []
+
+skills:
+  - spoken_output
