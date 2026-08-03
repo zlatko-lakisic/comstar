@@ -240,6 +240,7 @@ class ComstarMcpBootstrap implements SessionMcpBootstrap {
           alias: def.alias,
           package: def.npxPackage,
           extraEnv: extraEnv,
+          readyTimeout: const Duration(seconds: 90),
         );
         mcps.add(
           sessionTunnelMcpEntry(
@@ -249,10 +250,13 @@ class ComstarMcpBootstrap implements SessionMcpBootstrap {
           ),
         );
         aliases.add(def.alias);
+        final localEntry =
+            await host.resolveInstalledPackageEntry(def.npxPackage);
         logInfo('mcp_overlay_ready', 'Overlay MCP started', data: {
           'id': def.clientId,
           'alias': def.alias,
           'package': def.npxPackage,
+          'entry': localEntry ?? 'npx',
         });
       } catch (e) {
         logWarn('mcp_overlay_bootstrap', 'Overlay MCP ${def.id} unavailable: $e');
@@ -366,6 +370,11 @@ class ComstarSession {
       overlayRoot: config.orchestration.overlayRoot,
       mcpBootstrap: _mcpBootstrap,
     );
+
+    logInfo('session_mcp', 'Session MCP providers', data: {
+      'registered': _bridge.registeredMcpIds,
+      'voice': mcpProvidersForVoice(),
+    });
 
     if (_bridge.speechClient != null) {
       logInfo('speech_reach', 'Using AO-advertised speech sidecars', data: {

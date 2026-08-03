@@ -322,14 +322,24 @@ make logs            # merged journal tail (when configured)
 | Chrome has no camera preview | Expected — kiosk has no webcam tile | Confirm bridge ffmpeg / camera LED; set `COMSTAR_CAMERA_SOURCE` |
 | No greet-by-name | Face not enrolled | `enroll_face.sh` |
 | AO timeout / overlay missing | AI server unreachable or cwd-relative overlay | Check `10.0.10.16:8765`; run bridge from repo root or absolute `overlay_root` |
-| Google tools missing | Not paired / guest / MCP soft-skip | Say “connect my Google”; check `GOOGLE_CLIENT_*` env; tokens under `~/.local/share/comstar/google/` |
+| Google tools missing | Not paired / guest / MCP soft-skip | Say “connect my Google”; check `GOOGLE_CLIENT_*` env; tokens under `~/.local/share/comstar/google/`; preinstall `npm install --prefix ~/.local mcp-server-google-workspace@0.2.6` so bridge can use local `node dist` (nested `npx` often misses the ready window on Pi) |
 | Pairing QR never shows | Kiosk outdated / `pairing.qr` dropped | Redeploy `terminal/kiosk/`; confirm bridge logs `google_pairing_start` |
+| Linked but “no internet/search” | Tools MCP not registered, or ask is web search | Status: “Workspace tools …”; voice Google is Calendar/`drive.file` (not Google Search). Check bridge `mcp_overlay_ready` vs `mcp_overlay_bootstrap` |
 
 ## 10. Google Workspace (mail / calendar / Drive)
 
 Comstar does **not** ship a custom Gmail MCP. It pairs once (voice + QR), stores a
 per-userid refresh token, runs pinned `mcp-server-google-workspace` via
 `LocalMcpHost.startNpxPackage`, and tunnels it to AO as `client.google_workspace`.
+
+Preinstall on the bridge host (avoids slow nested `npx` on session open).
+Requires **Node.js ≥20** (global `crypto`; mcp-proxy 5.12+):
+
+```bash
+# Debian/Pi example (NodeSource 20.x), then:
+npm install --prefix ~/.local mcp-server-google-workspace@0.2.6
+node -v   # must be v20+
+```
 
 1. Create a Google Cloud OAuth client (**TVs and Limited Input devices**). Enable
    Calendar and Drive APIs. Device-code pairing cannot request Gmail scopes
@@ -346,6 +356,9 @@ per-userid refresh token, runs pinned `mcp-server-google-workspace` via
    → `client.google_workspace`. Guests never get Google tools.
 6. Unlink: say **“disconnect Google”**. Soft-fail if tokens are revoked — voice
    still works; say connect again.
+
+“Check Google” / web search is **not** a Workspace tool. Ask for calendar events
+or Drive files that the linked account can access.
 
 Mac spike (optional, with a refresh token already in env):
 

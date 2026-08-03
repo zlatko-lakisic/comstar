@@ -13,6 +13,7 @@ import 'package:comstar_bridge/config.dart';
 import 'package:comstar_bridge/envelope.dart';
 import 'package:comstar_bridge/env_sources.dart';
 import 'package:comstar_bridge/google/device_pairing.dart';
+import 'package:comstar_bridge/google/pairing_status.dart';
 import 'package:comstar_bridge/google/qr_svg.dart';
 import 'package:comstar_bridge/google/token_store.dart';
 import 'package:comstar_bridge/google_intent.dart';
@@ -25,6 +26,7 @@ import 'package:comstar_bridge/terminal_control.dart';
 import 'package:comstar_bridge/terminal_intent.dart';
 import 'package:comstar_bridge/tts.dart';
 import 'package:comstar_bridge/wake_phrase.dart';
+import 'package:comstar_bridge/wav_duration.dart';
 import 'package:comstar_bridge/vision/vision_poller.dart' as vision;
 import 'package:path/path.dart' as p;
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -76,21 +78,30 @@ class AttentionCoordinator {
   Timer? _tickTimer;
   Timer? _speakWatchdog;
   Timer? _followUpTimer;
+  /// Bumped to cancel a pending follow-up mic-arm when a new speak starts.
+  var _followUpGen = 0;
   vision.VisionPoller? _visionPoller;
   StreamSubscription<vision.VisionEvent>? _visionSub;
   Future<void>? _sessionOpenFuture;
   Completer<void>? _googlePairingCancel;
+  var _googlePhase = GooglePairingPhase.idle;
+  String? _googlePairingUserCode;
+  String? _googleLastError;
 
   final _captureBuffer = BytesBuilder(); // copy:true — toBytes() must not wipe PCM
   var _capturePeakRms = 0.0;
   var _loudFrameCount = 0;
   var _totalFrameCount = 0;
+  var _deferRestartCount = 0;
+  var _lastDeferRestartAtMs = 0;
 
   var _captureSampleRate = 16000;
   WebSocketChannel? _audioChannel;
   final Map<String, String> _greetingCache = {};
   DateTime? _speakStartedAt;
   Duration? _lastTtsTotal;
+  /// WAV (or text-estimate) play length for the in-flight speak — not TTS synth time.
+  int _lastSpeakDurationMs = 3000;
 
   /// Force-wake while Sleeping: capture + STT must match hey/hello comstar.
   var _sleepWakeVerifyInFlight = false;
@@ -181,6 +192,7 @@ class AttentionCoordinator {
         _followUpTimer = null;
         _captureBuffer.clear();
         _resetCaptureStats();
+        _deferRestartCount = 0;
         _sendAudio(
           Envelope.create(
             type: 'listen.start',
@@ -217,6 +229,19 @@ class AttentionCoordinator {
         }
       case Speak(:final text, :final audioUrl, :final turnId):
         machine.context.playing = true;
+        // Half-duplex: never capture while TTS is on the speaker.
+        _followUpGen++;
+        _followUpTimer?.cancel();
+        _followUpTimer = null;
+        machine.context.followUpListening = false;
+        machine.context.followUpOpen = false;
+        _sendAudio(Envelope.create(type: 'listen.stop'));
+        _sendAudio(
+          Envelope.create(type: 'wake.enable', data: {'enabled': false}),
+        );
+        _broadcastKiosk(
+          Envelope.create(type: 'listening', data: {'active': false}),
+        );
         // Clear thinking UI as soon as we have audio to play.
         _broadcastKiosk(
           Envelope.create(type: 'thinking', data: {'active': false}),
@@ -228,6 +253,7 @@ class AttentionCoordinator {
             'turn_id': turnId,
             'chars': text.length,
             'audioUrl': audioUrl,
+            'duration_ms': _lastSpeakDurationMs,
           });
         }
         _broadcastKiosk(
@@ -321,6 +347,7 @@ class AttentionCoordinator {
 
   void _openFollowUpWindow() {
     final seconds = config.audio.followupWindowSeconds;
+    final gen = ++_followUpGen;
     logInfo('followup', 'Follow-up window opened', data: {'seconds': seconds});
     final turnId = 'followup-${clock.nowMs}';
     machine.context.followUpOpen = true;
@@ -345,7 +372,9 @@ class AttentionCoordinator {
     // race the arm window and be lost forever (continuous hiss never re-fires).
     const settleMs = 1500;
     Future<void>.delayed(const Duration(milliseconds: settleMs), () {
+      if (gen != _followUpGen) return;
       if (machine.context.turnId != turnId) return;
+      if (machine.context.playing) return;
       if (machine.state is! Engaged || !machine.context.followUpListening) {
         return;
       }
@@ -381,6 +410,7 @@ class AttentionCoordinator {
     });
     _followUpTimer?.cancel();
     _followUpTimer = Timer(Duration(seconds: seconds), () {
+      if (gen != _followUpGen) return;
       // Only stop if we never entered a real listening turn.
       if (machine.state is! Listening) {
         machine.context.followUpListening = false;
@@ -595,6 +625,10 @@ class AttentionCoordinator {
   static const _minKeepBytes = 25600;
   /// Peak RMS that counts as "someone spoke" (C525 @80%).
   static const _speechPeakRms = 0.04;
+  /// Min gap between defer→listen.start restarts (prevents audio.end feedback storms).
+  static const _deferRestartCooldownMs = 500;
+  /// After this many soft restarts, force STT / give up instead of looping.
+  static const _maxDeferRestarts = 4;
 
   /// Returns true if we deferred STT and restarted capture (caller should break).
   bool _tryDeferShortCapture({
@@ -611,6 +645,7 @@ class AttentionCoordinator {
 
     // Enough audio AND real speech energy → finalize.
     if (bytes >= _minFinalizeBytes && hasSpeech) {
+      _deferRestartCount = 0;
       return false;
     }
     // Short but clearly spoken → finalize.
@@ -622,6 +657,27 @@ class AttentionCoordinator {
         'loud_frac': loudFrac,
         'duration_ms': durationMs,
       });
+      _deferRestartCount = 0;
+      return false;
+    }
+
+    final now = clock.nowMs;
+    if (now - _lastDeferRestartAtMs < _deferRestartCooldownMs) {
+      // Ignore duplicate audio.end/vad_end from listen.start→stop races.
+      return true;
+    }
+    if (_deferRestartCount >= _maxDeferRestarts) {
+      logWarn(
+        'capture_defer_exhausted',
+        'Too many soft restarts; forcing finalize',
+        data: {
+          'reason': reason,
+          'bytes': bytes,
+          'peak': peak,
+          'restarts': _deferRestartCount,
+        },
+      );
+      _deferRestartCount = 0;
       return false;
     }
 
@@ -633,6 +689,8 @@ class AttentionCoordinator {
       _captureBuffer.clear();
       _resetCaptureStats();
     }
+    _deferRestartCount += 1;
+    _lastDeferRestartAtMs = now;
     logWarn(
       reason == 'listen_eof' ? 'listen_eof_ignored' : 'vad_end_ignored',
       clear
@@ -645,9 +703,11 @@ class AttentionCoordinator {
         'duration_ms': durationMs,
         'turn_id': turnId,
         'cleared': clear,
+        'restart': _deferRestartCount,
       },
     );
     machine.context.listeningStartedAtMs = clock.nowMs;
+    // Keep a short VAD settle so listen.start→immediate speech_end cannot storm.
     _sendAudio(
       Envelope.create(
         type: 'listen.start',
@@ -656,7 +716,7 @@ class AttentionCoordinator {
           'turn_id': turnId,
           'maxMs': 8000,
           'preRollMs': 0,
-          'vadSettleMs': 0,
+          'vadSettleMs': 500,
           'clearRing': clear,
         },
       ),
@@ -680,9 +740,14 @@ class AttentionCoordinator {
           'Kiosk reported speak.ended',
           data: {'state': machine.state.name},
         );
+        final alreadyFollowUp = machine.context.followUpListening ||
+            machine.context.followUpOpen;
         handle(const PlaybackEnded());
         // Defensive: if machine did not open follow-up (wrong state), open it.
-        if (machine.state is Engaged && !machine.context.followUpListening) {
+        // Skip if a premature watchdog already armed follow-up — do not double-arm.
+        if (machine.state is Engaged &&
+            !machine.context.followUpListening &&
+            !alreadyFollowUp) {
           logWarn('followup_fallback', 'Opening follow-up after speak.ended');
           machine.context.followUpOpen = true;
           machine.context.followUpOpenedAtMs = clock.nowMs;
@@ -701,13 +766,18 @@ class AttentionCoordinator {
   void _beginSpeakWatchdog() {
     _cancelSpeakWatchdog();
     _speakStartedAt = DateTime.now();
-    final ttsMs = _lastTtsTotal?.inMilliseconds ?? 3000;
-    final timeout = Duration(milliseconds: ttsMs + 5000);
+    // Use play duration (WAV), not TTS synth latency — early PlaybackEnded
+    // was arming the mic while the kiosk was still speaking.
+    final playMs = _lastSpeakDurationMs > 0 ? _lastSpeakDurationMs : 3000;
+    final timeout = Duration(milliseconds: playMs + 4000);
     _speakWatchdog = Timer(timeout, () {
       logWarn(
         'speak_watchdog',
         'kiosk speak.ended missing; forcing PlaybackEnded',
-        data: {'timeout_ms': timeout.inMilliseconds},
+        data: {
+          'timeout_ms': timeout.inMilliseconds,
+          'play_ms': playMs,
+        },
       );
       // Greeter speaks while Engaged — mirror speak.ended wake restore.
       if (machine.context.state is! Responding) {
@@ -716,6 +786,17 @@ class AttentionCoordinator {
         );
       }
       handle(const PlaybackEnded());
+    });
+  }
+
+  /// Record expected speaker play time before sending a `speak` envelope.
+  void _noteSpeakDuration({required String path, String text = ''}) {
+    final fromWav = wavDurationMs(path);
+    _lastSpeakDurationMs = fromWav ?? estimateSpeechMs(text);
+    logDebug('speak_duration', 'Expected play length', data: {
+      'ms': _lastSpeakDurationMs,
+      'source': fromWav != null ? 'wav' : 'text_estimate',
+      'chars': text.trim().length,
     });
   }
 
@@ -982,6 +1063,7 @@ class AttentionCoordinator {
       logInfo('direct_agent', 'Calling voice agent', data: {
         'turn_id': turnId,
         'text': clipped,
+        'mcp': session.mcpProvidersForVoice(),
       });
       final response = await session.directVoice(text);
       if (response.trim().isEmpty) {
@@ -1005,6 +1087,7 @@ class AttentionCoordinator {
       final path = await tts.synthesizeToFile(response);
       _lastTtsTotal = Duration(milliseconds: ttsSpan.elapsedMs);
       ttsSpan.close();
+      _noteSpeakDuration(path: path, text: response);
       final audioUrl = audioServer.registerFile(path);
       handle(ResponseReady(response, audioUrl));
     } catch (e) {
@@ -1033,20 +1116,39 @@ class AttentionCoordinator {
     final userid = session.userid!;
     switch (intent.kind) {
       case GoogleIntentKind.status:
-        final linked = await googleTokens.hasTokens(userid);
-        final registered =
-            session.mcpProvidersForVoice().contains('client.google_workspace');
-        final spoken = linked
-            ? (registered
-                ? 'Your Google account is connected.'
-                : 'I have your Google tokens, but Workspace tools are not active yet. Try again in a moment, or say connect my Google.')
-            : 'Google is not connected. Say connect my Google to link it.';
-        await _speakText(spoken, turnId);
+        await _speakText(await _googleStatusSpeech(userid), turnId);
+        return true;
+
+      case GoogleIntentKind.cancel:
+        if (!_googlePairingInFlight) {
+          await _speakText(
+            'There is no Google pairing in progress.',
+            turnId,
+          );
+          return true;
+        }
+        _cancelGooglePairing(announce: false);
+        await _speakText(
+          'Okay, I cancelled Google pairing.',
+          turnId,
+        );
         return true;
 
       case GoogleIntentKind.unlink:
+        final had = await googleTokens.hasTokens(userid);
+        _cancelGooglePairing(announce: false);
         await googleTokens.clear(userid);
-        _cancelGooglePairing();
+        _googlePhase = GooglePairingPhase.idle;
+        _googleLastError = null;
+        _googlePairingUserCode = null;
+        _broadcastPairingUi(active: false);
+        if (!had) {
+          await _speakText(
+            'Google was not connected.',
+            turnId,
+          );
+          return true;
+        }
         try {
           await session.close();
           await session.open(userid: userid, guest: false);
@@ -1054,15 +1156,34 @@ class AttentionCoordinator {
           logWarn('google_unlink_session', e.toString());
         }
         await _speakText(
-          'Okay, I disconnected Google for you.',
+          'Okay, I disconnected and revoked Google for you.',
           turnId,
         );
         return true;
 
       case GoogleIntentKind.connect:
+      case GoogleIntentKind.reconnect:
         if (!googleOAuth.isConfigured) {
           await _speakText(
             'Google is not configured on this terminal yet.',
+            turnId,
+          );
+          return true;
+        }
+        final linked = await googleTokens.hasTokens(userid);
+        if (linked && intent.kind == GoogleIntentKind.connect) {
+          await _speakText(
+            '${await _googleStatusSpeech(userid)} '
+            'Say reconnect my Google to link again, or disconnect Google to remove it.',
+            turnId,
+          );
+          return true;
+        }
+        if (_googlePairingInFlight) {
+          await _speakText(
+            'Google pairing is already in progress'
+            '${_googlePairingUserCode != null ? ". The code is ${GoogleDevicePairing.speakableUserCode(_googlePairingUserCode!)}" : ""}. '
+            'I will update you when it finishes, or say cancel connect to stop.',
             turnId,
           );
           return true;
@@ -1072,52 +1193,90 @@ class AttentionCoordinator {
     }
   }
 
-  /// Issues device code + QR, speaks instructions (ends the turn), then polls
-  /// in the background so orchestration timeout does not fire mid-pair.
+  bool get _googlePairingInFlight =>
+      _googlePhase == GooglePairingPhase.awaitingUser ||
+      _googlePhase == GooglePairingPhase.verifying;
+
+  Future<String> _googleStatusSpeech(String userid) async {
+    final has = await googleTokens.hasTokens(userid);
+    final tools =
+        session.mcpProvidersForVoice().contains('client.google_workspace');
+    if (_googlePhase == GooglePairingPhase.awaitingUser) {
+      final code = _googlePairingUserCode;
+      return code == null
+          ? 'I am still waiting for you to approve Google on your phone. '
+              'Say cancel connect to stop.'
+          : 'I am still waiting for Google approval. '
+              'The code is ${GoogleDevicePairing.speakableUserCode(code)}. '
+              'Say cancel connect to stop.';
+    }
+    if (_googlePhase == GooglePairingPhase.verifying) {
+      return 'I got approval from Google and I am verifying the connection now. '
+          'You will hear an update shortly.';
+    }
+    if (!has) {
+      if (_googlePhase == GooglePairingPhase.failed &&
+          (_googleLastError?.isNotEmpty ?? false)) {
+        return 'Google is not connected. Last attempt failed: $_googleLastError. '
+            'Say connect my Google to try again.';
+      }
+      return 'Google is not connected. Say connect my Google to link it.';
+    }
+    _googlePhase = GooglePairingPhase.linked;
+    if (tools) {
+      return 'Yes — your Google account is connected and Workspace tools are ready. '
+          'I can help with calendar. Gmail needs a separate Desktop login.';
+    }
+    return 'Your Google account is linked on this terminal, but Workspace tools '
+        'did not start cleanly. Calendar may be limited until that is fixed. '
+        'Say reconnect my Google if you want to try again.';
+  }
+
+  /// Issues device code + QR, acknowledges, then polls in the background.
   Future<void> _startGooglePairing(String userid, String turnId) async {
-    _cancelGooglePairing();
+    _cancelGooglePairing(announce: false);
     final cancel = Completer<void>();
     _googlePairingCancel = cancel;
+    _googleLastError = null;
 
     try {
       final code = await googleOAuth.begin();
-      final svg = qrSvg(code.verificationUrlComplete);
-      _broadcastKiosk(
-        Envelope.create(
-          type: 'pairing.qr',
-          turnId: turnId,
-          data: {
-            'active': true,
-            'url': code.verificationUrlComplete,
-            'userCode': code.userCode,
-            'qrSvg': svg,
-          },
-        ),
+      _googlePhase = GooglePairingPhase.awaitingUser;
+      _googlePairingUserCode = code.userCode;
+      _broadcastPairingUi(
+        active: true,
+        phase: 'awaiting',
+        url: code.verificationUrlComplete,
+        userCode: code.userCode,
+        qrSvg: qrSvg(code.verificationUrlComplete),
       );
 
       final spokenCode = GoogleDevicePairing.speakableUserCode(code.userCode);
-      final instructions =
-          'Open Google on your phone and enter code $spokenCode. '
-          'Or scan the QR code on the screen.';
       logInfo('google_pairing_start', 'Device code issued', data: {
         'userid': userid,
         'user_code': code.userCode,
       });
-      await _speakText(instructions, turnId);
+      await _speakText(
+        'Open Google on your phone and enter code $spokenCode, '
+        'or scan the QR on the screen. '
+        'I will keep watching and let you know when it is done. '
+        'Say cancel connect if you want to stop.',
+        turnId,
+      );
       unawaited(_finishGooglePairing(userid, code, cancel));
     } catch (e) {
-      _clearPairingQr();
+      _googlePhase = GooglePairingPhase.failed;
+      _googleLastError = _friendlyGoogleError(e.toString());
+      _googlePairingUserCode = null;
+      _broadcastPairingUi(active: false);
       if (_googlePairingCancel == cancel) {
         _googlePairingCancel = null;
       }
       logWarn('google_pairing_failed', e.toString(), data: {'userid': userid});
-      final msg = e.toString();
-      final spoken = msg.contains('invalid_scope')
-          ? 'Google rejected the permission list for this device login. '
-              'Calendar and Drive file access should work after an update; '
-              'Gmail needs a separate desktop setup.'
-          : 'I could not start Google pairing right now.';
-      await _speakText(spoken, turnId);
+      await _speakText(
+        'I could not start Google pairing. $_googleLastError',
+        turnId,
+      );
     }
   }
 
@@ -1131,52 +1290,114 @@ class AttentionCoordinator {
         code,
         cancel: cancel.future,
       );
-      _clearPairingQr();
       if (_googlePairingCancel != cancel) return;
 
       switch (result.outcome) {
+        case GooglePairingOutcome.cancelled:
+          _googlePhase = GooglePairingPhase.idle;
+          _googlePairingUserCode = null;
+          _broadcastPairingUi(active: false);
+          return;
+
+        case GooglePairingOutcome.timeout:
+          _googlePhase = GooglePairingPhase.failed;
+          _googleLastError = 'pairing timed out';
+          _googlePairingUserCode = null;
+          _broadcastPairingUi(active: false);
+          await _announceEngaged(
+            'Google pairing timed out. Say connect my Google to try again.',
+          );
+
+        case GooglePairingOutcome.denied:
+          _googlePhase = GooglePairingPhase.failed;
+          _googleLastError = 'access was denied';
+          _googlePairingUserCode = null;
+          _broadcastPairingUi(active: false);
+          await _announceEngaged(
+            'Google access was denied. Say connect my Google if you change your mind.',
+          );
+
+        case GooglePairingOutcome.error:
+          _googlePhase = GooglePairingPhase.failed;
+          _googleLastError = result.message ?? 'unknown error';
+          _googlePairingUserCode = null;
+          _broadcastPairingUi(active: false);
+          await _announceEngaged(
+            'I could not finish Google pairing. $_googleLastError. '
+            'Say connect my Google to try again.',
+          );
+
         case GooglePairingOutcome.success:
           final refresh = result.tokens?.refreshToken;
           if (refresh == null || refresh.isEmpty) {
+            _googlePhase = GooglePairingPhase.failed;
+            _googleLastError = 'no refresh token returned';
+            _googlePairingUserCode = null;
+            _broadcastPairingUi(active: false);
             await _announceEngaged(
-              'Google approved, but I did not get a refresh token. Try again.',
+              'Google approved, but I did not get a refresh token. '
+              'Say connect my Google to try again.',
             );
             return;
           }
-          await googleTokens.writeRefreshToken(userid, refresh);
+
+          _googlePhase = GooglePairingPhase.verifying;
+          _broadcastPairingUi(
+            active: true,
+            phase: 'verifying',
+            userCode: code.userCode,
+          );
+          await _announceEngaged(
+            'Got it from Google. I am verifying the connection and '
+            'turning on Workspace tools. You will hear an update shortly.',
+          );
+
           try {
+            await googleTokens.writeRefreshToken(userid, refresh);
             await session.close();
             await session.open(userid: userid, guest: false);
           } catch (e) {
             logWarn('google_pair_session', e.toString());
+            _googlePhase = GooglePairingPhase.failed;
+            _googleLastError = 'saved tokens but session refresh failed';
+            _googlePairingUserCode = null;
+            _broadcastPairingUi(active: false);
+            await _announceEngaged(
+              'I saved your Google login, but I could not refresh the session. '
+              'Try walking away and back, or say reconnect my Google.',
+            );
+            return;
           }
+
           final ok = session.mcpProvidersForVoice()
               .contains('client.google_workspace');
-          await _announceEngaged(
-            ok
-                ? 'Google is connected. I can help with mail, calendar, and Drive.'
-                : 'Google tokens are saved. Workspace tools will be available shortly.',
-          );
-        case GooglePairingOutcome.timeout:
-          await _announceEngaged(
-            'Google pairing timed out. Say connect my Google to try again.',
-          );
-        case GooglePairingOutcome.denied:
-          await _announceEngaged(
-            'Google access was denied. Say connect my Google if you change your mind.',
-          );
-        case GooglePairingOutcome.cancelled:
-          break;
-        case GooglePairingOutcome.error:
-          await _announceEngaged(
-            'I could not finish Google pairing. '
-            '${result.message ?? "Try again later."}',
-          );
+          _googlePairingUserCode = null;
+          _broadcastPairingUi(active: false);
+          if (ok) {
+            _googlePhase = GooglePairingPhase.linked;
+            _googleLastError = null;
+            await _announceEngaged(
+              'Google is connected. I can help with calendar and Drive files.',
+            );
+          } else {
+            // Tokens are valid even if the local MCP process failed to start.
+            _googlePhase = GooglePairingPhase.linked;
+            _googleLastError = 'Workspace tools failed to start';
+            await _announceEngaged(
+              'Your Google account is linked, but Workspace tools did not start '
+              'on this terminal. Say check google for status, or reconnect my Google.',
+            );
+          }
       }
     } catch (e) {
-      _clearPairingQr();
+      _googlePhase = GooglePairingPhase.failed;
+      _googleLastError = _friendlyGoogleError(e.toString());
+      _googlePairingUserCode = null;
+      _broadcastPairingUi(active: false);
       logWarn('google_pairing_poll', e.toString(), data: {'userid': userid});
-      await _announceEngaged('I could not finish Google pairing right now.');
+      await _announceEngaged(
+        'I could not finish Google pairing. $_googleLastError',
+      );
     } finally {
       if (_googlePairingCancel == cancel) {
         _googlePairingCancel = null;
@@ -1184,22 +1405,58 @@ class AttentionCoordinator {
     }
   }
 
-  void _cancelGooglePairing() {
+  void _cancelGooglePairing({bool announce = false}) {
     final c = _googlePairingCancel;
     if (c != null && !c.isCompleted) {
       c.complete();
     }
     _googlePairingCancel = null;
-    _clearPairingQr();
+    if (_googlePhase == GooglePairingPhase.awaitingUser ||
+        _googlePhase == GooglePairingPhase.verifying) {
+      _googlePhase = GooglePairingPhase.idle;
+    }
+    _googlePairingUserCode = null;
+    _broadcastPairingUi(active: false);
+    if (announce) {
+      unawaited(
+        _announceEngaged('Okay, I cancelled Google pairing.'),
+      );
+    }
   }
 
-  void _clearPairingQr() {
+  void _broadcastPairingUi({
+    required bool active,
+    String phase = 'idle',
+    String? url,
+    String? userCode,
+    String? qrSvg,
+  }) {
     _broadcastKiosk(
       Envelope.create(
         type: 'pairing.qr',
-        data: {'active': false},
+        data: {
+          'active': active,
+          'phase': active ? phase : 'idle',
+          if (url != null) 'url': url,
+          if (userCode != null) 'userCode': userCode,
+          if (qrSvg != null) 'qrSvg': qrSvg,
+        },
       ),
     );
+  }
+
+  String _friendlyGoogleError(String raw) {
+    if (raw.contains('invalid_scope')) {
+      return 'Google rejected the permission list for this device login';
+    }
+    if (raw.contains('invalid_client')) {
+      return 'Google OAuth client is misconfigured';
+    }
+    if (raw.contains('unauthorized_client')) {
+      return 'This Google client cannot use device login';
+    }
+    final clipped = raw.replaceFirst(RegExp(r'^Bad state:\s*'), '');
+    return clipped.length > 120 ? '${clipped.substring(0, 117)}…' : clipped;
   }
 
   /// Turn reply via the attention machine (must be in Responding).
@@ -1208,6 +1465,7 @@ class AttentionCoordinator {
     final path = await tts.synthesizeToFile(spoken);
     _lastTtsTotal = Duration(milliseconds: ttsSpan.elapsedMs);
     ttsSpan.close();
+    _noteSpeakDuration(path: path, text: spoken);
     final audioUrl = audioServer.registerFile(path);
     handle(ResponseReady(spoken, audioUrl));
   }
@@ -1216,13 +1474,22 @@ class AttentionCoordinator {
   Future<void> _announceEngaged(String spoken) async {
     try {
       machine.context.playing = true;
+      _followUpGen++;
+      _followUpTimer?.cancel();
+      _followUpTimer = null;
+      machine.context.followUpListening = false;
+      _sendAudio(Envelope.create(type: 'listen.stop'));
       _sendAudio(
         Envelope.create(type: 'wake.enable', data: {'enabled': false}),
+      );
+      _broadcastKiosk(
+        Envelope.create(type: 'listening', data: {'active': false}),
       );
       final ttsSpan = Span('tts_total');
       final path = await tts.synthesizeToFile(spoken);
       _lastTtsTotal = Duration(milliseconds: ttsSpan.elapsedMs);
       ttsSpan.close();
+      _noteSpeakDuration(path: path, text: spoken);
       final audioUrl = audioServer.registerFile(path);
       _beginSpeakWatchdog();
       _broadcastPhase('speaking', detail: spoken);
@@ -1291,6 +1558,7 @@ class AttentionCoordinator {
     final path = await tts.synthesizeToFile(spoken);
     _lastTtsTotal = Duration(milliseconds: ttsSpan.elapsedMs);
     ttsSpan.close();
+    _noteSpeakDuration(path: path, text: spoken);
     final audioUrl = audioServer.registerFile(path);
     handle(ResponseReady(spoken, audioUrl));
     return true;
@@ -1325,6 +1593,8 @@ class AttentionCoordinator {
 
       // Half-duplex: mute wake while greeting plays.
       machine.context.playing = true;
+      _followUpGen++;
+      _sendAudio(Envelope.create(type: 'listen.stop'));
       _sendAudio(
         Envelope.create(type: 'wake.enable', data: {'enabled': false}),
       );
@@ -1332,6 +1602,7 @@ class AttentionCoordinator {
       final path = await tts.synthesizeToFile(greeting);
       _lastTtsTotal = Duration(milliseconds: ttsSpan.elapsedMs);
       ttsSpan.close();
+      _noteSpeakDuration(path: path, text: greeting);
       final audioUrl = audioServer.registerFile(path);
       _beginSpeakWatchdog();
       _broadcastKiosk(
@@ -1353,6 +1624,7 @@ class AttentionCoordinator {
   Future<void> _speakFallback(String line, String turnId) async {
     final canned = _lookupFallbackWav(line);
     final path = canned ?? await tts.synthesizeToFile(line);
+    _noteSpeakDuration(path: path, text: line);
     final audioUrl = audioServer.registerFile(path);
     handle(ResponseReady(line, audioUrl));
   }

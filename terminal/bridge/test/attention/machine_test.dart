@@ -301,6 +301,20 @@ void main() {
       expect(t.to, isA<Responding>());
       expect(_hasEffectType<SetThinking>(t.effects), isTrue);
       expect(_hasEffectType<CallDirectAgent>(t.effects), isTrue);
+      expect(_hasEffectType<StopListening>(t.effects), isTrue);
+      expect(_hasEffectType<EnableWake>(t.effects), isTrue);
+      final wake = t.effects.whereType<EnableWake>().single;
+      expect(wake.enabled, isTrue);
+    });
+
+    test('engaged + duplicate PlaybackEnded does not re-open follow-up', () {
+      final m = _machine();
+      _apply(m, const PersonDetected(0.9));
+      _apply(m, const FaceRecognized('zlatko', 0.95));
+      _apply(m, const PlaybackEnded());
+      expect(m.context.followUpOpen, isTrue);
+      final t = m.handle(const PlaybackEnded());
+      expect(_hasEffectType<OpenFollowUpWindow>(t.effects), isFalse);
     });
 
     test('listening + TranscriptReady empty → engaged', () {

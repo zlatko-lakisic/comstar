@@ -45,7 +45,7 @@ ignored, never fatal — this is how we ship kiosk and bridge independently.
 | `speak.cancel` | `{}` | Barge-in or timeout. Stop immediately, return to idle. |
 | `listening` | `{active, level?}` | Show/hide listening indicator; `level` 0–1 for a mic meter. |
 | `thinking` | `{active}` | Orchestration in flight. Kiosk shows a subtle working state. |
-| `pairing.qr` | `{active, url?, userCode?, qrSvg?}` | Show/hide Google (or other) OAuth device-code QR. Same attempt as the spoken user code. `active:false` clears the overlay. `qrSvg` is an inline SVG string when present. |
+| `pairing.qr` | `{active, phase?, url?, userCode?, qrSvg?}` | Show/hide Google OAuth device-code QR. `phase` is `awaiting` (user must approve), `verifying` (tokens received, tools starting), or `idle`. Same attempt as the spoken user code. `active:false` clears the overlay. |
 | `error` | `{code, message}` | Display a non-fatal error affordance. |
 | `config` | `{avatarUrl, mood, cameraPose}` | Sent once on connect. |
 

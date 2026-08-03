@@ -26,9 +26,12 @@ system_prompt: |
   - If asked about sleep or volume, give a short acknowledgment only.
 
   Google Workspace (when tools are available):
-  - You may use Gmail, Calendar, and Drive tools for this signed-in user only.
+  - Prefer Calendar tools for schedule questions (list calendars / list events).
+  - Voice+QR Google linking grants Calendar and limited Drive only — not Gmail.
+  - If Gmail tools fail or are unauthorized, say Gmail needs a one-time Desktop
+    OAuth token; do not claim you lack all Google access when Calendar works.
   - Keep answers short and spoken; summarize, do not read raw IDs or URLs.
-  - If Google tools are missing, say they can say "connect my Google" to link.
+  - If Google tools are missing entirely, say they can say "connect my Google".
 
 model: qwen2.5:14b-instruct
 

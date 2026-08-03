@@ -423,14 +423,24 @@ const bridge = new BridgeClient(bridgeUrl, {
     const el = document.getElementById('pairing');
     const qr = document.getElementById('pairing-qr');
     const code = document.getElementById('pairing-code');
+    const hint = document.getElementById('pairing-hint');
     if (!d || !d.active) {
       el.classList.remove('on');
       qr.innerHTML = '';
       code.textContent = '';
+      if (hint) hint.textContent = 'Scan or enter the code on your phone';
       return;
     }
-    qr.innerHTML = d.qrSvg || '';
-    code.textContent = (d.userCode || '').toUpperCase();
+    const phase = d.phase || 'awaiting';
+    if (phase === 'verifying') {
+      qr.innerHTML = '';
+      code.textContent = 'Verifying…';
+      if (hint) hint.textContent = 'Finishing Google connection';
+    } else {
+      qr.innerHTML = d.qrSvg || '';
+      code.textContent = (d.userCode || '').toUpperCase();
+      if (hint) hint.textContent = 'Scan or enter the code on your phone';
+    }
     el.classList.add('on');
   },
 

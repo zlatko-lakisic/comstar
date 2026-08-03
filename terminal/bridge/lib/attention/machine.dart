@@ -283,9 +283,12 @@ class AttentionMachine {
           context.wakeEnabled = true;
           effects.add(const EnableWake(true));
         }
-        context.followUpOpen = true;
-        context.followUpOpenedAtMs = context.clock.nowMs;
-        effects.add(const OpenFollowUpWindow());
+        // Ignore duplicate speak.ended after watchdog / settle already armed.
+        if (!context.followUpListening && !context.followUpOpen) {
+          context.followUpOpen = true;
+          context.followUpOpenedAtMs = context.clock.nowMs;
+          effects.add(const OpenFollowUpWindow());
+        }
       case Tick():
         if (context.identityExpired && !context.personPresent) {
           _returnAmbient(effects, closeSession: true);
@@ -332,8 +335,11 @@ class AttentionMachine {
           context.state = const Responding();
           context.respondingStartedAtMs = context.clock.nowMs;
           context.directAgentInFlight = true;
+          // Mic off for the whole think+speak half-duplex turn. Wake stays
+          // armed per invariants until ResponseReady sets playing.
           context.wakeEnabled = true;
           effects.add(const EnableWake(true));
+          effects.add(const StopListening());
           effects.add(const SetThinking(true));
           effects.add(CallDirectAgent(text, context.turnId!));
         }
