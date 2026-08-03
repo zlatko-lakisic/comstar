@@ -53,4 +53,5 @@ def agc_from_env() -> SoftAgc | None:
     if raw in {"0", "false", "off", "no"}:
         return None
     target = float(os.environ.get("COMSTAR_MIC_AGC_TARGET", "0.07"))
-    return SoftAgc(target_rms=target)
+    max_gain = float(os.environ.get("COMSTAR_MIC_AGC_MAX_GAIN", "2.5"))
+    return SoftAgc(target_rms=target, max_gain=max_gain)

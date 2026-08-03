@@ -11,9 +11,13 @@ class FakeReachBridge implements ReachSessionBridge {
   List<String>? lastMcpIds;
   String? lastText;
   SpeechClient? fakeSpeech;
+  List<String> fakeRegisteredMcpIds = const ["client.terminal"];
 
   @override
   bool get isActive => active;
+
+  @override
+  List<String> get registeredMcpIds => fakeRegisteredMcpIds;
 
   @override
   SpeechClient? get speechClient => fakeSpeech;
@@ -128,16 +132,24 @@ void main() {
       expect(fake.lastMcpIds, isEmpty);
     });
 
-    test('known user MCP list includes home_assistant and client.terminal', () async {
+
+    test('voice MCP list omits client.terminal when tunnel not registered', () async {
+      fake.fakeRegisteredMcpIds = const [];
       await session.open(userid: 'zlatko', guest: false);
       await session.directVoice('hello');
 
       expect(fake.lastMcpIds, contains('home_assistant'));
-      expect(fake.lastMcpIds, contains('client.terminal'));
-      expect(
-        fake.lastMcpIds,
-        equals(['home_assistant', 'client.terminal']),
-      );
+      expect(fake.lastMcpIds, isNot(contains('client.terminal')));
+      expect(fake.lastMcpIds, equals(['home_assistant']));
+    });
+
+    test('known user MCP list includes home_assistant only for voice', () async {
+      await session.open(userid: 'zlatko', guest: false);
+      await session.directVoice('hello');
+
+      expect(fake.lastMcpIds, contains('home_assistant'));
+      expect(fake.lastMcpIds, isNot(contains('client.terminal')));
+      expect(fake.lastMcpIds, equals(['home_assistant']));
     });
 
     test('guest MCP list excludes terminal control', () async {

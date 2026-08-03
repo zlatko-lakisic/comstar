@@ -18,7 +18,9 @@ import 'package:comstar_bridge/log.dart';
 import 'package:comstar_bridge/session.dart';
 import 'package:comstar_bridge/stt.dart';
 import 'package:comstar_bridge/terminal_control.dart';
+import 'package:comstar_bridge/terminal_intent.dart';
 import 'package:comstar_bridge/tts.dart';
+import 'package:comstar_bridge/wake_phrase.dart';
 import 'package:comstar_bridge/vision/vision_poller.dart' as vision;
 import 'package:path/path.dart' as p;
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -834,6 +836,9 @@ class AttentionCoordinator {
   Future<void> _runDirectAgent(String text, String turnId) async {
     final turnSpan = Span('turn_total');
     try {
+      final local = await _tryTerminalIntent(text, turnId);
+      if (local) return;
+
       final clipped =
           text.length > 500 ? '${text.substring(0, 500)}…' : text;
       logInfo('direct_agent', 'Calling voice agent', data: {
@@ -873,6 +878,60 @@ class AttentionCoordinator {
     } finally {
       turnSpan.close();
     }
+  }
+
+  /// Sleep / volume without AO MCP (tunnelled client.terminal hangs tool load).
+  Future<bool> _tryTerminalIntent(String text, String turnId) async {
+    final intent = parseTerminalIntent(text);
+    if (intent == null) return false;
+
+    late final Map<String, dynamic> result;
+    late final String spoken;
+    switch (intent.kind) {
+      case TerminalIntentKind.sleepEnter:
+        handle(const EnterSleep());
+        result = control.sleepStatus();
+        spoken = 'Okay, going to sleep. Say hey comstar when you need me.';
+      case TerminalIntentKind.volumeMute:
+        result = control.volumeMute(true);
+        spoken = result['ok'] == true
+            ? 'Okay, I muted the speaker.'
+            : 'I could not mute the speaker.';
+      case TerminalIntentKind.volumeUnmute:
+        result = control.volumeMute(false);
+        spoken = result['ok'] == true
+            ? 'Okay, speaker unmuted.'
+            : 'I could not unmute the speaker.';
+      case TerminalIntentKind.volumeUp:
+        result = control.volumeAdjust(intent.delta ?? 10);
+        spoken = result['ok'] == true
+            ? 'Volume is now ${result['percent']} percent.'
+            : 'I could not change the volume.';
+      case TerminalIntentKind.volumeDown:
+        result = control.volumeAdjust(intent.delta ?? -10);
+        spoken = result['ok'] == true
+            ? 'Volume is now ${result['percent']} percent.'
+            : 'I could not change the volume.';
+      case TerminalIntentKind.volumeSet:
+        result = control.volumeSet(intent.percent ?? 50);
+        spoken = result['ok'] == true
+            ? 'Volume set to ${result['percent']} percent.'
+            : 'I could not set the volume.';
+    }
+
+    logInfo('terminal_intent', 'Handled device control locally', data: {
+      'turn_id': turnId,
+      'kind': intent.kind.name,
+      'result': result,
+    });
+
+    final ttsSpan = Span('tts_total');
+    final path = await tts.synthesizeToFile(spoken);
+    _lastTtsTotal = Duration(milliseconds: ttsSpan.elapsedMs);
+    ttsSpan.close();
+    final audioUrl = audioServer.registerFile(path);
+    handle(ResponseReady(spoken, audioUrl));
+    return true;
   }
 
   Future<void> _runGreeterAfterSession(String userid) async {

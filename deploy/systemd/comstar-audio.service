@@ -15,14 +15,15 @@ Environment=COMSTAR_LOG=info
 Environment=COMSTAR_VAD_SILENCE_MS=1000
 # Mic: empty = default; index ("3") or name substring ("C525") for sounddevice
 # Environment=COMSTAR_MIC_SOURCE=C525
-# Soft baseline for C525; software AGC (COMSTAR_MIC_AGC=1) trims hot speech.
-# Keep Pulse around 100% — 80% + low ALSA was too quiet for speech gating;
-# ≥150% clips idle hiss into permanent VAD "speech".
+# Soft baseline for C525; software AGC trims hot speech.
+# 100% Pulse + 85% ALSA was too hot (ambient loud_frac / false listen). 75%/70% keeps speech.
 Environment=COMSTAR_MIC_AGC=1
-ExecStartPre=/usr/bin/pactl set-source-volume @DEFAULT_SOURCE@ 100%
-ExecStartPre=/usr/bin/amixer -c 3 set Mic 85% unmute
+Environment=COMSTAR_MIC_AGC_TARGET=0.055
+Environment=COMSTAR_MIC_AGC_MAX_GAIN=1.8
+ExecStartPre=/usr/bin/pactl set-source-volume @DEFAULT_SOURCE@ 75%
+ExecStartPre=/usr/bin/amixer -c 3 set Mic 70% unmute
 # Fallback if card index differs (ignore failure):
-ExecStartPre=-/bin/sh -c 'amixer -c "$(awk "/C525|Webcam/{print \$1; exit}" /proc/asound/cards)" set Mic 85% unmute >/dev/null 2>&1'
+ExecStartPre=-/bin/sh -c 'amixer -c "$(awk "/C525|Webcam/{print \$1; exit}" /proc/asound/cards)" set Mic 70% unmute >/dev/null 2>&1'
 ExecStart=/opt/comstar/src/terminal/audio/.venv/bin/python __main__.py
 Restart=on-failure
 RestartSec=5

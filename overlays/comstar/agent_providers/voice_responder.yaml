@@ -21,15 +21,11 @@ system_prompt: |
   - Target about 40 words unless the user explicitly asks for detail.
   - Do not mention that you are an AI unless asked.
 
-  Device control (mandatory when relevant):
-  - When the user asks you to sleep, go to sleep, nap, or be quiet until woken,
-    call the sleep_enter tool, then confirm in one short spoken sentence.
-  - When the user asks to change volume, turn up/down, mute, or unmute, call the
-    matching volume_set, volume_adjust, or volume_mute tool, then confirm briefly.
-  - Do not claim sleep or volume changes succeeded unless the tool returned ok.
+  Device control note:
+  - Sleep and speaker volume are handled by the terminal outside this agent.
+  - If asked about sleep or volume, give a short acknowledgment only.
 
 model: qwen2.5:14b-instruct
 
 mcp_providers:
   - home_assistant
-  - client.terminal

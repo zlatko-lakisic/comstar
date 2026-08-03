@@ -20,6 +20,9 @@ abstract class ReachSessionBridge {
 
   Future<void> stop({bool clearRemote = true});
 
+  /// Session-overlay MCP ids acknowledged by AO after [start].
+  List<String> get registeredMcpIds;
+
   Future<Map<String, dynamic>> directAgent({
     required String agentProviderId,
     required String text,
@@ -57,6 +60,9 @@ class AoReachSessionBridge implements ReachSessionBridge {
       _inner.stop(clearRemote: clearRemote);
 
   @override
+  List<String> get registeredMcpIds => _inner.registeredMcpIds;
+
+  @override
   Future<Map<String, dynamic>> directAgent({
     required String agentProviderId,
     required String text,
@@ -88,6 +94,16 @@ class ComstarMcpBootstrap implements SessionMcpBootstrap {
     if (guest) {
       return SessionMcpBootstrapResult.empty;
     }
+    // Tunnelled client.terminal hangs AO tool loading on current Pi/AO path.
+    // Sleep/volume are handled in-bridge via terminal_intent until the tunnel
+    // exchange is proven. HTTP server code remains in mcp/terminal_mcp.
+    if (Platform.environment['COMSTAR_TERMINAL_MCP'] != '1') {
+      return const SessionMcpBootstrapResult(
+        warnings: [
+          'terminal MCP overlay skipped (set COMSTAR_TERMINAL_MCP=1 to enable)',
+        ],
+      );
+    }
     if (!mcpTunnel) {
       return const SessionMcpBootstrapResult(
         warnings: ['mcp tunnel disabled; terminal MCP not registered'],
@@ -96,14 +112,37 @@ class ComstarMcpBootstrap implements SessionMcpBootstrap {
 
     try {
       final mcpRoot = _resolveMcpRoot();
-      await host.startPythonModule(
-        alias: 'terminal',
-        module: 'terminal_mcp',
-        extraEnv: {
+      final port = await host.pickFreePort();
+      final python = await _resolvePython();
+      final process = await Process.start(
+        python,
+        [
+          '-m',
+          'terminal_mcp',
+          '--http',
+          '--host',
+          '127.0.0.1',
+          '--port',
+          '$port',
+        ],
+        workingDirectory: Directory.systemTemp.path,
+        environment: {
+          ...Platform.environment,
           'PYTHONPATH': mcpRoot,
           'COMSTAR_CONTROL_URL': 'http://127.0.0.1:8776',
+          'COMSTAR_MCP_HTTP': '1',
+          'COMSTAR_MCP_HTTP_PORT': '$port',
         },
+        runInShell: false,
       );
+      await host.attachManagedLoopback(
+        alias: 'terminal',
+        port: port,
+        process: process,
+      );
+      logInfo('mcp_terminal_ready', 'Terminal MCP HTTP listening', data: {
+        'port': port,
+      });
       return SessionMcpBootstrapResult(
         mcps: [
           sessionTunnelMcpEntry(
@@ -128,6 +167,16 @@ class ComstarMcpBootstrap implements SessionMcpBootstrap {
     // overlays/comstar → repo root → mcp
     final repoRoot = overlay.parent.parent;
     return '${repoRoot.path}/mcp';
+  }
+
+  Future<String> _resolvePython() async {
+    for (final c in const ['python3', 'python']) {
+      try {
+        final r = await Process.run(c, ['--version']);
+        if (r.exitCode == 0) return c;
+      } catch (_) {}
+    }
+    throw StateError('python3 not found for terminal MCP');
   }
 }
 
@@ -157,10 +206,13 @@ class ComstarSession {
   static const voiceAgentId = 'client.voice_responder';
   static const greeterAgentId = 'client.greeter';
 
-  /// Hosted + tunnelled MCP ids for known-user voice turns.
+  /// Hosted MCP ids for known-user voice turns.
   ///
   /// Do not list catalog-missing ids (`memory`, `time`, `math`, `vision`).
-  static const fullMcpProviders = <String>['home_assistant', 'client.terminal'];
+  /// `client.terminal` is registered on the overlay for tunnel bring-up, but is
+  /// not passed here: loading it via AO currently hangs the turn (~15s).
+  /// Sleep/volume are handled locally in the bridge (`terminal_intent.dart`).
+  static const fullMcpProviders = <String>['home_assistant'];
 
   static const guestMcpProviders = <String>[
     // Restricted: no home_assistant / terminal control.
@@ -242,8 +294,14 @@ class ComstarSession {
     _guest = false;
   }
 
-  List<String> mcpProvidersForVoice() =>
-      _guest ? guestMcpProviders : fullMcpProviders;
+  List<String> mcpProvidersForVoice() {
+    if (_guest) return List.unmodifiable(guestMcpProviders);
+    final registered = _bridge.registeredMcpIds;
+    return [
+      for (final id in fullMcpProviders)
+        if (!id.startsWith('client.') || registered.contains(id)) id,
+    ];
+  }
 
   Future<String> directVoice(String text) async {
     final result = await _bridge.directAgent(
