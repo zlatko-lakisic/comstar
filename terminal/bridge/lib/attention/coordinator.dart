@@ -276,6 +276,7 @@ class AttentionCoordinator {
         }
       case EnteredSleep():
         control.sleepEnter();
+        _cancelSleepWakeVerify(stopListen: true);
         _followUpTimer?.cancel();
         _followUpTimer = null;
         _broadcastPhase('sleeping', detail: 'Sleeping…');
@@ -284,6 +285,7 @@ class AttentionCoordinator {
         );
       case ExitedSleep():
         control.sleepExit();
+        _cancelSleepWakeVerify(stopListen: false);
       case LogAttention():
         break;
     }
