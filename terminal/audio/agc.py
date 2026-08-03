@@ -13,12 +13,12 @@ class SoftAgc:
     def __init__(
         self,
         *,
-        target_rms: float = 0.08,
-        max_gain: float = 1.8,
-        min_gain: float = 0.35,
-        noise_floor: float = 0.012,
-        attack: float = 0.15,
-        release: float = 0.04,
+        target_rms: float = 0.07,
+        max_gain: float = 2.5,
+        min_gain: float = 0.4,
+        noise_floor: float = 0.008,
+        attack: float = 0.2,
+        release: float = 0.06,
     ) -> None:
         self.target_rms = target_rms
         self.max_gain = max_gain
@@ -52,5 +52,5 @@ def agc_from_env() -> SoftAgc | None:
     raw = os.environ.get("COMSTAR_MIC_AGC", "1").strip().lower()
     if raw in {"0", "false", "off", "no"}:
         return None
-    target = float(os.environ.get("COMSTAR_MIC_AGC_TARGET", "0.08"))
+    target = float(os.environ.get("COMSTAR_MIC_AGC_TARGET", "0.07"))
     return SoftAgc(target_rms=target)
