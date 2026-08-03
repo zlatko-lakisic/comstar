@@ -105,6 +105,7 @@ class AttentionCoordinator {
     _cancelSpeakWatchdog();
     _followUpTimer?.cancel();
     _followUpTimer = null;
+    _cancelSleepWakeVerify(stopListen: true);
     await _visionSub?.cancel();
     _visionSub = null;
     await _visionPoller?.stop();
@@ -404,10 +405,22 @@ class AttentionCoordinator {
     switch (envelope.type) {
       case 'wake':
         final score = (envelope.data['score'] as num?)?.toDouble() ?? 0;
+        final model = envelope.data['model']?.toString() ?? '';
+        // Sleep: real hey_comstar model may wake immediately. Force/energy wake
+        // (no ONNX on Pi) must STT-confirm "hey/hello comstar" — not bare hello.
+        if (machine.state is Sleeping && model != 'hey_comstar') {
+          unawaited(_beginSleepWakeVerify(score));
+          break;
+        }
         handle(WakeWord(score));
       case 'vad.speech_start':
+        if (_sleepWakeVerifyInFlight) break;
         handle(const SpeechStart());
       case 'vad.speech_end':
+        if (_sleepWakeVerifyInFlight) {
+          unawaited(_finishSleepWakeVerify(reason: 'vad_end'));
+          break;
+        }
         final durationMs = (envelope.data['durationMs'] as num?)?.toInt() ?? 0;
         if ((machine.state is Listening || machine.context.followUpListening) &&
             !machine.context.sttPending) {
@@ -424,6 +437,10 @@ class AttentionCoordinator {
         _captureSampleRate =
             (envelope.data['sampleRate'] as num?)?.toInt() ?? 16000;
       case 'audio.end':
+        if (_sleepWakeVerifyInFlight) {
+          unawaited(_finishSleepWakeVerify(reason: 'listen_eof'));
+          break;
+        }
         // Streamer hit maxMs / stop without a VAD speech_end — still finalize,
         // but bounce true blips the same way as early SpeechEnd.
         if (machine.state is Listening && !machine.context.sttPending) {
@@ -444,7 +461,8 @@ class AttentionCoordinator {
         // After FinalizeCapture the streamer stops but level msgs continue —
         // that made the orb "listen" while STT ran on dead audio.
         final capturing = (machine.state is Listening ||
-                machine.context.followUpListening) &&
+                machine.context.followUpListening ||
+                _sleepWakeVerifyInFlight) &&
             !machine.context.sttPending;
         if (!capturing) {
           break;
@@ -458,6 +476,103 @@ class AttentionCoordinator {
         );
       default:
         break;
+    }
+  }
+
+  Future<void> _beginSleepWakeVerify(double score) async {
+    if (machine.state is! Sleeping) return;
+    if (_sleepWakeVerifyInFlight) return;
+    _sleepWakeVerifyInFlight = true;
+    _sleepWakeScore = score;
+    _captureBuffer.clear();
+    _resetCaptureStats();
+    final turnId = 'sleep-wake-${clock.nowMs}';
+    logInfo('sleep_wake_verify', 'Checking wake phrase (need hey/hello comstar)', data: {
+      'turn_id': turnId,
+      'score': score,
+    });
+    _broadcastPhase('sleeping', detail: 'Listening for hey comstar…');
+    _sendAudio(
+      Envelope.create(
+        type: 'listen.start',
+        turnId: turnId,
+        data: {
+          'turn_id': turnId,
+          'maxMs': 4000,
+          'preRollMs': 800,
+          'vadSettleMs': 0,
+          'clearRing': false,
+        },
+      ),
+    );
+    _sleepWakeTimer?.cancel();
+    _sleepWakeTimer = Timer(const Duration(seconds: 5), () {
+      unawaited(_finishSleepWakeVerify(reason: 'timeout'));
+    });
+  }
+
+  Future<void> _finishSleepWakeVerify({required String reason}) async {
+    if (!_sleepWakeVerifyInFlight) return;
+    _sleepWakeTimer?.cancel();
+    _sleepWakeTimer = null;
+    // Prevent re-entry while STT runs; still "in flight" until done.
+    final score = _sleepWakeScore;
+    _sendAudio(Envelope.create(type: 'listen.stop'));
+    _broadcastKiosk(
+      Envelope.create(type: 'listening', data: {'active': false}),
+    );
+
+    final pcm = _captureBuffer.toBytes();
+    final peak = _capturePeakRms;
+    _captureBuffer.clear();
+    _resetCaptureStats();
+
+    if (machine.state is! Sleeping) {
+      _sleepWakeVerifyInFlight = false;
+      return;
+    }
+
+    if (pcm.length < 16000 || peak < _speechPeakRms) {
+      logInfo('sleep_wake_reject', 'Wake verify too quiet / short', data: {
+        'reason': reason,
+        'bytes': pcm.length,
+        'peak': peak,
+      });
+      _sleepWakeVerifyInFlight = false;
+      _broadcastPhase('sleeping', detail: 'Sleeping…');
+      return;
+    }
+
+    try {
+      final text = await stt.transcribe(pcm, sampleRate: _captureSampleRate);
+      final ok = isComstarWakePhrase(text);
+      logInfo('sleep_wake_stt', ok ? 'Wake phrase accepted' : 'Wake phrase rejected', data: {
+        'reason': reason,
+        'text': text.length > 80 ? '${text.substring(0, 80)}…' : text,
+        'accepted': ok,
+      });
+      _sleepWakeVerifyInFlight = false;
+      if (ok && machine.state is Sleeping) {
+        handle(WakeWord(score));
+      } else {
+        _broadcastPhase('sleeping', detail: 'Sleeping…');
+      }
+    } catch (e) {
+      _sleepWakeVerifyInFlight = false;
+      logWarn('sleep_wake_stt_failed', e.toString());
+      _broadcastPhase('sleeping', detail: 'Sleeping…');
+    }
+  }
+
+  void _cancelSleepWakeVerify({required bool stopListen}) {
+    _sleepWakeTimer?.cancel();
+    _sleepWakeTimer = null;
+    if (!_sleepWakeVerifyInFlight) return;
+    _sleepWakeVerifyInFlight = false;
+    if (stopListen) {
+      _sendAudio(Envelope.create(type: 'listen.stop'));
+      _captureBuffer.clear();
+      _resetCaptureStats();
     }
   }
 
