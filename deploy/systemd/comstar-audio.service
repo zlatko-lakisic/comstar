@@ -15,8 +15,12 @@ Environment=COMSTAR_LOG=info
 Environment=COMSTAR_VAD_SILENCE_MS=1000
 # Mic: empty = default; index ("3") or name substring ("C525") for sounddevice
 # Environment=COMSTAR_MIC_SOURCE=C525
-# C525 at ≥150% clips idle hiss into permanent VAD "speech" → empty STT.
+# Soft baseline for C525; software AGC (COMSTAR_MIC_AGC=1) trims hot speech.
+# Do not raise Pulse source volume ≥150% — idle hiss trips VAD.
+Environment=COMSTAR_MIC_AGC=1
 ExecStartPre=/usr/bin/pactl set-source-volume @DEFAULT_SOURCE@ 80%
+# Cap ALSA capture below max so soft AGC has headroom (card may differ).
+ExecStartPre=/bin/bash -c 'CARD=$(awk "/C525|Webcam/{print \$1; exit}" /proc/asound/cards); if [[ -n "$CARD" ]]; then amixer -c "$CARD" set Mic 70% unmute >/dev/null 2>&1 || true; fi'
 ExecStart=/opt/comstar/src/terminal/audio/.venv/bin/python __main__.py
 Restart=on-failure
 RestartSec=5

@@ -47,6 +47,13 @@ class PreferReachSttClient implements SttClient {
       return fallback.transcribe(pcm, sampleRate: sampleRate);
     }
   }
+
+  void dispose() {
+    final fb = fallback;
+    if (fb is HttpSttClient) {
+      fb.dispose();
+    }
+  }
 }
 
 /// Prefers Reach-advertised TTS when present; otherwise [fallback].

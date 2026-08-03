@@ -7,6 +7,7 @@ import os
 import signal
 from typing import Any
 
+from agc import agc_from_env
 from bridge_client import BridgeClient
 from capture import AudioCapture
 from devices import describe_input_device, mic_source_spec, resolve_sounddevice_input
@@ -56,7 +57,8 @@ async def _main() -> None:
         await client.send_binary(data)
 
     try:
-        capture = AudioCapture(device=mic_device, on_level=lambda _rms: None)
+        agc = agc_from_env()
+        capture = AudioCapture(device=mic_device, on_level=lambda _rms: None, agc=agc)
         capture.start()
         vad = VadEngine(silence_ms=vad_silence_ms)
         wake = WakeWordEngine(wakeword_model, threshold=wakeword_threshold)
@@ -75,6 +77,7 @@ async def _main() -> None:
                 "vad": "silero" if vad.using_silero else "energy",
                 "mic_source": mic_spec or "default",
                 "mic_device": describe_input_device(mic_device),
+                "mic_agc": agc is not None,
             },
         )
     except Exception as exc:  # noqa: BLE001

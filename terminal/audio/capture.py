@@ -9,6 +9,11 @@ from typing import Callable
 import numpy as np
 
 try:
+    from agc import SoftAgc
+except ImportError:  # pragma: no cover
+    SoftAgc = None  # type: ignore[misc, assignment]
+
+try:
     import sounddevice as sd
 except ImportError:  # pragma: no cover - optional at import time
     sd = None  # type: ignore[assignment]
@@ -98,11 +103,13 @@ class AudioCapture:
         block_ms: int = 100,
         device: int | str | None = None,
         on_level: Callable[[float], None] | None = None,
+        agc: SoftAgc | None = None,
     ) -> None:
         self.sample_rate = sample_rate
         self.block_ms = block_ms
         self.device = device
         self.on_level = on_level
+        self.agc = agc
         self.ring = RingBuffer(sample_rate=sample_rate, seconds=RING_SECONDS)
         self._stream: sd.InputStream | None = None
         self._lock = threading.Lock()
@@ -142,6 +149,8 @@ class AudioCapture:
         if status:
             return
         pcm = np.asarray(indata[:, 0], dtype=np.int16)
+        if self.agc is not None:
+            pcm = self.agc.process(pcm)
         with self._lock:
             self.ring.write(pcm)
         if self.on_level is not None:
