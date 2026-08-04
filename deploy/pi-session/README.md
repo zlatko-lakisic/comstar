@@ -1,12 +1,13 @@
 # COMSTAR Pi session chrome
 
-Configs copied by `scripts/install-pi-session.sh` (also `make pi-session`).
+Configs installed by `scripts/install-pi-session.sh` (`make pi-session`).
 
 | Path | Role |
 |---|---|
-| `labwc/autostart` | Dark `swaybg` if present |
-| `labwc/environment` | Invisible cursor theme + dark GTK |
-| `labwc/rc.xml` | Minimal labwc (opt-in via `COMSTAR_REPLACE_LABWC_RC=1`) |
-| `lightdm/50-comstar.conf` | Autologin seat drop-in (needs sudo) |
+| `comstar-session.sh` | Starts `labwc` **without** `--merge-config` |
+| `comstar-labwc.desktop` | Wayland session entry for LightDM |
+| `labwc/autostart` | Dark `swaybg` + early kiosk; never starts panels |
+| `labwc/environment` | Invisible cursor + dark GTK |
+| `lightdm/50-comstar.conf` | Drop-in (also patches main `lightdm.conf`) |
 
-Does not run on every `make deploy`. Install once, then reboot.
+Why not just kill panels: Pi `labwc-pi` uses `--merge-config`, so `/etc/xdg/labwc/autostart` keeps respawning `pcmanfm` / `wf-panel-pi` via `lwrespawn`. The COMSTAR session avoids that merge entirely.

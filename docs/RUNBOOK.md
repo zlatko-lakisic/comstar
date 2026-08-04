@@ -62,7 +62,7 @@ Sources: `terminal/kiosk/splash.html`, `scripts/kiosk-launch.sh`,
 **Debug / temporary Pi desktop:**
 
 ```bash
-sudo sed -i 's/comstar-labwc/LXDE-pi-labwc/g' /etc/lightdm/lightdm.conf.d/50-comstar.conf
+sudo cp /etc/lightdm/lightdm.conf.pre-comstar /etc/lightdm/lightdm.conf
 sudo systemctl restart lightdm
 ```
 

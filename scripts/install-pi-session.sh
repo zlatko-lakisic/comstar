@@ -23,6 +23,20 @@ install_root_bits() {
   cp "$LIGHTDM_SNIPPET" "$LIGHTDM_DST"
   echo "installed $LIGHTDM_DST"
 
+  # Raspberry Pi OS LightDM often ignores conf.d for seat keys already set in
+  # lightdm.conf — patch the main file (backup once).
+  if [[ -f /etc/lightdm/lightdm.conf ]]; then
+    if [[ ! -f /etc/lightdm/lightdm.conf.pre-comstar ]]; then
+      cp -a /etc/lightdm/lightdm.conf /etc/lightdm/lightdm.conf.pre-comstar
+      echo "backed up /etc/lightdm/lightdm.conf"
+    fi
+    sed -i \
+      -e 's/^user-session=.*/user-session=comstar-labwc/' \
+      -e 's/^autologin-session=.*/autologin-session=comstar-labwc/' \
+      /etc/lightdm/lightdm.conf
+    echo "patched /etc/lightdm/lightdm.conf → comstar-labwc"
+  fi
+
   sed "s|^Exec=.*|Exec=$SRC/comstar-session.sh|" \
     "$SRC/comstar-labwc.desktop" >"$SYSTEM_SESSION_DST"
   chmod 644 "$SYSTEM_SESSION_DST"
@@ -77,4 +91,6 @@ fi
 echo
 echo "COMSTAR session install done."
 echo "Reboot (or: sudo systemctl restart lightdm) to enter comstar-labwc."
-echo "Restore Pi desktop: set autologin-session=LXDE-pi-labwc in $LIGHTDM_DST"
+echo "Restore Pi desktop:"
+echo "  sudo cp /etc/lightdm/lightdm.conf.pre-comstar /etc/lightdm/lightdm.conf"
+echo "  sudo systemctl restart lightdm"
