@@ -311,8 +311,8 @@ class AttentionCoordinator {
         _sendAudio(
           Envelope.create(type: 'wake.enable', data: {'enabled': enabled}),
         );
-      case OpenFollowUpWindow():
-        _openFollowUpWindow();
+      case OpenFollowUpWindow(:final settleMs):
+        _openFollowUpWindow(settleMs: settleMs);
       case PromoteListening():
         _followUpTimer?.cancel();
         _followUpTimer = null;
@@ -391,10 +391,13 @@ class AttentionCoordinator {
     return false;
   }
 
-  void _openFollowUpWindow() {
+  void _openFollowUpWindow({int settleMs = 1500}) {
     final seconds = config.audio.followupWindowSeconds;
     final gen = ++_followUpGen;
-    logInfo('followup', 'Follow-up window opened', data: {'seconds': seconds});
+    logInfo('followup', 'Follow-up window opened', data: {
+      'seconds': seconds,
+      'settle_ms': settleMs,
+    });
     final turnId = 'followup-${clock.nowMs}';
     machine.context.followUpOpen = true;
     machine.context.followUpListening = true;
@@ -409,15 +412,12 @@ class AttentionCoordinator {
         data: {'active': true, 'followUp': true},
       ),
     );
-    // Keep force-wake muted until TTS echo settles.
+    // Keep force-wake muted until settle (TTS echo) completes.
     _sendAudio(
       Envelope.create(type: 'wake.enable', data: {'enabled': false}),
     );
     _sendAudio(Envelope.create(type: 'listen.stop'));
-    // Delay mic start until after settle so the first VAD speech_start cannot
-    // race the arm window and be lost forever (continuous hiss never re-fires).
-    const settleMs = 1500;
-    Future<void>.delayed(const Duration(milliseconds: settleMs), () {
+    void armMic() {
       if (gen != _followUpGen) return;
       if (machine.context.turnId != turnId) return;
       if (machine.context.playing) return;
@@ -453,7 +453,16 @@ class AttentionCoordinator {
       // later by peak energy so silence still does not go to Whisper.
       machine.context.followUpMicArmedAtMs = clock.nowMs - 2000;
       handle(const SpeechStart());
-    });
+    }
+
+    // Delay mic start after TTS so the first VAD speech_start cannot race the
+    // arm window. After sleep wake, settleMs is 0 — arm on next microtask so we
+    // are not nested inside WakeWord effect dispatch.
+    if (settleMs <= 0) {
+      scheduleMicrotask(armMic);
+    } else {
+      Future<void>.delayed(Duration(milliseconds: settleMs), armMic);
+    }
     _followUpTimer?.cancel();
     _followUpTimer = Timer(Duration(seconds: seconds), () {
       if (gen != _followUpGen) return;
@@ -750,33 +759,8 @@ class AttentionCoordinator {
       _sleepWakeVerifyInFlight = false;
       _sleepWakeRestartCount = 0;
       if (ok && machine.state is Sleeping) {
+        // Machine exits sleep and opens follow-up Listening with settleMs: 0.
         handle(WakeWord(score));
-        // Ready HUD — mute force-wake briefly so the same utterance does not
-        // immediately flip Engaged → Listening.
-        machine.context.wakeEnabled = false;
-        _sendAudio(
-          Envelope.create(type: 'wake.enable', data: {'enabled': false}),
-        );
-        _broadcastPhase('idle', detail: '');
-        _broadcastKiosk(
-          Envelope.create(
-            type: 'state',
-            data: {
-              'state': machine.state.name,
-              if (machine.context.cachedUserid != null)
-                'userid': machine.context.cachedUserid,
-            },
-          ),
-        );
-        Future<void>.delayed(const Duration(milliseconds: 1500), () {
-          if (machine.state is! Engaged) return;
-          if (machine.context.playing) return;
-          if (machine.context.followUpListening) return;
-          machine.context.wakeEnabled = true;
-          _sendAudio(
-            Envelope.create(type: 'wake.enable', data: {'enabled': true}),
-          );
-        });
       } else {
         _returnSleepHud();
       }
@@ -2024,11 +2008,29 @@ class AttentionCoordinator {
   }
 
   Future<void> _speakFallback(String line, String turnId) async {
-    final canned = _lookupFallbackWav(line);
-    final path = canned ?? await tts.synthesizeToFile(line);
-    _noteSpeakDuration(path: path, text: line);
-    final audioUrl = audioServer.registerFile(path);
-    handle(ResponseReady(line, audioUrl));
+    // Speak directly — do not route through ResponseReady. Orchestration
+    // timeout may already have left Responding → Engaged, which previously
+    // dropped ResponseReady and left the user with silence.
+    try {
+      await _announceEngaged(line);
+    } catch (e) {
+      logWarn('speak_fallback_failed', e.toString(), data: {'turn_id': turnId});
+      final canned = _lookupFallbackWav(line);
+      final path = canned ?? await tts.synthesizeToFile(line);
+      _noteSpeakDuration(path: path, text: line);
+      final audioUrl = audioServer.registerFile(path);
+      machine.context.playing = true;
+      _beginSpeakWatchdog();
+      _broadcastPhase('speaking', detail: line);
+      _broadcastKiosk(
+        Envelope.create(
+          type: 'speak',
+          turnId: turnId,
+          data: {'text': line, 'audioUrl': audioUrl},
+        ),
+      );
+      unawaited(_maybePlayLocal(audioUrl));
+    }
   }
 
   String? _lookupFallbackWav(String line) {

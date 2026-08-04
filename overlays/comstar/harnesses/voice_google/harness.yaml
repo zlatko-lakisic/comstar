@@ -1,10 +1,19 @@
-# COMSTAR user harness pack (AO User-agent-harnesses layout).
+# COMSTAR user harness pack — Google Workspace voice (AO User-agent-harnesses).
+#
+# Read scenarios: safe anytime (Calendar usually works on TV pairing; Gmail/Drive
+# browse often need Desktop OAuth).
+# Incomplete scenarios: clarification paths (must not invent writes).
+# *_probe WRITE scenarios: leave disposable "COMSTAR harness probe" artifacts —
+# run deliberately; trash Drive folder / delete calendar event when done.
 agent_provider_id: client.voice_responder
 mcp_providers:
   - client.google_workspace
 skills:
   - client.spoken_output
   - client.google_workspace_voice
+  - client.calendar_voice
+  - client.gmail_voice
+  - client.drive_voice
 defaults:
   topic: COMSTAR voice Google
   timeout_s: 90

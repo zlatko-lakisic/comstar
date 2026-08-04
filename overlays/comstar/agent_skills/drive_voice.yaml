@@ -1,0 +1,31 @@
+id: drive_voice
+description: >
+  Google Drive via client.google_workspace — list, search, read, and careful
+  write/share for spoken hallway answers.
+capabilities: >
+  drive_list_files, drive_search_files, drive_get_file, drive_read_file,
+  create/update/move/share/delete/doc tools; spoken file summaries.
+good_for: >
+  drive, files, documents, google doc, shared with me, find file
+planner_hint: Attach when the turn involves Google Drive or documents.
+user_goal_keywords:
+  - drive
+  - google drive
+  - file
+  - files
+  - folder
+  - document
+  - documents
+  - spreadsheet
+  - pdf
+  - shared with me
+  - google doc
+  - google docs
+
+content:
+  file: drive_voice/instructions.md
+
+inject:
+  target: backstory
+  heading: "## Google Drive (voice)"
+  max_chars: 4000

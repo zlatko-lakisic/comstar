@@ -1,0 +1,12 @@
+id: calendar_tomorrow
+description: |
+  Ask what is on the primary calendar tomorrow (list_events date offset).
+expected_output: >
+  Spoken summary for tomorrow, or that the day looks clear.
+assertions:
+  - type: min_chars
+    value: 20
+  - type: forbids_regex
+    pattern: '(?i)(no access|cannot access|don''t have access to (your )?calendar)'
+fixtures:
+  inject_transcript: "What is on my calendar tomorrow?"

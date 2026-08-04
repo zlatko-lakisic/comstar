@@ -375,7 +375,8 @@ void main() {
       _engageAndListen(m);
       _apply(m, const SpeechEnd(500));
       _apply(m, const TranscriptReady('hello'));
-      clock.advance(16 * 1000);
+      // Floor is 90s so HA tool turns are not cut off by the 15s chat timeout.
+      clock.advance(91 * 1000);
       final t = m.handle(const Tick());
       expect(t.to, isA<Engaged>());
       expect(_hasEffectType<SpeakFallback>(t.effects), isTrue);
@@ -477,7 +478,7 @@ void main() {
       expect(m.context.sessionOpen, isFalse);
     });
 
-    test('WakeWord exits sleep to Ready (Engaged, no follow-up)', () {
+    test('WakeWord exits sleep to Engaged and opens follow-up Listening', () {
       final m = _machine();
       _apply(m, const PersonDetected(0.85));
       _apply(m, const FaceRecognized('zlatko', 0.9));
@@ -487,11 +488,11 @@ void main() {
       final t = m.handle(const WakeWord(0.9));
       expect(m.state, isA<Engaged>());
       expect(m.context.sessionOpen, isTrue);
-      expect(m.context.followUpOpen, isFalse);
-      expect(m.context.followUpListening, isFalse);
       expect(m.context.wakeEnabled, isTrue);
       expect(_hasEffectType<ExitedSleep>(t.effects), isTrue);
-      expect(_hasEffectType<OpenFollowUpWindow>(t.effects), isFalse);
+      expect(_hasEffectType<OpenFollowUpWindow>(t.effects), isTrue);
+      final followUp = t.effects.whereType<OpenFollowUpWindow>().single;
+      expect(followUp.settleMs, 0);
       expect(_hasEffectType<StartListening>(t.effects), isFalse);
       expect(_hasEffectType<EnableWake>(t.effects), isTrue);
       assertInvariants(m.context);

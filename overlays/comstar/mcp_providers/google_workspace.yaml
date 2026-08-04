@@ -3,8 +3,11 @@
 # Session MCP id becomes client.google_workspace via tunnel://session-mcp/google_workspace.
 id: google_workspace
 description: Google Workspace (Gmail, Calendar, Drive) via Reach stdio tunnel
-capabilities: List/search calendars and events; Drive files; Gmail when Desktop scopes granted
-good_for: calendar, gmail, drive, google workspace
+capabilities: >
+  Gmail list/search/read/send; Calendar list calendars/events + create event;
+  Drive list/search/read/get + create/update/move/share/delete/doc;
+  get_user_email. Tool playbooks: calendar_voice, gmail_voice, drive_voice skills.
+good_for: calendar, gmail, drive, google workspace, email, schedule, files
 planner_hint: Attach for Google account questions when the resident is linked.
 user_goal_keywords:
   - calendar
@@ -13,6 +16,10 @@ user_goal_keywords:
   - google
   - inbox
   - meeting
+  - email
+  - schedule
+  - files
+  - documents
 
 # COMSTAR bridge bootstrap (not AO stdio/streamable_http)
 transport: stdio_tunnel

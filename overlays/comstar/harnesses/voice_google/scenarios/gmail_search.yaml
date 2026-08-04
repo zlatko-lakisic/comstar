@@ -1,0 +1,10 @@
+id: gmail_search
+description: |
+  Targeted Gmail search (gmail_search_emails). Desktop OAuth required.
+expected_output: >
+  Spoken match subjects, nothing found, or Desktop-token / unauthorized message.
+assertions:
+  - type: min_chars
+    value: 20
+fixtures:
+  inject_transcript: "Search my Gmail for unread messages from the last week."

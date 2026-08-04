@@ -25,5 +25,9 @@ void main() {
     expect(parseHomeDataIntent('what time is it'), isNull);
     expect(parseHomeDataIntent('turn on the lights'), isNull);
     expect(parseHomeDataIntent('go to sleep'), isNull);
+    expect(
+      parseHomeDataIntent('How much water did our garden get yesterday?'),
+      isNull,
+    );
   });
 }

@@ -1,0 +1,16 @@
+id: drive_trash_probe
+description: |
+  WRITE — trash the disposable folder named "COMSTAR harness probe" if it exists.
+  Run after drive_create_folder_probe when cleaning up. Uses trash, not permanent delete.
+expected_output: >
+  Spoken confirmation it was trashed / not found, or scope / connect-Google message.
+  Must not claim permanent delete.
+assertions:
+  - type: min_chars
+    value: 20
+  - type: forbids_regex
+    pattern: '(?i)(permanently deleted|deleted forever)'
+fixtures:
+  inject_transcript: >
+    Find the Google Drive folder named COMSTAR harness probe and move it to the trash.
+    Do not permanently delete it.

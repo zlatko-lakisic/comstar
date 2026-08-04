@@ -1,0 +1,10 @@
+id: drive_shared
+description: |
+  List files shared with me (drive_list_files sharedWithMe).
+expected_output: >
+  Spoken file names, nothing shared, or limited Drive scope / connect-Google message.
+assertions:
+  - type: min_chars
+    value: 20
+fixtures:
+  inject_transcript: "What files are shared with me in Google Drive?"

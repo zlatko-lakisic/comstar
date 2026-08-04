@@ -1,0 +1,16 @@
+id: gmail_send_self
+description: |
+  WRITE — send mail to self (to: me). Desktop OAuth required.
+  Subject must be exactly "COMSTAR harness probe". Safe self-only send.
+expected_output: >
+  Spoken confirmation that mail went to self with that subject, or Desktop /
+  unauthorized guidance. Must not invent a successful send.
+assertions:
+  - type: min_chars
+    value: 20
+  - type: forbids_regex
+    pattern: '(?i)(https?://|```)'
+fixtures:
+  inject_transcript: >
+    Email myself with subject COMSTAR harness probe and body
+    harness ok.

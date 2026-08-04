@@ -70,7 +70,10 @@ final class EnableWake extends Effect {
 }
 
 final class OpenFollowUpWindow extends Effect {
-  const OpenFollowUpWindow();
+  /// [settleMs] delays mic arm so TTS echo / wake-phrase bleed settles.
+  /// Use `0` when waking from sleep so the prompt is captured immediately.
+  const OpenFollowUpWindow({this.settleMs = 1500});
+  final int settleMs;
 }
 
 /// Mic already streaming from follow-up — keep PCM, cancel the follow-up timer.

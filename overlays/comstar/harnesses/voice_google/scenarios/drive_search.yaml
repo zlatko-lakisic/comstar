@@ -1,0 +1,10 @@
+id: drive_search
+description: |
+  Ask to find a file by name (search path).
+expected_output: >
+  Spoken match names, nothing found, or limited Drive scope explanation.
+assertions:
+  - type: min_chars
+    value: 20
+fixtures:
+  inject_transcript: "Find the spreadsheet about budget in my Google Drive."

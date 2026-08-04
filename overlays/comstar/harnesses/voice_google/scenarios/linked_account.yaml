@@ -1,0 +1,12 @@
+id: linked_account
+description: |
+  Ask which Google account is linked (get_user_email).
+expected_output: >
+  Spoken email address for the linked account, or clear guidance to connect Google.
+assertions:
+  - type: min_chars
+    value: 15
+  - type: forbids_regex
+    pattern: '(?i)(https?://|```)'
+fixtures:
+  inject_transcript: "Which Google account am I linked to?"

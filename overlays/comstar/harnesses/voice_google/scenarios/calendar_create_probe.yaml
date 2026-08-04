@@ -1,0 +1,16 @@
+id: calendar_create_probe
+description: |
+  WRITE — create a disposable calendar event named exactly "COMSTAR harness probe".
+  Window: tomorrow 15:00–15:15 America/New_York. Clean up manually or via Calendar UI.
+expected_output: >
+  Spoken confirmation of title and time, or connect-Google / unauthorized message.
+  Must not invent success if the tool failed.
+assertions:
+  - type: min_chars
+    value: 20
+  - type: forbids_regex
+    pattern: '(?i)(https?://|```)'
+fixtures:
+  inject_transcript: >
+    Create a calendar event titled COMSTAR harness probe tomorrow from
+    3:00 PM to 3:15 PM Eastern.

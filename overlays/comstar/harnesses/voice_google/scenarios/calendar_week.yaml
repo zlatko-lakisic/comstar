@@ -1,0 +1,12 @@
+id: calendar_week
+description: |
+  Ask for this week's schedule (multi-day list_events).
+expected_output: >
+  Spoken summary across several days, or that the week looks clear.
+assertions:
+  - type: min_chars
+    value: 20
+  - type: forbids_regex
+    pattern: '(?i)(no access|cannot access|don''t have access to (your )?calendar)'
+fixtures:
+  inject_transcript: "What's on my calendar this week?"

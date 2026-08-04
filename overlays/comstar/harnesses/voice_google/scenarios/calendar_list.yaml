@@ -1,0 +1,12 @@
+id: calendar_list
+description: |
+  List available Google calendars (calendar_list_calendars path).
+expected_output: >
+  Spoken names of calendars (primary and any shared), or a clear connect-Google message.
+assertions:
+  - type: min_chars
+    value: 20
+  - type: forbids_regex
+    pattern: '(?i)(https?://|```)'
+fixtures:
+  inject_transcript: "List my Google calendars."

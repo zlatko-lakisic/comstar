@@ -26,3 +26,6 @@ skills:
   - terminal_control_voice
   - home_assistant_voice
   - google_workspace_voice
+  - calendar_voice
+  - gmail_voice
+  - drive_voice

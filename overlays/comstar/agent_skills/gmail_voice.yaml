@@ -1,0 +1,29 @@
+id: gmail_voice
+description: >
+  Gmail via client.google_workspace — list, search, read, and send for spoken
+  hallway answers (Desktop OAuth required).
+capabilities: >
+  gmail_list_emails, gmail_search_emails, gmail_read_email, gmail_send_email,
+  get_user_email; spoken inbox summaries.
+good_for: >
+  gmail, email, inbox, unread, send email, mail from
+planner_hint: Attach when the turn involves Gmail or email.
+user_goal_keywords:
+  - gmail
+  - email
+  - e-mail
+  - inbox
+  - mail
+  - unread
+  - message
+  - messages
+  - send email
+  - draft
+
+content:
+  file: gmail_voice/instructions.md
+
+inject:
+  target: backstory
+  heading: "## Gmail (voice)"
+  max_chars: 3500

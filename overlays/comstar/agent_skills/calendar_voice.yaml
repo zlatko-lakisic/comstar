@@ -1,0 +1,31 @@
+id: calendar_voice
+description: >
+  Google Calendar via client.google_workspace — list calendars/events and create
+  events for spoken hallway answers.
+capabilities: >
+  calendar_list_calendars, calendar_list_events, calendar_create_event,
+  get_user_email; spoken schedule summaries.
+good_for: >
+  calendar, schedule, meetings, appointments, what's on today, create event
+planner_hint: Attach when the turn involves Google Calendar or scheduling.
+user_goal_keywords:
+  - calendar
+  - schedule
+  - meeting
+  - meetings
+  - appointment
+  - appointments
+  - agenda
+  - busy
+  - free
+  - event
+  - events
+  - invite
+
+content:
+  file: calendar_voice/instructions.md
+
+inject:
+  target: backstory
+  heading: "## Google Calendar (voice)"
+  max_chars: 3500

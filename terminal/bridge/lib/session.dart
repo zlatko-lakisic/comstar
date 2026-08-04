@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:ao_reach/ao_reach.dart';
@@ -14,6 +15,15 @@ abstract class ReachSessionBridge {
   /// Non-null after [start] when AO advertised speech sidecars on `hello`.
   SpeechClient? get speechClient;
 
+  /// Epoch seconds when the session overlay expires (from AO ack), if known.
+  double? get expiresAt;
+
+  /// Session-overlay agent ids acknowledged by AO after [start] / refresh.
+  List<String> get registeredAgentIds;
+
+  /// Session-overlay MCP ids acknowledged by AO after [start].
+  List<String> get registeredMcpIds;
+
   Future<void> start({
     required ReachConnectionConfig config,
     required String overlayRoot,
@@ -22,15 +32,15 @@ abstract class ReachSessionBridge {
 
   Future<void> stop({bool clearRemote = true});
 
-  /// Session-overlay MCP ids acknowledged by AO after [start].
-  List<String> get registeredMcpIds;
-
   Future<Map<String, dynamic>> directAgent({
     required String agentProviderId,
     required String text,
     List<String>? mcpProviderIds,
     Duration? timeout,
   });
+
+  /// Re-register session overlay agents (extends AO overlay TTL).
+  Future<void> refreshOverlay();
 }
 
 /// Default adapter wrapping the real ao_reach client.
@@ -44,6 +54,15 @@ class AoReachSessionBridge implements ReachSessionBridge {
 
   @override
   SpeechClient? get speechClient => _inner.speechClient;
+
+  @override
+  double? get expiresAt => _inner.expiresAt;
+
+  @override
+  List<String> get registeredAgentIds => _inner.registeredAgentIds;
+
+  @override
+  List<String> get registeredMcpIds => _inner.registeredMcpIds;
 
   @override
   Future<void> start({
@@ -62,9 +81,6 @@ class AoReachSessionBridge implements ReachSessionBridge {
       _inner.stop(clearRemote: clearRemote);
 
   @override
-  List<String> get registeredMcpIds => _inner.registeredMcpIds;
-
-  @override
   Future<Map<String, dynamic>> directAgent({
     required String agentProviderId,
     required String text,
@@ -77,6 +93,9 @@ class AoReachSessionBridge implements ReachSessionBridge {
         mcpProviderIds: mcpProviderIds,
         timeout: timeout ?? const Duration(minutes: 5),
       );
+
+  @override
+  Future<void> refreshOverlay() => _inner.refreshOverlay();
 }
 
 /// MCP bootstrap for COMSTAR — tunnelled client MCPs (terminal + overlay YAML).
@@ -313,6 +332,14 @@ class ComstarSession {
 
   String? _userid;
   bool _guest = false;
+  Timer? _keepAliveTimer;
+  Future<void>? _ensureInFlight;
+
+  /// Lead time before overlay expiry to refresh (fraction of configured TTL).
+  static const double _renewLeadFraction = 0.25;
+
+  /// Minimum keep-alive / renew check interval.
+  static const int _minKeepAliveSec = 60;
 
   bool get isOpen => _bridge.isActive;
   String? get userid => _userid;
@@ -389,7 +416,9 @@ class ComstarSession {
 
     logInfo('session_mcp', 'Session MCP providers', data: {
       'registered': _bridge.registeredMcpIds,
+      'agents': _bridge.registeredAgentIds,
       'voice': mcpProvidersForVoice(),
+      'expires_at': _bridge.expiresAt,
     });
 
     if (_bridge.speechClient != null) {
@@ -409,9 +438,12 @@ class ComstarSession {
         },
       );
     }
+    _armKeepAlive();
   }
 
   Future<void> close() async {
+    _keepAliveTimer?.cancel();
+    _keepAliveTimer = null;
     if (!_bridge.isActive) {
       _userid = null;
       _guest = false;
@@ -424,6 +456,109 @@ class ComstarSession {
     await _bridge.stop(clearRemote: true);
     _userid = null;
     _guest = false;
+  }
+
+  /// Ensure the AO WebSocket + session overlay are usable.
+  ///
+  /// - Dead / disconnected bridge → full reopen with the last identity.
+  /// - Overlay near expiry or missing voice agent → refresh overlay.
+  /// - Refresh failure → full reopen.
+  Future<void> ensureReady({bool quiet = false}) async {
+    final userid = _userid;
+    if (userid == null) {
+      throw StateError('No session identity — call open() first');
+    }
+    final existing = _ensureInFlight;
+    if (existing != null) {
+      await existing;
+      return;
+    }
+    final done = _ensureReadyBody(userid: userid, quiet: quiet);
+    _ensureInFlight = done;
+    try {
+      await done;
+    } finally {
+      if (identical(_ensureInFlight, done)) {
+        _ensureInFlight = null;
+      }
+    }
+  }
+
+  Future<void> _ensureReadyBody({
+    required String userid,
+    required bool quiet,
+  }) async {
+    final guest = _guest;
+
+    if (!_bridge.isActive) {
+      logWarn('session_renew', 'AO session inactive; reopening', data: {
+        'userid': userid,
+        'guest': guest,
+      });
+      await _reopen(userid: userid, guest: guest);
+      return;
+    }
+
+    if (!_overlayNeedsRenewal) return;
+
+    try {
+      if (!quiet) {
+        logInfo('session_overlay_renew', 'Refreshing session overlay', data: {
+          'userid': userid,
+          'expires_at': _bridge.expiresAt,
+          'agents': _bridge.registeredAgentIds,
+        });
+      }
+      await _bridge.refreshOverlay();
+      if (!quiet) {
+        logInfo('session_overlay_renewed', 'Session overlay refreshed', data: {
+          'expires_at': _bridge.expiresAt,
+          'agents': _bridge.registeredAgentIds,
+        });
+      }
+    } catch (e) {
+      logWarn('session_overlay_renew_failed', e.toString(), data: {
+        'userid': userid,
+      });
+      await _reopen(userid: userid, guest: guest);
+    }
+  }
+
+  bool get _overlayNeedsRenewal {
+    final exp = _bridge.expiresAt;
+    if (exp == null) return false;
+    final nowSec = DateTime.now().millisecondsSinceEpoch / 1000.0;
+    final ttl = config.orchestration.ttlSeconds.clamp(30, 86400);
+    final lead = (ttl * _renewLeadFraction).clamp(30.0, 3600.0);
+    return nowSec >= (exp - lead);
+  }
+
+  Future<void> _reopen({required String userid, required bool guest}) async {
+    // Force a fresh start even if the adapter still looks half-alive.
+    try {
+      await _bridge.stop(clearRemote: true);
+    } catch (_) {}
+    _userid = null;
+    _guest = false;
+    await open(userid: userid, guest: guest);
+  }
+
+  void _armKeepAlive() {
+    _keepAliveTimer?.cancel();
+    final ttl = config.orchestration.ttlSeconds.clamp(30, 86400);
+    // Check often enough to catch expiry before AO drops the overlay.
+    final intervalSec =
+        (ttl * _renewLeadFraction).round().clamp(_minKeepAliveSec, 3600);
+    _keepAliveTimer = Timer.periodic(Duration(seconds: intervalSec), (_) {
+      if (_userid == null) return;
+      unawaited(() async {
+        try {
+          await ensureReady(quiet: true);
+        } catch (e) {
+          logWarn('session_keepalive_failed', e.toString());
+        }
+      }());
+    });
   }
 
   List<String> mcpProvidersForVoice({String? utterance}) {
@@ -454,6 +589,7 @@ class ComstarSession {
   }
 
   Future<String> directVoice(String text) async {
+    await ensureReady();
     final mcps = mcpProvidersForVoice(utterance: text);
     final googleOnly = mcps.length == 1 && mcps.first == 'client.google_workspace';
     final haOnly = mcps.length == 1 && mcps.first == 'home_assistant';
@@ -461,22 +597,69 @@ class ComstarSession {
     final timeoutSec = needsTools && config.orchestration.timeoutSeconds < 60
         ? 60
         : config.orchestration.timeoutSeconds;
-    final result = await _bridge.directAgent(
-      agentProviderId: voiceAgentId,
-      text: text,
-      mcpProviderIds: mcps,
-      timeout: Duration(seconds: timeoutSec),
-    );
-    return result['text']?.toString() ?? '';
+    try {
+      final result = await _bridge.directAgent(
+        agentProviderId: voiceAgentId,
+        text: text,
+        mcpProviderIds: mcps,
+        timeout: Duration(seconds: timeoutSec),
+      );
+      return result['text']?.toString() ?? '';
+    } catch (e) {
+      // Overlay can still vanish between ensureReady and the call.
+      final msg = e.toString();
+      final overlayGone = msg.contains('unknown agent_provider_id') &&
+          msg.contains(voiceAgentId);
+      final bridgeDead = msg.contains('not active') ||
+          msg.contains('session bridge') ||
+          msg.contains('disconnected');
+      if (!overlayGone && !bridgeDead) rethrow;
+      logWarn(
+        'session_renew_retry',
+        'AO call failed; renewing session and retrying',
+        data: {'error': msg},
+      );
+      await _reopen(userid: _userid!, guest: _guest);
+      final result = await _bridge.directAgent(
+        agentProviderId: voiceAgentId,
+        text: text,
+        mcpProviderIds: mcpProvidersForVoice(utterance: text),
+        timeout: Duration(seconds: timeoutSec),
+      );
+      return result['text']?.toString() ?? '';
+    }
   }
 
   Future<String> runGreeter(String userid) async {
-    final result = await _bridge.directAgent(
-      agentProviderId: greeterAgentId,
-      text: 'Greet $userid who just arrived at the terminal.',
-      mcpProviderIds: greeterMcpProviders,
-      timeout: const Duration(seconds: 15),
-    );
-    return result['text']?.toString() ?? '';
+    await ensureReady();
+    try {
+      final result = await _bridge.directAgent(
+        agentProviderId: greeterAgentId,
+        text: 'Greet $userid who just arrived at the terminal.',
+        mcpProviderIds: greeterMcpProviders,
+        timeout: const Duration(seconds: 15),
+      );
+      return result['text']?.toString() ?? '';
+    } catch (e) {
+      final msg = e.toString();
+      final overlayGone = msg.contains('unknown agent_provider_id');
+      final bridgeDead = msg.contains('not active') ||
+          msg.contains('session bridge') ||
+          msg.contains('disconnected');
+      if (!overlayGone && !bridgeDead) rethrow;
+      logWarn(
+        'session_renew_retry',
+        'Greeter failed; renewing session and retrying',
+        data: {'error': msg},
+      );
+      await _reopen(userid: _userid!, guest: _guest);
+      final result = await _bridge.directAgent(
+        agentProviderId: greeterAgentId,
+        text: 'Greet $userid who just arrived at the terminal.',
+        mcpProviderIds: greeterMcpProviders,
+        timeout: const Duration(seconds: 15),
+      );
+      return result['text']?.toString() ?? '';
+    }
   }
 }

@@ -34,3 +34,18 @@ AO `stdio` / `streamable_http` disk catalog entries.
 AO `direct_agent` currently passes `skills: []`. COMSTAR therefore **injects** listed
 skill bodies into the agent `backstory` at pack time so voice turns still receive them.
 Skills are also registered on the session overlay for future workflow attachment.
+
+### Google Workspace voice skills (`mcp-server-google-workspace@0.2.6`)
+
+| Skill | Tools covered |
+|-------|----------------|
+| `google_workspace_voice` | Auth / pairing / routing |
+| `calendar_voice` | `calendar_list_*`, `calendar_create_event` |
+| `gmail_voice` | `gmail_list/search/read/send_email` |
+| `drive_voice` | `drive_*` list/search/read/write/share/delete/doc |
+
+Wire all four on `client.voice_responder` (plus HA / spoken_output). Desktop OAuth is
+required for Gmail and full Drive; TV device-code is Calendar (+ limited Drive).
+
+Live eval pack: `harnesses/voice_google/` (reads, clarification probes, optional
+disposable writes named **COMSTAR harness probe** — see that pack’s README).

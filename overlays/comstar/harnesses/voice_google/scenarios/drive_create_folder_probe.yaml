@@ -1,0 +1,14 @@
+id: drive_create_folder_probe
+description: |
+  WRITE — create Drive folder named exactly "COMSTAR harness probe".
+  Prefer Desktop scopes; TV drive.file may still allow app-created folders.
+  Pair with drive_trash_probe for cleanup.
+expected_output: >
+  Spoken confirmation the folder was created, or scope / connect-Google message.
+assertions:
+  - type: min_chars
+    value: 20
+  - type: forbids_regex
+    pattern: '(?i)(https?://|```)'
+fixtures:
+  inject_transcript: "Create a Google Drive folder named COMSTAR harness probe."

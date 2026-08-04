@@ -1,0 +1,12 @@
+id: gmail_send_incomplete
+description: |
+  Send request missing recipient — must ask, not invent an address or claim sent.
+expected_output: >
+  Spoken clarification for recipient/subject; must not claim mail was sent.
+assertions:
+  - type: min_chars
+    value: 20
+  - type: forbids_regex
+    pattern: '(?i)(i (''ve|have) sent|email (was |has been )?sent|message sent)'
+fixtures:
+  inject_transcript: "Send an email for me."

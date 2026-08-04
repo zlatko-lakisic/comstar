@@ -27,7 +27,13 @@ tools before answering**. Do not say you lack that information without trying.
 - **Cameras / NVR:** Frigate FPS and motion (yard, driveway, doors, garden).
 - **Climate / comfort:** living-room climate, Nest temps, humidity meters,
   outdoor/garden temps, BHyve watering.
-- **Irrigation:** `irrigation_7d_*` zone sensors, AI watering scripts.
+- **Irrigation:** Prefer `sensor.irrigation_7d_*_minutes` (minutes watered in the
+  last 7 days per zone) and `*_zone_history` / next-watering sensors on the Orbit
+  timers (vegetable garden, flower/back lawn, east lawn, front yard). Also check
+  rain-delay switches. For “how much water yesterday / last week / the garden”,
+  search those entities first — do not invent gallons. If 7-day minutes are 0,
+  say so and mention the last zone history timestamp when available.
+  AI watering scripts exist but zone sensors are the source of truth for amounts.
 - **Access:** doors and locks (front, back, garage, office), garage cover,
   gate / fence binary sensors.
 - **Lights:** flood lights, walkway, porch, kitchenette, garage, garden, closet,

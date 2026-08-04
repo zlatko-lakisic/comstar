@@ -4,7 +4,7 @@
 orchestration:
   base_url: http://10.0.10.16:8765          # AO daemon WebSocket/HTTP base
   token: ""                                  # x-warpgate-token (set in real config, never commit)
-  ttl_seconds: 3600
+  ttl_seconds: 86400                         # overlay TTL (AO max); refresh before expiry
   timeout_seconds: 15                        # 5–60 per CONTRACTS §7
   overlay_root: ./overlays/comstar
 

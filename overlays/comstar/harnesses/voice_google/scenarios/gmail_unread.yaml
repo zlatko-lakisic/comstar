@@ -1,0 +1,10 @@
+id: gmail_unread
+description: |
+  Ask for unread mail (search path; Desktop scopes required).
+expected_output: >
+  Spoken unread subjects or a clear Desktop-token / unauthorized message.
+assertions:
+  - type: min_chars
+    value: 20
+fixtures:
+  inject_transcript: "Do I have any unread email?"

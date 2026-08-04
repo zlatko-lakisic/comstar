@@ -297,6 +297,22 @@ class AttentionMachine {
           context.followUpOpenedAtMs = context.clock.nowMs;
           effects.add(const OpenFollowUpWindow());
         }
+      case ResponseReady(:final text, :final audioUrl):
+        // Late AO / fallback reply after timeout already left Responding.
+        if (context.playing) break;
+        context.playing = context.halfDuplex;
+        if (context.halfDuplex) {
+          context.wakeEnabled = false;
+          effects.add(const EnableWake(false));
+        }
+        context.state = const Responding();
+        effects.add(
+          Speak(
+            text: text,
+            audioUrl: audioUrl,
+            turnId: context.turnId ?? 'late-reply',
+          ),
+        );
       case Tick():
         if (context.identityExpired && !context.personPresent) {
           _returnAmbient(effects, closeSession: true);
@@ -393,8 +409,13 @@ class AttentionMachine {
         if (context.directAgentInFlight) {
           final elapsedMs =
               context.clock.nowMs - context.respondingStartedAtMs;
-          final timeoutMs =
+          // AO + Home Assistant tool turns often exceed the chat timeout (15s).
+          // Keep waiting long enough that SpeakFallback does not fire mid-call
+          // and leave Responding before the real reply arrives.
+          final configuredMs =
               context.config.orchestration.timeoutSeconds * 1000;
+          final timeoutMs =
+              configuredMs < 90000 ? 90000 : configuredMs;
           if (elapsedMs > timeoutMs) {
             context.directAgentInFlight = false;
             effects.add(
@@ -418,10 +439,8 @@ class AttentionMachine {
   void _handleSleeping(AttentionEvent event, List<Effect> effects) {
     switch (event) {
       case WakeWord():
-        // Confirmed hey comstar — leave sleep into Ready (Engaged/Ambient),
-        // not Listening. Speech during sleep is a verify-only submode handled
-        // by the coordinator before this event fires. Do not open follow-up:
-        // that would flip the HUD to Listening immediately.
+        // Confirmed hey comstar — leave sleep and arm Listening for the prompt
+        // (verify already consumed the wake utterance).
         effects.add(const ExitedSleep());
         _wakeFromSleepToReady(effects);
       case ExitSleep():
@@ -451,8 +470,8 @@ class AttentionMachine {
     }
   }
 
-  /// After sleep: Engaged (Ready) if a session is open, else Ambient.
-  /// Next utterance uses WakeWord / SpeechStart — not an auto Listening window.
+  /// After sleep: Engaged if a session is open, else Ambient.
+  /// With an open session, immediately arm follow-up Listening for the prompt.
   void _wakeFromSleepToReady(List<Effect> effects) {
     if (context.sessionOpen) {
       context.state = const Engaged();
@@ -466,6 +485,15 @@ class AttentionMachine {
       context.wakeEnabled = true;
       effects.add(const EnableWake(true));
       effects.add(SetVisionFps(context.config.vision.engagedFps));
+      effects.add(
+        EmitState(
+          context.state.name,
+          userid: context.cachedUserid,
+          displayName: context.cachedDisplayName ?? context.cachedUserid,
+        ),
+      );
+      // No TTS settle — wake verify already finished; listen for the prompt now.
+      effects.add(const OpenFollowUpWindow(settleMs: 0));
     } else {
       _returnAmbient(effects, closeSession: false);
       context.wakeEnabled = true;

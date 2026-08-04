@@ -1,0 +1,12 @@
+id: calendar_create_incomplete
+description: |
+  Create request missing time — must ask for details, not invent a slot.
+expected_output: >
+  Short spoken request for title and/or time; must not claim an event was created.
+assertions:
+  - type: min_chars
+    value: 20
+  - type: forbids_regex
+    pattern: '(?i)(i (''ve|have) (created|scheduled|added)|event (is |was )?created|all set)'
+fixtures:
+  inject_transcript: "Schedule a meeting on my calendar."

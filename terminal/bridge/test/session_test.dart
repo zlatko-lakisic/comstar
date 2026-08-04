@@ -11,13 +11,28 @@ class FakeReachBridge implements ReachSessionBridge {
   List<String>? lastMcpIds;
   String? lastText;
   SpeechClient? fakeSpeech;
-  List<String> fakeRegisteredMcpIds = const ["client.terminal"];
+  List<String> fakeRegisteredMcpIds = const ['client.terminal'];
+  List<String> fakeRegisteredAgentIds = const [
+    'client.voice_responder',
+    'client.greeter',
+  ];
+  double? fakeExpiresAt;
+  int refreshCount = 0;
+  int startCount = 0;
+  Object? directAgentError;
+  Object? refreshError;
 
   @override
   bool get isActive => active;
 
   @override
   List<String> get registeredMcpIds => fakeRegisteredMcpIds;
+
+  @override
+  List<String> get registeredAgentIds => fakeRegisteredAgentIds;
+
+  @override
+  double? get expiresAt => fakeExpiresAt;
 
   @override
   SpeechClient? get speechClient => fakeSpeech;
@@ -31,11 +46,15 @@ class FakeReachBridge implements ReachSessionBridge {
     lastConfig = config;
     lastOverlay = overlayRoot;
     active = true;
+    startCount++;
+    fakeExpiresAt =
+        DateTime.now().millisecondsSinceEpoch / 1000.0 + config.ttlSeconds;
   }
 
   @override
   Future<void> stop({bool clearRemote = true}) async {
     active = false;
+    fakeExpiresAt = null;
   }
 
   @override
@@ -45,10 +64,30 @@ class FakeReachBridge implements ReachSessionBridge {
     List<String>? mcpProviderIds,
     Duration? timeout,
   }) async {
+    if (directAgentError != null) {
+      final err = directAgentError!;
+      directAgentError = null;
+      throw err;
+    }
     lastAgentId = agentProviderId;
     lastText = text;
     lastMcpIds = mcpProviderIds;
     return {'ok': true, 'text': 'hello'};
+  }
+
+  @override
+  Future<void> refreshOverlay() async {
+    refreshCount++;
+    if (refreshError != null) {
+      final err = refreshError!;
+      refreshError = null;
+      throw err;
+    }
+    if (!active) {
+      throw StateError('Session bridge is not active — cannot refresh overlay');
+    }
+    final ttl = lastConfig?.ttlSeconds ?? 3600;
+    fakeExpiresAt = DateTime.now().millisecondsSinceEpoch / 1000.0 + ttl;
   }
 }
 
@@ -218,6 +257,47 @@ void main() {
       await session.close();
       expect(fake.active, isFalse);
       expect(session.isOpen, isFalse);
+    });
+
+    test('ensureReady refreshes overlay when near expiry', () async {
+      await session.open(userid: 'zlatko', guest: false);
+      fake.fakeExpiresAt =
+          DateTime.now().millisecondsSinceEpoch / 1000.0 + 10; // within lead
+      final before = fake.refreshCount;
+      await session.ensureReady();
+      expect(fake.refreshCount, before + 1);
+      expect(fake.active, isTrue);
+    });
+
+    test('ensureReady reopens when bridge is inactive', () async {
+      await session.open(userid: 'zlatko', guest: false);
+      final starts = fake.startCount;
+      fake.active = false;
+      await session.ensureReady();
+      expect(fake.active, isTrue);
+      expect(fake.startCount, greaterThan(starts));
+    });
+
+    test('ensureReady reopens when overlay refresh fails', () async {
+      await session.open(userid: 'zlatko', guest: false);
+      fake.fakeExpiresAt =
+          DateTime.now().millisecondsSinceEpoch / 1000.0 + 10;
+      fake.refreshError = StateError('overlay gone');
+      final starts = fake.startCount;
+      await session.ensureReady();
+      expect(fake.active, isTrue);
+      expect(fake.startCount, greaterThan(starts));
+    });
+
+    test('directVoice renews after unknown agent failure', () async {
+      await session.open(userid: 'zlatko', guest: false);
+      fake.directAgentError = StateError(
+        "unknown agent_provider_id 'client.voice_responder'; not in catalog",
+      );
+      final starts = fake.startCount;
+      final text = await session.directVoice('hello');
+      expect(text, 'hello');
+      expect(fake.startCount, greaterThan(starts));
     });
   });
 }
