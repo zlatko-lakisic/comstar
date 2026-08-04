@@ -81,7 +81,10 @@ const beats = [
       ))}
     </div>
     <p class="latency-note">
-      Most of that is the agent thinking. Simple questions land in six seconds;
+      Most of that is the agent thinking on the GPU host, not the Pi.
+      Rough target split: face match on the server in about a second,
+      speech and tool calls take most of the rest, then TTS comes back
+      for playback on the terminal. Simple questions land in six seconds;
       anything that has to call out to your calendar or your house takes longer.
     </p>
     <p class="target-note">Target times. Labelled until they have been measured with a real walk-up.</p>

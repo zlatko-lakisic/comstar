@@ -13,7 +13,7 @@ const working = [
   'Avatar, Google pairing, terminal control',
 ];
 const unfinished = [
-  'Wake word model untrained: bring-up uses a key press',
+  'Wake word not trained yet: bring-up uses proximity plus a key press until the model is ready',
   'Room-distance microphone testing not done',
   'No 24-hour soak test yet',
   'One person has used it',
@@ -43,16 +43,26 @@ const unfinished = [
         architecture records, the interface contracts, the test plan, and a
         tracker that says what percentage of each milestone is done.
       </p>
-      <div class="progress" aria-label="Phase 1 progress approximately 75 percent">
+      <p class="next-up">
+        <strong>Next up:</strong> wake-word training, then the room-distance
+        mic test, then a walk-up demo.
+      </p>
+      <div class="progress" aria-label="First phase progress approximately three quarters">
         <div class="progress-label">
-          <span>Phase 1</span>
+          <span>First phase</span>
           <span>Roughly three quarters through the first phase</span>
         </div>
         <div class="progress-bar"><span></span></div>
       </div>
+      <p class="follow-cta">
+        Not building this weekend?{' '}
+        <a href="https://github.com/zlatko-lakisic/comstar" rel="noopener noreferrer">Star the repo</a>
+        {' '}to follow along, or watch the{' '}
+        <a href="https://github.com/zlatko-lakisic/comstar/wiki/Progress-Tracker">tracker</a>.
+      </p>
       {lastCommit && (
         <p class="activity status-activity">
-          Last commit: {lastCommit} · Roughly three quarters through the first phase ·
+          Last commit: {lastCommit} · Roughly three quarters through the first phase ·{' '}
           <a href="https://github.com/zlatko-lakisic/comstar/wiki/Progress-Tracker">tracker</a>
         </p>
       )}

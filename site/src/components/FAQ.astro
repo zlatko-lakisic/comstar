@@ -18,11 +18,23 @@ const faqs = [
   },
   {
     q: 'What about my guests?',
-    a: 'An unrecognised face opens a restricted guest session automatically. It will talk. It will not touch your calendar, mail, or smart-home tools. No configuration required.',
+    a: 'An unrecognised face opens a restricted guest session automatically. No login, no enrollment. It will talk. It will not touch your calendar, mail, or smart-home tools. That is the default on a face miss, not a separate mode you configure.',
+  },
+  {
+    q: 'What if two people are in the room?',
+    a: 'Identity resolves by repeated face votes and then holds for a short TTL. One active session at a time. If both of you are in frame, the stronger match wins; when that person leaves and the TTL expires, the other can take over. Guests never inherit someone else\'s tools.',
+  },
+  {
+    q: 'What languages does it speak?',
+    a: 'Bring-up is English. Speech in and out ride Whisper and Piper (or the GPU speech sidecars), so other languages those models support are possible by configuration. They are not the tested path yet.',
   },
   {
     q: 'Can I use a different LLM?',
     a: 'Yes. The orchestrator is model-agnostic. Point agentic-orchestration at whatever backend you already run.',
+  },
+  {
+    q: 'Does this website track me?',
+    a: 'This documentation site uses Google Analytics. The COMSTAR device on your LAN does not phone home and has no product telemetry. Different machines, different promises.',
   },
   {
     q: 'Why is it called COMSTAR?',

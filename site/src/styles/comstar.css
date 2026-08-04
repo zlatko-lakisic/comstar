@@ -288,6 +288,32 @@ summary:focus-visible {
   margin: 0;
 }
 
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+  padding: 0.65rem 1rem;
+  background: var(--cyan);
+  color: #041018;
+  font-family: var(--font-display);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.skip-link:focus {
+  left: 1rem;
+  top: 1rem;
+}
+
+.hero-ip {
+  margin: 0;
+  max-width: 32rem;
+  font-size: 0.8rem;
+  color: var(--fg-dim);
+  line-height: 1.45;
+}
+
 /* -- Sequence -- */
 .beats {
   display: grid;
@@ -683,8 +709,15 @@ summary:focus-visible {
 }
 
 .bom-plus {
-  margin: 0 0 1.25rem;
+  margin: 0 0 0.75rem;
   color: var(--fg-muted);
+}
+
+.bom-subs {
+  margin: 0 0 1.25rem;
+  color: var(--fg-dim);
+  font-size: 0.9rem;
+  max-width: 36rem;
 }
 
 .caveat {
@@ -791,6 +824,35 @@ summary:focus-visible {
   margin-top: 0.75rem;
   font-family: var(--font-display);
   font-size: 1.2rem;
+}
+
+.stack-note {
+  color: var(--fg-muted);
+  max-width: 40rem;
+  margin: 1.25rem 0 0;
+  font-size: 0.95rem;
+}
+
+.next-up {
+  color: var(--fg-muted);
+  max-width: 44rem;
+  margin: 0 0 1rem;
+}
+
+.next-up strong {
+  color: var(--amber);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 600;
+  margin-right: 0.35rem;
+}
+
+.follow-cta {
+  margin: 1rem 0 0;
+  color: var(--fg-muted);
+  max-width: 40rem;
 }
 
 /* -- FAQ -- */

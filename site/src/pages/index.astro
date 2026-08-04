@@ -53,8 +53,17 @@ try {
     <meta name="twitter:image" content={`${siteUrl}media/og.png`} />
 
     <link rel="icon" href={`${import.meta.env.BASE_URL}media/favicon.svg`} type="image/svg+xml" />
+
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-05JM8NN139" is:inline></script>
+    <script is:inline>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-05JM8NN139');
+    </script>
   </head>
   <body>
+    <a class="skip-link" href="#main">Skip to content</a>
     <nav class="sticky-nav" id="sticky-nav" aria-label="Section">
       <div class="sticky-nav__inner wrap-wide">
         <a class="sticky-nav__brand" href="#hero">COMSTAR</a>
@@ -89,10 +98,14 @@ try {
           >GitHub</a>
         </div>
         <p class="hero-meta">Open source · Apache-2.0 · about $200 in parts</p>
+        <p class="hero-ip">
+          Personal, non-commercial project. "ComStar" and the starburst are
+          BattleTech IP, used affectionately.
+        </p>
       </div>
     </header>
 
-    <main>
+    <main id="main">
       <Sequence />
       <Utterances />
       <Identity />
@@ -117,7 +130,7 @@ try {
         </nav>
         {lastCommit && (
           <p class="activity">
-          Last commit: {lastCommit} · Roughly three quarters through the first phase ·
+            Last commit: {lastCommit} · Roughly three quarters through the first phase ·{' '}
             <a href="https://github.com/zlatko-lakisic/comstar/wiki/Progress-Tracker">tracker</a>
           </p>
         )}
