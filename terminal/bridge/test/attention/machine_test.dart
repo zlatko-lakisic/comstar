@@ -49,6 +49,13 @@ ComstarConfig _loadConfig({String strangerMode = 'restricted'}) {
         'face_attention_trigger': base.attention.faceAttentionTrigger,
         'stranger_mode': strangerMode,
       },
+      'directory': {
+        'enabled': base.directory.enabled,
+        'sidecar_url': base.directory.sidecarUrl,
+        'require': base.directory.require,
+        'cache_ttl_seconds': base.directory.cacheTtlSeconds,
+        'timeout_ms': base.directory.timeoutMs,
+      },
       'dev': {
         'bind_lan': base.dev.bindLan,
         'lan_token': base.dev.lanToken,
@@ -104,6 +111,13 @@ AttentionMachine _machine({
             'attention': {
               'face_attention_trigger': true,
               'stranger_mode': strangerMode,
+            },
+            'directory': {
+              'enabled': c.directory.enabled,
+              'sidecar_url': c.directory.sidecarUrl,
+              'require': c.directory.require,
+              'cache_ttl_seconds': c.directory.cacheTtlSeconds,
+              'timeout_ms': c.directory.timeoutMs,
             },
             'dev': {
               'bind_lan': c.dev.bindLan,
@@ -172,11 +186,12 @@ void main() {
     test('noticed + FaceRecognized → engaged', () {
       final m = _machine();
       _apply(m, const PersonDetected(0.8));
-      final t = m.handle(const FaceRecognized('zlatko', 0.9));
+      final t = m.handle(const FaceRecognized('zlatko', 0.9, displayName: 'Zlatko'));
       expect(t.to, isA<Engaged>());
       expect(_hasEffectType<OpenSession>(t.effects), isTrue);
       expect(_hasEffectType<RunGreeter>(t.effects), isTrue);
       expect(m.context.cachedUserid, 'zlatko');
+      expect(m.context.cachedDisplayName, 'Zlatko');
     });
 
     test('engaged + SpeechStart → listening (face-addressable)', () {
@@ -422,20 +437,33 @@ void main() {
       );
     });
 
-    test('EnterSleep from engaged keeps session and arms wake', () {
+    test('EnterSleep from engaged keeps session; wake off while greeter playing', () {
       final m = _machine();
       _apply(m, const PersonDetected(0.85));
       _apply(m, const FaceRecognized('zlatko', 0.9));
       expect(m.state, isA<Engaged>());
       expect(m.context.sessionOpen, isTrue);
+      expect(m.context.playing, isTrue); // greeter pending
 
       final t = m.handle(const EnterSleep());
       expect(m.state, isA<Sleeping>());
       expect(m.context.sessionOpen, isTrue);
-      expect(m.context.wakeEnabled, isTrue);
+      // Still "playing" — do not arm wake (HDMI echo would false-trigger).
+      expect(m.context.playing, isTrue);
+      expect(m.context.wakeEnabled, isFalse);
       expect(_hasEffectType<EnteredSleep>(t.effects), isTrue);
       expect(_hasEffectType<EnableWake>(t.effects), isTrue);
+      final wake = t.effects.whereType<EnableWake>().single;
+      expect(wake.enabled, isFalse);
       assertInvariants(m.context);
+    });
+
+    test('EnterSleep when idle arms wake', () {
+      final m = _machine();
+      _apply(m, const EnterSleep());
+      expect(m.state, isA<Sleeping>());
+      expect(m.context.playing, isFalse);
+      expect(m.context.wakeEnabled, isTrue);
     });
 
     test('Sleeping ignores face and VAD', () {
@@ -449,7 +477,7 @@ void main() {
       expect(m.context.sessionOpen, isFalse);
     });
 
-    test('WakeWord exits sleep to Listening', () {
+    test('WakeWord exits sleep to Ready (Engaged, no follow-up)', () {
       final m = _machine();
       _apply(m, const PersonDetected(0.85));
       _apply(m, const FaceRecognized('zlatko', 0.9));
@@ -457,11 +485,40 @@ void main() {
       expect(m.state, isA<Sleeping>());
 
       final t = m.handle(const WakeWord(0.9));
-      expect(m.state, isA<Listening>());
+      expect(m.state, isA<Engaged>());
       expect(m.context.sessionOpen, isTrue);
+      expect(m.context.followUpOpen, isFalse);
+      expect(m.context.followUpListening, isFalse);
+      expect(m.context.wakeEnabled, isTrue);
       expect(_hasEffectType<ExitedSleep>(t.effects), isTrue);
-      expect(_hasEffectType<StartListening>(t.effects), isTrue);
+      expect(_hasEffectType<OpenFollowUpWindow>(t.effects), isFalse);
+      expect(_hasEffectType<StartListening>(t.effects), isFalse);
+      expect(_hasEffectType<EnableWake>(t.effects), isTrue);
       assertInvariants(m.context);
+    });
+
+    test('PlaybackEnded while sleeping re-arms wake', () {
+      final m = _machine();
+      _apply(m, const EnterSleep());
+      m.context.playing = true;
+      m.context.wakeEnabled = false;
+      final t = m.handle(const PlaybackEnded());
+      expect(m.state, isA<Sleeping>());
+      expect(m.context.playing, isFalse);
+      expect(m.context.wakeEnabled, isTrue);
+      expect(_hasEffectType<EnableWake>(t.effects), isTrue);
+    });
+
+    test('ResponseReady while sleeping speaks sleep ack without leaving sleep', () {
+      final m = _machine();
+      _apply(m, const EnterSleep());
+      final t = m.handle(
+        const ResponseReady('Okay, going to sleep.', 'http://127.0.0.1/a.wav'),
+      );
+      expect(m.state, isA<Sleeping>());
+      expect(m.context.playing, isTrue);
+      expect(_hasEffectType<Speak>(t.effects), isTrue);
+      expect(_hasEffectType<ExitedSleep>(t.effects), isFalse);
     });
   });
 }

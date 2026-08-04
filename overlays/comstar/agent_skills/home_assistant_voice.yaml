@@ -1,0 +1,53 @@
+id: home_assistant_voice
+description: >
+  Use Home Assistant MCP for home, media, downloads, climate, cameras, and
+  network questions — never invent device state.
+capabilities: >
+  Spoken HA tool-use for lights, locks, climate, irrigation, Frigate, Plex,
+  qBittorrent/arr stack, NAS, and presence.
+good_for: >
+  lights, locks, climate, weather, irrigation, cameras, frigate, plex,
+  torrents, downloads, qbittorrent, sonarr, radarr, nas, presence, garage
+planner_hint: Attach whenever home_assistant MCP is on the voice turn.
+user_goal_keywords:
+  - home
+  - light
+  - lights
+  - lock
+  - door
+  - garage
+  - climate
+  - temperature
+  - thermostat
+  - irrigation
+  - watering
+  - garden
+  - camera
+  - frigate
+  - motion
+  - plex
+  - media
+  - tv
+  - speaker
+  - torrent
+  - torrents
+  - download
+  - downloading
+  - qbittorrent
+  - sonarr
+  - radarr
+  - prowlarr
+  - jackett
+  - nas
+  - weather
+  - humidity
+  - presence
+  - who is home
+
+content:
+  file: home_assistant_voice/instructions.md
+
+inject:
+  target: backstory
+  heading: "## Home Assistant (voice)"
+  max_chars: 5500

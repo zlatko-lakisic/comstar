@@ -39,15 +39,71 @@ if [[ -x "$PORTRAIT_SCRIPT" ]]; then
 fi
 
 mkdir -p "$PROFILE"
-# Avoid crash-restore interstitial / blank session restore.
+# Portrait panel after transform 90: logical viewport is mode height × width.
+# Chromium/Ozone often restores a landscape window into the portrait work area;
+# the compositor then stretches that buffer and the avatar becomes a tall ellipse.
+COMSTAR_KIOSK_W="${COMSTAR_KIOSK_W:-}"
+COMSTAR_KIOSK_H="${COMSTAR_KIOSK_H:-}"
+if [[ -z "$COMSTAR_KIOSK_W" || -z "$COMSTAR_KIOSK_H" ]]; then
+  # Parse current mode + transform from wlr-randr (default HDMI-A-1).
+  read -r COMSTAR_KIOSK_W COMSTAR_KIOSK_H < <(
+    python3 - <<'PY'
+import os, re, subprocess
+out = os.environ.get("COMSTAR_DISPLAY_OUTPUT", "HDMI-A-1")
+try:
+    text = subprocess.check_output(["wlr-randr"], text=True, stderr=subprocess.DEVNULL)
+except Exception:
+    print("768 1024")
+    raise SystemExit
+block, cur = [], False
+for line in text.splitlines():
+    if re.match(r"^\S", line):
+        cur = line.startswith(out + " ") or line.startswith(out + "\t")
+    if cur:
+        block.append(line)
+blob = "\n".join(block)
+m = re.search(r"(\d+)x(\d+) px,[\d. ]+Hz \(preferred, current\)", blob) or re.search(
+    r"(\d+)x(\d+) px,[\d. ]+Hz \(current\)", blob
+)
+transform = "normal"
+tm = re.search(r"Transform:\s+(\S+)", blob)
+if tm:
+    transform = tm.group(1)
+if not m:
+    print("768 1024")
+    raise SystemExit
+mw, mh = int(m.group(1)), int(m.group(2))
+# 90/270 swap axes into logical portrait (or landscape if already swapped).
+if transform in ("90", "270", "flipped-90", "flipped-270"):
+    print(f"{mh} {mw}")
+else:
+    print(f"{mw} {mh}")
+PY
+  )
+fi
+echo "Kiosk window target ${COMSTAR_KIOSK_W}x${COMSTAR_KIOSK_H}"
+
+# Avoid crash-restore interstitial / blank session restore; pin window to panel.
 if [[ -f "$PROFILE/Default/Preferences" ]]; then
   python3 - <<PY
 import json
 from pathlib import Path
+w, h = int("$COMSTAR_KIOSK_W"), int("$COMSTAR_KIOSK_H")
 p = Path("$PROFILE") / "Default" / "Preferences"
 try:
     d = json.loads(p.read_text())
     d.setdefault("profile", {})["exit_type"] = "Normal"
+    d.setdefault("browser", {})["window_placement"] = {
+        "bottom": h,
+        "left": 0,
+        "maximized": True,
+        "right": w,
+        "top": 0,
+        "work_area_bottom": h,
+        "work_area_left": 0,
+        "work_area_right": w,
+        "work_area_top": 0,
+    }
     p.write_text(json.dumps(d))
 except Exception:
     pass
@@ -75,6 +131,8 @@ exec "$CHROME" \
   --metrics-recording-only \
   --num-raster-threads=1 \
   --renderer-process-limit=2 \
+  --window-size="${COMSTAR_KIOSK_W},${COMSTAR_KIOSK_H}" \
+  --window-position=0,0 \
   --kiosk \
   --start-maximized \
   "$URL"

@@ -24,6 +24,7 @@ class MachineContext {
     this.personPresent = false,
     this.gazeDetected = false,
     this.cachedUserid,
+    this.cachedDisplayName,
     this.identityExpiresAtMs,
     this.listeningStartedAtMs = 0,
     this.respondingStartedAtMs = 0,
@@ -51,6 +52,7 @@ class MachineContext {
   bool personPresent;
   bool gazeDetected;
   String? cachedUserid;
+  String? cachedDisplayName;
   int? identityExpiresAtMs;
   int listeningStartedAtMs;
   int respondingStartedAtMs;
@@ -84,6 +86,7 @@ class MachineContext {
         personPresent: personPresent,
         gazeDetected: gazeDetected,
         cachedUserid: cachedUserid,
+        cachedDisplayName: cachedDisplayName,
         identityExpiresAtMs: identityExpiresAtMs,
         listeningStartedAtMs: listeningStartedAtMs,
         respondingStartedAtMs: respondingStartedAtMs,
@@ -164,7 +167,7 @@ class AttentionMachine {
         EmitState(
           to.name,
           userid: context.cachedUserid,
-          displayName: context.cachedUserid,
+          displayName: context.cachedDisplayName ?? context.cachedUserid,
         ),
       );
     }
@@ -220,9 +223,14 @@ class AttentionMachine {
           context.absentFrames = 0;
           effects.add(SetVisionFps(context.config.vision.ambientFps));
         }
-      case FaceRecognized(:final userid, :final confidence):
+      case FaceRecognized(:final userid, :final confidence, :final displayName):
         if (confidence >= context.config.vision.faceConfidence) {
-          _enterEngaged(effects, userid: userid, guest: false);
+          _enterEngaged(
+            effects,
+            userid: userid,
+            guest: false,
+            displayName: displayName,
+          );
         }
       case FaceUnknown():
         switch (context.config.attention.strangerMode) {
@@ -247,9 +255,9 @@ class AttentionMachine {
       case PersonAbsent():
         context.personPresent = false;
         context.absentFrames++;
-      case FaceRecognized(:final userid, :final confidence):
+      case FaceRecognized(:final userid, :final confidence, :final displayName):
         if (confidence >= context.config.vision.faceConfidence) {
-          _cacheIdentity(userid);
+          _cacheIdentity(userid, displayName: displayName);
         }
       case WakeWord():
         // Ignore mic triggers while we are still playing (HDMI echo of TTS).
@@ -410,28 +418,58 @@ class AttentionMachine {
   void _handleSleeping(AttentionEvent event, List<Effect> effects) {
     switch (event) {
       case WakeWord():
+        // Confirmed hey comstar — leave sleep into Ready (Engaged/Ambient),
+        // not Listening. Speech during sleep is a verify-only submode handled
+        // by the coordinator before this event fires. Do not open follow-up:
+        // that would flip the HUD to Listening immediately.
         effects.add(const ExitedSleep());
-        _enterListening(effects);
+        _wakeFromSleepToReady(effects);
       case ExitSleep():
         effects.add(const ExitedSleep());
-        if (context.sessionOpen) {
-          context.state = const Engaged();
-          context.turnId = null;
-          context.sttPending = false;
-          context.playing = false;
-          context.followUpOpen = false;
-          context.followUpListening = false;
-          context.wakeEnabled = true;
-          effects.add(const EnableWake(true));
-          effects.add(SetVisionFps(context.config.vision.engagedFps));
-        } else {
-          _returnAmbient(effects, closeSession: false);
-          context.wakeEnabled = true;
-          effects.add(const EnableWake(true));
-        }
+        _wakeFromSleepToReady(effects);
+      case ResponseReady(:final text, :final audioUrl):
+        // Sleep ack TTS ("going to sleep") — stay Sleeping; kiosk must not
+        // brighten to responding while this plays.
+        context.playing = true;
+        context.wakeEnabled = false;
+        effects.add(const EnableWake(false));
+        effects.add(
+          Speak(
+            text: text,
+            audioUrl: audioUrl,
+            turnId: context.turnId ?? 'sleep-ack',
+          ),
+        );
+      case PlaybackEnded():
+        // Sleep TTS / greeter race disabled wake via Speak; restore it.
+        context.playing = false;
+        context.wakeEnabled = true;
+        effects.add(const EnableWake(true));
       default:
         // Vision, VAD, follow-up — ignored while dormant.
         break;
+    }
+  }
+
+  /// After sleep: Engaged (Ready) if a session is open, else Ambient.
+  /// Next utterance uses WakeWord / SpeechStart — not an auto Listening window.
+  void _wakeFromSleepToReady(List<Effect> effects) {
+    if (context.sessionOpen) {
+      context.state = const Engaged();
+      context.turnId = null;
+      context.sttPending = false;
+      context.playing = false;
+      context.followUpOpen = false;
+      context.followUpListening = false;
+      context.followUpOpenedAtMs = null;
+      context.followUpMicArmedAtMs = null;
+      context.wakeEnabled = true;
+      effects.add(const EnableWake(true));
+      effects.add(SetVisionFps(context.config.vision.engagedFps));
+    } else {
+      _returnAmbient(effects, closeSession: false);
+      context.wakeEnabled = true;
+      effects.add(const EnableWake(true));
     }
   }
 
@@ -447,13 +485,19 @@ class AttentionMachine {
     context.state = const Sleeping();
     context.turnId = null;
     context.sttPending = false;
-    context.playing = false;
+    // Keep playing as-is: greeter/sleep TTS may still be on the speaker.
+    // Clearing it here re-armed wake mid-TTS so HDMI echo looked like speech.
     context.followUpOpen = false;
     context.followUpListening = false;
     context.followUpOpenedAtMs = null;
     context.followUpMicArmedAtMs = null;
-    context.wakeEnabled = true;
-    effects.add(const EnableWake(true));
+    if (context.playing) {
+      context.wakeEnabled = false;
+      effects.add(const EnableWake(false));
+    } else {
+      context.wakeEnabled = true;
+      effects.add(const EnableWake(true));
+    }
     effects.add(const EnteredSleep());
     effects.add(SetVisionFps(context.config.vision.ambientFps));
   }
@@ -475,10 +519,14 @@ class AttentionMachine {
     List<Effect> effects, {
     required String userid,
     required bool guest,
+    String? displayName,
   }) {
     context.state = const Engaged();
     context.engagedEnteredAtMs = context.clock.nowMs;
-    _cacheIdentity(guest ? null : userid);
+    _cacheIdentity(
+      guest ? null : userid,
+      displayName: guest ? null : displayName,
+    );
     context.sessionOpen = true;
     // Block wake/VAD until greeter TTS finishes (HDMI echo otherwise
     // pulls us into Listening and swallows speak.ended).
@@ -551,7 +599,7 @@ class AttentionMachine {
       EmitState(
         context.state.name,
         userid: context.cachedUserid,
-        displayName: context.cachedUserid,
+        displayName: context.cachedDisplayName ?? context.cachedUserid,
       ),
     );
   }
@@ -589,15 +637,18 @@ class AttentionMachine {
     if (closeSession && context.sessionOpen) {
       context.sessionOpen = false;
       context.cachedUserid = null;
+      context.cachedDisplayName = null;
       context.identityExpiresAtMs = null;
       effects.add(const CloseSession());
     }
     effects.add(SetVisionFps(context.config.vision.ambientFps));
   }
 
-  void _cacheIdentity(String? userid) {
+  void _cacheIdentity(String? userid, {String? displayName}) {
     if (userid == null) return;
     context.cachedUserid = userid;
+    context.cachedDisplayName =
+        (displayName != null && displayName.isNotEmpty) ? displayName : userid;
     context.identityExpiresAtMs = context.clock.nowMs +
         context.config.vision.identityTtlSeconds * 1000;
   }

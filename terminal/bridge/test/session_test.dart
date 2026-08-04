@@ -90,6 +90,13 @@ ComstarConfig _config() => ComstarConfig.loadMap(
           'face_attention_trigger': false,
           'stranger_mode': 'restricted',
         },
+        'directory': {
+          'enabled': false,
+          'sidecar_url': '',
+          'require': true,
+          'cache_ttl_seconds': 600,
+          'timeout_ms': 1500,
+        },
         'dev': {
           'bind_lan': false,
           'lan_token': '',
@@ -144,7 +151,7 @@ void main() {
       expect(fake.lastMcpIds, equals(['home_assistant']));
     });
 
-    test('known user MCP list includes google when registered', () async {
+    test('known user default voice omits tunnel google (AO 1.28 name bug)', () async {
       fake.fakeRegisteredMcpIds = const [
         'client.terminal',
         'client.google_workspace',
@@ -153,8 +160,9 @@ void main() {
       await session.directVoice('hello');
 
       expect(fake.lastMcpIds, contains('home_assistant'));
-      expect(fake.lastMcpIds, contains('client.google_workspace'));
+      expect(fake.lastMcpIds, isNot(contains('client.google_workspace')));
       expect(fake.lastMcpIds, isNot(contains('client.terminal')));
+      expect(fake.lastMcpIds, equals(['home_assistant']));
     });
 
     test('known user MCP list includes home_assistant only for voice', () async {

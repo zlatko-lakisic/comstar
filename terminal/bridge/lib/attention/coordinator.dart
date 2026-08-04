@@ -10,6 +10,7 @@ import 'package:comstar_bridge/attention/machine.dart';
 import 'package:comstar_bridge/attention/runner.dart';
 import 'package:comstar_bridge/attention/states.dart';
 import 'package:comstar_bridge/config.dart';
+import 'package:comstar_bridge/directory/directory_resolver.dart';
 import 'package:comstar_bridge/envelope.dart';
 import 'package:comstar_bridge/env_sources.dart';
 import 'package:comstar_bridge/google/device_pairing.dart';
@@ -20,11 +21,14 @@ import 'package:comstar_bridge/google/token_store.dart';
 import 'package:comstar_bridge/google_intent.dart';
 import 'package:comstar_bridge/google_data_intent.dart';
 import 'package:comstar_bridge/google/workspace_client.dart';
+import 'package:comstar_bridge/ha_agent_client.dart';
+import 'package:comstar_bridge/home_data_intent.dart';
 import 'package:comstar_bridge/http_audio_server.dart';
 import 'package:comstar_bridge/local_ws.dart';
 import 'package:comstar_bridge/log.dart';
 import 'package:comstar_bridge/session.dart';
 import 'package:comstar_bridge/stt.dart';
+import 'package:comstar_bridge/utterance_gate.dart';
 import 'package:comstar_bridge/terminal_control.dart';
 import 'package:comstar_bridge/terminal_intent.dart';
 import 'package:comstar_bridge/tts.dart';
@@ -49,11 +53,17 @@ class AttentionCoordinator {
     GoogleTokenStore? googleTokenStore,
     GoogleDevicePairing? googlePairing,
     GoogleDesktopUpgrade? googleDesktopUpgrade,
+    DirectoryResolver? directory,
   })  : clock = clock ?? SystemClock(),
         control = control ?? TerminalControl(),
         googleTokens = googleTokenStore ?? GoogleTokenStore(),
         googleOAuth = googlePairing ?? GoogleDevicePairing(),
         googleDesktop = googleDesktopUpgrade ?? GoogleDesktopUpgrade(),
+        directory = directory ??
+            DirectoryResolver(
+              config: config.directory,
+              clock: clock ?? SystemClock(),
+            ),
         machine = AttentionMachine(
           config: config,
           clock: clock ?? SystemClock(),
@@ -74,6 +84,7 @@ class AttentionCoordinator {
   final GoogleTokenStore googleTokens;
   final GoogleDevicePairing googleOAuth;
   final GoogleDesktopUpgrade googleDesktop;
+  final DirectoryResolver directory;
   final Clock clock;
   final AttentionMachine machine;
   final EffectRunner runner;
@@ -114,6 +125,7 @@ class AttentionCoordinator {
   double _sleepWakeScore = 0.8;
   Timer? _sleepWakeTimer;
   var _sleepWakeRestartCount = 0;
+  var _sleepWakeRestarting = false;
 
   Future<void> start({vision.VisionPoller? visionPoller}) async {
     await audioServer.start();
@@ -193,6 +205,7 @@ class AttentionCoordinator {
       case CloseSession():
         _cancelGooglePairing();
         _sessionOpenFuture = null;
+        directory.clearCache();
         unawaited(session.close());
       case StartListening(:final turnId):
         _followUpTimer?.cancel();
@@ -237,6 +250,13 @@ class AttentionCoordinator {
       case Speak(:final text, :final audioUrl, :final turnId):
         machine.context.playing = true;
         // Half-duplex: never capture while TTS is on the speaker.
+        // Abort sleep-wake STT so listen.stop does not finalize empty PCM.
+        if (_sleepWakeVerifyInFlight) {
+          _cancelSleepWakeVerify(stopListen: false);
+          if (machine.state is Sleeping) {
+            _returnSleepHud();
+          }
+        }
         _followUpGen++;
         _followUpTimer?.cancel();
         _followUpTimer = null;
@@ -254,20 +274,31 @@ class AttentionCoordinator {
           Envelope.create(type: 'thinking', data: {'active': false}),
         );
         _beginSpeakWatchdog();
-        _broadcastPhase('speaking', detail: text);
+        final sleepAck = machine.state is Sleeping;
+        // Sleep ack: keep Sleeping HUD/avatar dim while the line plays.
+        if (sleepAck) {
+          _broadcastPhase('sleeping', detail: text);
+        } else {
+          _broadcastPhase('speaking', detail: text);
+        }
         if (text.trim().isNotEmpty) {
           logInfo('speak', 'Sending reply to kiosk', data: {
             'turn_id': turnId,
             'chars': text.length,
             'audioUrl': audioUrl,
             'duration_ms': _lastSpeakDurationMs,
+            if (sleepAck) 'sleep_ack': true,
           });
         }
         _broadcastKiosk(
           Envelope.create(
             type: 'speak',
             turnId: turnId,
-            data: {'text': text, 'audioUrl': audioUrl},
+            data: {
+              'text': text,
+              'audioUrl': audioUrl,
+              if (sleepAck) 'keepSleeping': true,
+            },
           ),
         );
         unawaited(_maybePlayLocal(audioUrl));
@@ -326,9 +357,13 @@ class AttentionCoordinator {
         _cancelSleepWakeVerify(stopListen: true);
         _followUpTimer?.cancel();
         _followUpTimer = null;
-        _broadcastPhase('sleeping', detail: 'Sleeping…');
+        // Dim avatar + Sleeping HUD immediately (before sleep-ack TTS).
+        _syncKioskAttention();
         _broadcastKiosk(
           Envelope.create(type: 'listening', data: {'active': false}),
+        );
+        _broadcastKiosk(
+          Envelope.create(type: 'thinking', data: {'active': false}),
         );
       case ExitedSleep():
         control.sleepExit();
@@ -341,12 +376,15 @@ class AttentionCoordinator {
   Future<bool> _onSleepHttp(String action) async {
     if (action == 'enter') {
       handle(const EnterSleep());
+      // Re-push even if already sleeping so a reconnecting kiosk catches up.
+      _syncKioskAttention();
       return machine.state is Sleeping;
     }
     if (action == 'exit') {
       if (machine.state is Sleeping) {
         handle(const ExitSleep());
       }
+      _syncKioskAttention();
       return machine.state is! Sleeping;
     }
     return false;
@@ -441,13 +479,67 @@ class AttentionCoordinator {
       case vision.VisionPersonAbsent():
         handle(const PersonAbsent());
       case vision.VisionFaceRecognized(:final userid, :final confidence):
-        handle(FaceRecognized(userid, confidence));
+        unawaited(_onFaceRecognized(userid, confidence));
       case vision.VisionFaceUnknown():
         handle(const FaceUnknown());
       case vision.VisionDegraded():
         handle(const VisionDegraded());
       case vision.VisionRecovered():
         handle(const VisionRecovered());
+    }
+  }
+
+  Future<void> _onFaceRecognized(String faceId, double confidence) async {
+    final result = await directory.resolveByFaceId(faceId);
+    switch (result) {
+      case DirectoryResolved(:final profile):
+        logInfo('directory_resolved', 'faceId mapped to uid', data: {
+          'face_id': faceId,
+          'uid': profile.uid,
+          'displayName': profile.displayName,
+        });
+        handle(
+          FaceRecognized(
+            profile.uid,
+            confidence,
+            displayName: profile.displayName,
+            faceId: faceId,
+          ),
+        );
+      case DirectoryMiss():
+        logWarn('directory_miss', 'no LDAP person for faceId', data: {
+          'face_id': faceId,
+          'require': config.directory.require,
+        });
+        if (config.directory.enabled && config.directory.require) {
+          handle(const FaceUnknown());
+        } else {
+          handle(
+            FaceRecognized(
+              faceId,
+              confidence,
+              displayName: faceId,
+              faceId: faceId,
+            ),
+          );
+        }
+      case DirectoryError(:final message):
+        logWarn('directory_error', message, data: {
+          'face_id': faceId,
+          'require': config.directory.require,
+        });
+        if (config.directory.enabled && config.directory.require) {
+          handle(const FaceUnknown());
+        } else {
+          handle(
+            FaceRecognized(
+              faceId,
+              confidence,
+              displayName: faceId,
+              faceId: faceId,
+            ),
+          );
+        }
     }
   }
 
@@ -459,6 +551,8 @@ class AttentionCoordinator {
         // Sleep: real hey_comstar model may wake immediately. Force/energy wake
         // (no ONNX on Pi) must STT-confirm "hey/hello comstar" — not bare hello.
         if (machine.state is Sleeping && model != 'hey_comstar') {
+          // TTS still playing — ignore energy wakes (HDMI echo / greeter race).
+          if (machine.context.playing) break;
           unawaited(_beginSleepWakeVerify(score));
           break;
         }
@@ -532,6 +626,7 @@ class AttentionCoordinator {
   Future<void> _beginSleepWakeVerify(double score) async {
     if (machine.state is! Sleeping) return;
     if (_sleepWakeVerifyInFlight) return;
+    if (machine.context.playing) return;
     _sleepWakeVerifyInFlight = true;
     _sleepWakeScore = score;
     _sleepWakeRestartCount = 0;
@@ -542,7 +637,18 @@ class AttentionCoordinator {
       'turn_id': turnId,
       'score': score,
     });
-    _broadcastPhase('sleeping', detail: 'Listening for hey comstar…');
+    // Sleep submode: brighten to Listening while we STT-confirm the phrase.
+    _broadcastPhase('listening', detail: 'Listening for hey comstar…');
+    _broadcastKiosk(
+      Envelope.create(type: 'state', data: {'state': 'listening'}),
+    );
+    _broadcastKiosk(
+      Envelope.create(type: 'listening', data: {'active': true}),
+    );
+    // Keep force-wake quiet during verify so we don't stack energy wakes.
+    _sendAudio(
+      Envelope.create(type: 'wake.enable', data: {'enabled': false}),
+    );
     _sendAudio(
       Envelope.create(
         type: 'listen.start',
@@ -551,9 +657,9 @@ class AttentionCoordinator {
           'turn_id': turnId,
           // Force-wake fires after the phrase; keep a long ring pre-roll so
           // "hey comstar" is still in the buffer for STT confirm.
-          'maxMs': 7000,
-          'preRollMs': 2500,
-          'vadSettleMs': 300,
+          'maxMs': 4000,
+          'preRollMs': 2800,
+          'vadSettleMs': 4000,
           'clearRing': false,
         },
       ),
@@ -566,6 +672,7 @@ class AttentionCoordinator {
 
   Future<void> _finishSleepWakeVerify({required String reason}) async {
     if (!_sleepWakeVerifyInFlight) return;
+    if (_sleepWakeRestarting) return;
     _sleepWakeTimer?.cancel();
     _sleepWakeTimer = null;
     final score = _sleepWakeScore;
@@ -590,6 +697,7 @@ class AttentionCoordinator {
         _sleepWakeRestartCount < 1 &&
         reason != 'timeout') {
       _sleepWakeRestartCount++;
+      _sleepWakeRestarting = true;
       logInfo('sleep_wake_retry', 'Wake verify capture thin; listening again', data: {
         'reason': reason,
         'bytes': pcm.length,
@@ -602,9 +710,9 @@ class AttentionCoordinator {
           turnId: turnId,
           data: {
             'turn_id': turnId,
-            'maxMs': 7000,
-            'preRollMs': 2500,
-            'vadSettleMs': 300,
+            'maxMs': 4000,
+            'preRollMs': 2800,
+            'vadSettleMs': 4000,
             'clearRing': false,
           },
         ),
@@ -612,10 +720,13 @@ class AttentionCoordinator {
       _sleepWakeTimer = Timer(const Duration(seconds: 8), () {
         unawaited(_finishSleepWakeVerify(reason: 'timeout'));
       });
+      _sleepWakeRestarting = false;
       return;
     }
 
-    if (pcm.length < 16000 || peak < _speechPeakRms * 0.5) {
+    // Prefer trying STT even on short captures — Whisper often still hears
+    // "hey comestar" and the phrase gate is the real filter.
+    if (pcm.length < 8000 || peak < _speechPeakRms * 0.35) {
       logInfo('sleep_wake_reject', 'Wake verify too quiet / short', data: {
         'reason': reason,
         'bytes': pcm.length,
@@ -623,7 +734,7 @@ class AttentionCoordinator {
       });
       _sleepWakeVerifyInFlight = false;
       _sleepWakeRestartCount = 0;
-      _broadcastPhase('sleeping', detail: 'Sleeping…');
+      _returnSleepHud();
       return;
     }
 
@@ -639,14 +750,57 @@ class AttentionCoordinator {
       _sleepWakeRestartCount = 0;
       if (ok && machine.state is Sleeping) {
         handle(WakeWord(score));
+        // Ready HUD — mute force-wake briefly so the same utterance does not
+        // immediately flip Engaged → Listening.
+        machine.context.wakeEnabled = false;
+        _sendAudio(
+          Envelope.create(type: 'wake.enable', data: {'enabled': false}),
+        );
+        _broadcastPhase('idle', detail: '');
+        _broadcastKiosk(
+          Envelope.create(
+            type: 'state',
+            data: {
+              'state': machine.state.name,
+              if (machine.context.cachedUserid != null)
+                'userid': machine.context.cachedUserid,
+            },
+          ),
+        );
+        Future<void>.delayed(const Duration(milliseconds: 1500), () {
+          if (machine.state is! Engaged) return;
+          if (machine.context.playing) return;
+          if (machine.context.followUpListening) return;
+          machine.context.wakeEnabled = true;
+          _sendAudio(
+            Envelope.create(type: 'wake.enable', data: {'enabled': true}),
+          );
+        });
       } else {
-        _broadcastPhase('sleeping', detail: 'Sleeping…');
+        _returnSleepHud();
       }
     } catch (e) {
       _sleepWakeVerifyInFlight = false;
       _sleepWakeRestartCount = 0;
       logWarn('sleep_wake_stt_failed', e.toString());
-      _broadcastPhase('sleeping', detail: 'Sleeping…');
+      _returnSleepHud();
+    }
+  }
+
+  void _returnSleepHud() {
+    _broadcastPhase('sleeping', detail: 'Sleeping…');
+    _broadcastKiosk(
+      Envelope.create(type: 'state', data: {'state': 'sleeping'}),
+    );
+    _broadcastKiosk(
+      Envelope.create(type: 'listening', data: {'active': false}),
+    );
+    // Reject / abort paths mute wake for verify; restore if still dormant.
+    if (machine.state is Sleeping && !machine.context.playing) {
+      machine.context.wakeEnabled = true;
+      _sendAudio(
+        Envelope.create(type: 'wake.enable', data: {'enabled': true}),
+      );
     }
   }
 
@@ -770,6 +924,10 @@ class AttentionCoordinator {
 
   void _handleKioskEnvelope(Envelope envelope) {
     switch (envelope.type) {
+      case 'ready':
+        // Kiosk (re)connected — push current attention so sleep/listen HUD
+        // and avatar opacity match the machine after a Chromium restart.
+        _syncKioskAttention();
       case 'speak.started':
         final started = _speakStartedAt;
         if (started != null) {
@@ -812,6 +970,14 @@ class AttentionCoordinator {
         } else if (machine.context.followUpListening ||
             machine.state is Listening) {
           _broadcastPhase('listening', detail: 'Listening…');
+        } else if (machine.state is Sleeping) {
+          // Speak muted wake for half-duplex; always re-arm after sleep TTS.
+          machine.context.playing = false;
+          machine.context.wakeEnabled = true;
+          _sendAudio(
+            Envelope.create(type: 'wake.enable', data: {'enabled': true}),
+          );
+          _returnSleepHud();
         } else {
           _broadcastPhase('idle', detail: '');
         }
@@ -926,21 +1092,32 @@ class AttentionCoordinator {
         handle(const TranscriptReady(''));
         return;
       }
-      if (_isJunkTranscript(text)) {
+      final cleaned = collapseRepeatedUtterance(text);
+      if (_isJunkTranscript(cleaned)) {
         logWarn('stt_junk', 'Rejecting hallucinated/junk transcript', data: {
           'turn_id': turnId,
           'bytes': pcm.length,
-          'len': text.length,
-          'text': text.length > 80 ? '${text.substring(0, 80)}…' : text,
+          'len': cleaned.length,
+          'text': cleaned.length > 80 ? '${cleaned.substring(0, 80)}…' : cleaned,
         });
         _broadcastPhase('missed', detail: "Didn't catch that — try again");
         handle(const TranscriptReady(''));
         return;
       }
+      if (!isActionableUtterance(cleaned)) {
+        logInfo('stt_non_prompt', 'Ignoring non-prompt transcript', data: {
+          'turn_id': turnId,
+          'bytes': pcm.length,
+          'text': cleaned.length > 80 ? '${cleaned.substring(0, 80)}…' : cleaned,
+        });
+        _broadcastPhase('missed', detail: "Didn't catch a question — try again");
+        handle(const TranscriptReady(''));
+        return;
+      }
       final clipped =
-          text.trim().length > 80 ? '${text.trim().substring(0, 80)}…' : text.trim();
+          cleaned.length > 80 ? '${cleaned.substring(0, 80)}…' : cleaned;
       _broadcastPhase('heard', detail: clipped);
-      handle(TranscriptReady(text));
+      handle(TranscriptReady(cleaned));
     } finally {
       _resetCaptureStats();
       span.close();
@@ -1100,7 +1277,9 @@ class AttentionCoordinator {
     final maxCount = counts.values.reduce((a, b) => a > b ? a : b);
     if (maxCount / letters.length >= 0.55) return true;
     if (RegExp(r'(.)\1{8,}').hasMatch(letters)) return true;
-    if (RegExp(r'^(.{8,}?)(\s*\1){1,}$', caseSensitive: false).hasMatch(t)) {
+    // Exact phrase doubles are collapsed upstream via collapseRepeatedUtterance;
+    // only treat pathological multi-repeats (3+) as junk here.
+    if (RegExp(r'^(.{8,}?)(\s*\1){2,}$', caseSensitive: false).hasMatch(t)) {
       return true;
     }
     return false;
@@ -1117,6 +1296,9 @@ class AttentionCoordinator {
 
       final googleData = await _tryGoogleDataIntent(text, turnId);
       if (googleData) return;
+
+      final homeData = await _tryHomeDataIntent(text, turnId);
+      if (homeData) return;
 
       final clipped =
           text.length > 500 ? '${text.substring(0, 500)}…' : text;
@@ -1159,6 +1341,35 @@ class AttentionCoordinator {
     } finally {
       turnSpan.close();
     }
+  }
+
+  Future<bool> _tryHomeDataIntent(String text, String turnId) async {
+    final intent = parseHomeDataIntent(text);
+    if (intent == null) return false;
+    if (!HaAgentClient.isConfigured) {
+      // Fall through to AO HA MCP (may be slow / flaky).
+      return false;
+    }
+
+    late final String? spoken;
+    switch (intent.kind) {
+      case HomeDataIntentKind.torrentsDownloading:
+        spoken = await HaAgentClient().torrentsSpokenSummary();
+    }
+    if (spoken == null || spoken.trim().isEmpty) {
+      logWarn('home_data_intent', 'HA agent returned empty', data: {
+        'turn_id': turnId,
+        'kind': intent.kind.name,
+      });
+      return false;
+    }
+    logInfo('home_data_intent', 'Answered from HA agent', data: {
+      'turn_id': turnId,
+      'kind': intent.kind.name,
+      'chars': spoken.length,
+    });
+    await _speakText(spoken, turnId);
+    return true;
   }
 
   Future<bool> _tryGoogleDataIntent(String text, String turnId) async {
@@ -1909,6 +2120,44 @@ class AttentionCoordinator {
         },
       ),
     );
+  }
+
+  /// Push attention state + phase so a (re)connected kiosk matches the machine.
+  void _syncKioskAttention() {
+    final stateName = machine.state.name;
+    _broadcastKiosk(
+      Envelope.create(
+        type: 'state',
+        data: {
+          'state': stateName,
+          if (machine.context.cachedUserid != null)
+            'userid': machine.context.cachedUserid,
+          if (machine.context.cachedDisplayName != null)
+            'displayName': machine.context.cachedDisplayName,
+        },
+      ),
+    );
+    switch (stateName) {
+      case 'noticed':
+        _broadcastPhase('noticed', detail: 'I see you…');
+      case 'listening':
+        _broadcastPhase('listening', detail: 'Listening…');
+      case 'responding':
+        break;
+      case 'engaged':
+        _broadcastPhase(
+          'engaged',
+          detail: machine.context.cachedDisplayName ??
+              machine.context.cachedUserid ??
+              '',
+        );
+      case 'ambient':
+        _broadcastPhase('idle', detail: '');
+      case 'sleeping':
+        _broadcastPhase('sleeping', detail: 'Sleeping…');
+      default:
+        break;
+    }
   }
 
   void _broadcastKiosk(Envelope envelope) {

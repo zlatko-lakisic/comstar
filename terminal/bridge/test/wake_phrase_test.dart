@@ -21,5 +21,13 @@ void main() {
     expect(isComstarWakePhrase('hello come star'), isTrue);
     expect(isComstarWakePhrase('comstar'), isTrue);
     expect(isComstarWakePhrase('hi comstar'), isTrue);
+    // Live Pi Whisper mangling (logs 2026-08-03).
+    expect(isComstarWakePhrase('Hey Comestar!'), isTrue);
+    expect(isComstarWakePhrase('Hey, Comestar.'), isTrue);
+    expect(isComstarWakePhrase('Hey Comster!'), isTrue);
+    expect(isComstarWakePhrase('Hey ComStore.'), isTrue);
+    expect(isComstarWakePhrase('Hey Comestar, what are you up to?'), isTrue);
+    expect(isComstarWakePhrase('Hey come start'), isTrue);
+    expect(isComstarWakePhrase('Hey, here comes the star'), isTrue);
   });
 }

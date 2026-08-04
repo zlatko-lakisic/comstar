@@ -37,6 +37,14 @@ attention:
   face_attention_trigger: false
   stranger_mode: restricted
 
+# Directory optional in Mac bring-up; require:false = fail-open to faceId.
+directory:
+  enabled: false
+  sidecar_url: ""
+  require: false
+  cache_ttl_seconds: 600
+  timeout_ms: 1500
+
 dev:
   bind_lan: true
   lan_token: "change-me-dev-token"

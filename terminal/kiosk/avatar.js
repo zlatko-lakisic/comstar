@@ -23,14 +23,20 @@ import { resolveEmblem } from './presets.js';
 const STATE_PARAMS = {
   //            spin  opacity  scale  sway
   // Ambient spin kept low — Pi GPU was pegged at 100% from continuous SVG work.
-  ambient:    { spin: 2,  op: 0.30, sc: 0.86, sway: 0.55 },
-  noticed:    { spin: 18, op: 0.62, sc: 0.94, sway: 0.35 },
+  ambient:    { spin: 2,  op: 0.70, sc: 0.92, sway: 0.40 },
+  // Sleep: clearly dim vs Ready/Listening (0.40 still read as “fully lit” on
+  // the dark IPS panel). Listening / awake fade up to 1.0.
+  sleeping:   { spin: 1,  op: 0.22, sc: 0.88, sway: 0.30 },
+  noticed:    { spin: 18, op: 0.80, sc: 0.94, sway: 0.35 },
   engaged:    { spin: 0,  op: 1.00, sc: 1.00, sway: 0.12 },
   listening:  { spin: 8,  op: 1.00, sc: 1.00, sway: 0.12 },
   responding: { spin: 14, op: 1.00, sc: 1.00, sway: 0.12 },
 };
 
+// Opacity ease is slower than spin/scale so sleep ↔ listen reads as a fade,
+// but still fast enough that “go to sleep” dims within ~0.5s.
 const STATE_DAMPING = 3.5;
+const OPACITY_DAMPING = 3.2;
 const GAZE_DAMPING = 2.5;
 const MAX_DRIFT = 18;      // user units the emblem leans toward a person
 const METER_CIRCUM = 2 * Math.PI * 226;
@@ -92,18 +98,53 @@ export class ComstarAvatar {
 
   _build() {
     this.container.innerHTML = '';
+    // Match the GitHub Pages hero: deep navy with a soft cyan wash that
+    // falls off from the emblem center. CSS only — no SVG blur on VideoCore.
     Object.assign(this.container.style, {
-      position: 'relative', overflow: 'hidden', background: '#060d16',
+      position: 'relative',
+      overflow: 'hidden',
+      background:
+        'radial-gradient(ellipse 80% 55% at 50% 48%, rgba(61,220,255,0.08), transparent 72%), #060d16',
     });
 
     const uid = `cs${(ComstarAvatar._n = (ComstarAvatar._n || 0) + 1)}`;
     const ns = 'http://www.w3.org/2000/svg';
+
+    // Soft edgeless glow behind the mark (same recipe as site/public/avatar).
+    const glow = document.createElement('div');
+    glow.className = 'cs-glow';
+    Object.assign(glow.style, {
+      position: 'absolute',
+      left: '50%',
+      top: '50%',
+      transform: 'translate(-50%, -50%)',
+      aspectRatio: '1',
+      background:
+        'radial-gradient(circle, rgba(61,220,255,0.12) 0%, rgba(61,220,255,0.04) 42%, transparent 68%)',
+      pointerEvents: 'none',
+      zIndex: '0',
+    });
+    this.container.appendChild(glow);
+    this.glow = glow;
+
     const svg = document.createElementNS(ns, 'svg');
     svg.setAttribute('viewBox', '0 0 512 512');
     svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+    svg.setAttribute('width', '512');
+    svg.setAttribute('height', '512');
     svg.setAttribute('role', 'img');
+    // Size as an explicit CSS square. Chromium/Ozone on the portrait panel
+    // stretches width:100%;height:100% SVGs and ignores preserveAspectRatio,
+    // which turns rings into tall ellipses on 768×1024.
     Object.assign(svg.style, {
-      position: 'absolute', inset: '0', width: '100%', height: '100%',
+      position: 'absolute',
+      display: 'block',
+      left: '50%',
+      top: '50%',
+      transform: 'translate(-50%, -50%)',
+      maxWidth: '100%',
+      maxHeight: '100%',
+      zIndex: '1',
     });
     svg.innerHTML = `
       <title>COMSTAR</title>
@@ -122,6 +163,15 @@ export class ComstarAvatar {
                 transform="rotate(-90)" opacity="0"/>
       </g>`;
     this.container.appendChild(svg);
+    this.svg = svg;
+    this._fitSquare();
+    if (typeof ResizeObserver !== 'undefined') {
+      this._ro = new ResizeObserver(() => this._fitSquare());
+      this._ro.observe(this.container);
+    } else if (typeof window !== 'undefined') {
+      this._onResize = () => this._fitSquare();
+      window.addEventListener('resize', this._onResize);
+    }
 
     this.shift = svg.querySelector('.cs-shift');
     this.halo = svg.querySelector('.cs-halo');
@@ -146,6 +196,22 @@ export class ComstarAvatar {
           ...this.halo.querySelectorAll('.cs-bars rect'),
         ]
       : [...this.core.querySelectorAll('.cs-bars rect')];
+  }
+
+  /** Keep the SVG (and its glow) square inside the (often portrait) stage. */
+  _fitSquare() {
+    if (!this.svg || !this.container) return;
+    const w = this.container.clientWidth || 0;
+    const h = this.container.clientHeight || 0;
+    if (w < 1 || h < 1) return;
+    const s = Math.min(w, h);
+    this.svg.style.width = `${s}px`;
+    this.svg.style.height = `${s}px`;
+    if (this.glow) {
+      const g = Math.round(s * 1.4);
+      this.glow.style.width = `${g}px`;
+      this.glow.style.height = `${g}px`;
+    }
   }
 
   // ---------------------------------------------------------------- audio
@@ -209,7 +275,18 @@ export class ComstarAvatar {
 
   // ----------------------------------------------------------- public API
 
-  setState(state) { if (STATE_PARAMS[state]) this.state = state; }
+  setState(state) {
+    if (!STATE_PARAMS[state]) return;
+    const prev = this.state;
+    this.state = state;
+    // Snap sleep dim so "go to sleep" reads immediately (fade still used leaving sleep).
+    if (state === 'sleeping' && prev !== 'sleeping') {
+      this.cur.op = STATE_PARAMS.sleeping.op;
+      this.cur.sc = STATE_PARAMS.sleeping.sc;
+      this.cur.sway = STATE_PARAMS.sleeping.sway;
+      this.cur.spin = STATE_PARAMS.sleeping.spin;
+    }
+  }
 
   setThinking(active) { this.thinking = !!active; }
 
@@ -263,8 +340,10 @@ export class ComstarAvatar {
   // ----------------------------------------------------------------- loop
 
   _targetFps() {
-    // Idle ambient is mostly decorative — run cooler on the Pi.
-    if (this.state === 'ambient' && !this.thinking) return Math.min(12, this.maxFps);
+    // Idle ambient / sleep is mostly decorative — run cooler on the Pi.
+    if ((this.state === 'ambient' || this.state === 'sleeping') && !this.thinking) {
+      return Math.min(12, this.maxFps);
+    }
     if (this.state === 'engaged' && !this.thinking) return Math.min(18, this.maxFps);
     return this.maxFps;
   }
@@ -285,10 +364,12 @@ export class ComstarAvatar {
     this._t += dt;
     this._fps = this._fps * 0.85 + (1 / Math.max(dt, 1e-3)) * 0.15;
 
-    const target = STATE_PARAMS[this.state];
+    const target = STATE_PARAMS[this.state] || STATE_PARAMS.ambient;
     const k = 1 - Math.exp(-STATE_DAMPING * dt);
+    const kOp = 1 - Math.exp(-OPACITY_DAMPING * dt);
     for (const key of Object.keys(target)) {
-      this.cur[key] += (target[key] - this.cur[key]) * k;
+      const damp = key === 'op' ? kOp : k;
+      this.cur[key] += (target[key] - this.cur[key]) * damp;
     }
 
     if (this.state === 'responding' && this._speaking) {
@@ -325,13 +406,19 @@ export class ComstarAvatar {
 
     const coreScale = base * (1 + this.amplitude * 0.16);
     this.core.setAttribute('transform', `scale(${coreScale.toFixed(4)})`);
-    this.core.setAttribute('opacity', Math.min(1, this.cur.op + this.amplitude * 0.4));
+    this.core.setAttribute('opacity', Math.min(1, this.cur.op + this.amplitude * 0.4).toFixed(3));
     if (useHalo) {
       const haloScale = base * (1 + this.amplitude * 0.30 + mic * 0.12);
       this.halo.setAttribute('transform', `scale(${haloScale.toFixed(4)})`);
       this.halo.setAttribute('opacity',
-        Math.min(0.62, this.cur.op * 0.22 + this.amplitude * 0.34 + mic * 0.26));
+        Math.min(0.62, this.cur.op * 0.22 + this.amplitude * 0.34 + mic * 0.26).toFixed(3));
     }
+    // Stage glow tracks the same fade — no floor, or sleep never looks dim.
+    if (this.glow) {
+      this.glow.style.opacity = Math.max(0, this.cur.op * 0.85).toFixed(3);
+    }
+    // Whole emblem group dims (stroke stays visible at low op on IPS panels).
+    this.shift.setAttribute('opacity', this.cur.op.toFixed(3));
 
     this.meter.setAttribute('opacity', this.state === 'listening' ? 1 : 0);
     if (this.state === 'listening') {

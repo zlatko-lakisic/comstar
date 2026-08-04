@@ -241,6 +241,13 @@ Future<void> _runVisionOnce() async {
           'face_attention_trigger': false,
           'stranger_mode': 'restricted',
         },
+        'directory': {
+          'enabled': false,
+          'sidecar_url': '',
+          'require': true,
+          'cache_ttl_seconds': 600,
+          'timeout_ms': 1500,
+        },
         'dev': {
           'bind_lan': false,
           'lan_token': '',

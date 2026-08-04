@@ -785,3 +785,6 @@ Slack triage.
 
 Each of these is individually tempting and each one will slow M1–M9 down. They go in
 `docs/BACKLOG.md`, not in this sprint.
+
+Directory / FreeIPA identity binding (ADR 0005) is tracked in `docs/BACKLOG.md` —
+session-path resolve shipped; optional planner LDAP MCP remains deferred.

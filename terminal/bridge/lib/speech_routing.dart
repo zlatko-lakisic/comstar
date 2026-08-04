@@ -11,6 +11,9 @@ import 'package:path/path.dart' as p;
 typedef SpeechClientLookup = SpeechClient? Function();
 
 /// Prefers Reach-advertised STT when present; otherwise [fallback].
+///
+/// Pin better Ada sidecars via [ReachConnectionConfig.speechSttBaseUrlOverride]
+/// (see [speechSttOverrideFromEnv]), not by bypassing Reach.
 class PreferReachSttClient implements SttClient {
   PreferReachSttClient({
     required this.speechClientOf,
@@ -34,11 +37,25 @@ class PreferReachSttClient implements SttClient {
     try {
       final span = Span('stt');
       try {
-        final text = await speech.transcribe(wav);
+        final detailed = await speech.transcribeDetailed(wav);
+        final reject = sttConfidenceRejectReason(detailed);
+        if (reject != null) {
+          logInfo('stt_low_confidence', 'Dropping low-confidence transcript', data: {
+            'reason': reject,
+            'avg_logprob': detailed.avgLogprob,
+            'no_speech_prob': detailed.noSpeechProb,
+            'chars': detailed.text.trim().length,
+          });
+          return '';
+        }
+        final text = detailed.text.trim();
         logDebug('stt_reach', 'Transcribed via Reach SpeechClient', data: {
           'chars': text.length,
+          'avg_logprob': detailed.avgLogprob,
+          'no_speech_prob': detailed.noSpeechProb,
+          'stt': speech.capabilities.sttBaseUrl,
         });
-        return text.trim();
+        return text;
       } finally {
         span.close();
       }
@@ -57,6 +74,9 @@ class PreferReachSttClient implements SttClient {
 }
 
 /// Prefers Reach-advertised TTS when present; otherwise [fallback].
+///
+/// Pin lessac-high (etc.) via [ReachConnectionConfig.speechTtsBaseUrlOverride]
+/// (see [speechTtsOverrideFromEnv]).
 class PreferReachTts implements TtsEngine {
   PreferReachTts({
     required this.speechClientOf,
@@ -94,6 +114,7 @@ class PreferReachTts implements TtsEngine {
         await File(path).writeAsBytes(bytes);
         logDebug('tts_reach', 'Synthesized via Reach SpeechClient', data: {
           'bytes': bytes.length,
+          'tts': speech.capabilities.ttsBaseUrl,
         });
         return path;
       } finally {
@@ -104,6 +125,51 @@ class PreferReachTts implements TtsEngine {
       return fallback.synthesizeToFile(text);
     }
   }
+}
+
+/// When fields are present, reject obvious non-speech / low-quality STT.
+/// Missing fields → no confidence signal (do not reject).
+String? sttConfidenceRejectReason(TranscriptionResult result) {
+  final noSpeech = result.noSpeechProb;
+  if (noSpeech != null && noSpeech >= 0.6) {
+    return 'no_speech_prob';
+  }
+  final logprob = result.avgLogprob;
+  if (logprob != null && logprob < -1.0) {
+    return 'avg_logprob';
+  }
+  return null;
+}
+
+bool _envFlag(String key) {
+  final v = Platform.environment[key]?.trim().toLowerCase();
+  return v == '1' || v == 'true' || v == 'yes';
+}
+
+String? _nonEmptyEnv(String key) {
+  final v = Platform.environment[key]?.trim();
+  if (v == null || v.isEmpty) return null;
+  return v.replaceAll(RegExp(r'/+$'), '');
+}
+
+/// `COMSTAR_STT_OVERRIDE`, or `COMSTAR_STT_URL` when `COMSTAR_SPEECH_OVERRIDE=1`.
+String? speechSttOverrideFromEnv() {
+  final dedicated = _nonEmptyEnv('COMSTAR_STT_OVERRIDE');
+  if (dedicated != null) return dedicated;
+  if (_envFlag('COMSTAR_SPEECH_OVERRIDE')) {
+    return _nonEmptyEnv('COMSTAR_STT_URL');
+  }
+  return null;
+}
+
+/// `COMSTAR_TTS_OVERRIDE`, or `COMSTAR_TTS_URL` when `COMSTAR_SPEECH_OVERRIDE=1`.
+String? speechTtsOverrideFromEnv() {
+  final dedicated = _nonEmptyEnv('COMSTAR_TTS_OVERRIDE');
+  if (dedicated != null) return dedicated;
+  if (_envFlag('COMSTAR_SPEECH_OVERRIDE')) {
+    return _nonEmptyEnv('COMSTAR_TTS_URL');
+  }
+  return null;
 }
 
 /// Optional bearer for AO speech sidecars (`AGENTIC_SPEECH_TOKEN`).

@@ -380,6 +380,8 @@ class ComstarSession {
         ttlSeconds: config.orchestration.ttlSeconds,
         questionIdPrefix: 'comstar',
         speechToken: speechTokenFromEnv(),
+        speechSttBaseUrlOverride: speechSttOverrideFromEnv(),
+        speechTtsBaseUrlOverride: speechTtsOverrideFromEnv(),
       ),
       overlayRoot: config.orchestration.overlayRoot,
       mcpBootstrap: _mcpBootstrap,
@@ -394,6 +396,8 @@ class ComstarSession {
       logInfo('speech_reach', 'Using AO-advertised speech sidecars', data: {
         'stt': _bridge.speechClient!.capabilities.sttBaseUrl,
         'tts': _bridge.speechClient!.capabilities.ttsBaseUrl,
+        'stt_override': speechSttOverrideFromEnv(),
+        'tts_override': speechTtsOverrideFromEnv(),
       });
     } else {
       logInfo(
@@ -425,18 +429,20 @@ class ComstarSession {
   List<String> mcpProvidersForVoice({String? utterance}) {
     if (_guest) return List.unmodifiable(guestMcpProviders);
     final registered = _bridge.registeredMcpIds;
-    final base = [
-      for (final id in fullMcpProviders)
-        if (!id.startsWith('client.') || registered.contains(id)) id,
-    ];
-    // Home Assistant native MCP discovery often cancels before tunnel Google
-    // tools load; for Workspace questions attach Google alone.
+    // Workspace questions: Google alone (HA discovery races the tunnel).
     if (utterance != null && _looksLikeGoogleWorkspace(utterance)) {
       if (registered.contains('client.google_workspace')) {
         return const ['client.google_workspace'];
       }
     }
-    return base;
+    // Default voice: stock MCP only. Attaching client.google_workspace (tunnel
+    // URL host 127.0.0.1) makes CrewAI mint OpenAI function names that start
+    // with a digit → every turn fails with the "could not get an answer" sorry
+    // line until AO normalizes tunnel URLs to localhost (post-1.28.0).
+    return [
+      for (final id in fullMcpProviders)
+        if (!id.startsWith('client.')) id,
+    ];
   }
 
   static bool _looksLikeGoogleWorkspace(String text) {
@@ -450,8 +456,10 @@ class ComstarSession {
   Future<String> directVoice(String text) async {
     final mcps = mcpProvidersForVoice(utterance: text);
     final googleOnly = mcps.length == 1 && mcps.first == 'client.google_workspace';
-    final timeoutSec = googleOnly && config.orchestration.timeoutSeconds < 90
-        ? 90
+    final haOnly = mcps.length == 1 && mcps.first == 'home_assistant';
+    final needsTools = googleOnly || haOnly || mcps.length > 1;
+    final timeoutSec = needsTools && config.orchestration.timeoutSeconds < 60
+        ? 60
         : config.orchestration.timeoutSeconds;
     final result = await _bridge.directAgent(
       agentProviderId: voiceAgentId,

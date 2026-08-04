@@ -147,6 +147,20 @@ Confirm WS `hello` includes `"speech": { "enabled": true, "sttBaseUrl": "...", "
 | TTS | `comstar-tts` | `127.0.0.1:8091` | `scripts/tts_server.py` |
 
 The bridge uses `$COMSTAR_STT_URL` / `$COMSTAR_TTS_URL` when `speechClient == null`.
+
+When AO advertises `hello.speech`, set `COMSTAR_SPEECH_OVERRIDE=1` so those same
+URLs (or dedicated `COMSTAR_STT_OVERRIDE` / `COMSTAR_TTS_OVERRIDE`) are passed as
+Reach `speechSttBaseUrlOverride` / `speechTtsBaseUrlOverride` after hello parse.
+Example (Ada medium.en STT + lessac-high TTS):
+
+```bash
+export COMSTAR_SPEECH_OVERRIDE=1
+export COMSTAR_STT_URL=http://10.0.10.16:8093
+export COMSTAR_TTS_URL=http://10.0.10.16:8092
+```
+
+Requires AO Reach ≥ 0.3.0. STT uses `transcribeDetailed`; optional confidence
+fields gate low-quality transcripts when the sidecar returns them.
 Optional `COMSTAR_SPEECH_TOKEN` (or `AGENTIC_SPEECH_TOKEN`) for sidecar bearer auth.
 
 Live path (what product accuracy means):

@@ -337,7 +337,10 @@ attention:
 | `COMSTAR_MIC_SOURCE` | Mic for `comstar-audio` | sounddevice index or name substring (`C525`) |
 | `COMSTAR_SPEAKER_SOURCE` | Local `paplay` sink when kiosk absent | Pulse/PipeWire sink name; empty = default |
 | `COMSTAR_STT_URL` | Fallback STT base when Reach speech absent | `http://127.0.0.1:8090` |
-| `COMSTAR_TTS_URL` | Fallback TTS base when Reach speech absent | `http://127.0.0.1:8091` |
+| `COMSTAR_STT_URL` | Fallback STT base when Reach speech absent; with `COMSTAR_SPEECH_OVERRIDE=1`, also Reach STT override | `http://127.0.0.1:8090` |
+| `COMSTAR_TTS_URL` | Fallback TTS base when Reach speech absent; with `COMSTAR_SPEECH_OVERRIDE=1`, also Reach TTS override | `http://127.0.0.1:8091` |
+| `COMSTAR_SPEECH_OVERRIDE` | When `1`, map `COMSTAR_STT_URL` / `COMSTAR_TTS_URL` into Reach speech URL overrides (ao_reach ≥ 0.3) | unset |
+| `COMSTAR_STT_OVERRIDE` / `COMSTAR_TTS_OVERRIDE` | Dedicated Reach speech URL overrides (win over the mapped URLs) | unset |
 | `COMSTAR_SPEECH_TOKEN` | Optional bearer for AO speech sidecars | same as Ada `AGENTIC_SPEECH_TOKEN` |
 | `COMSTAR_LOCAL_SPEAKER` | Play TTS via `paplay` without kiosk | `1` |
 | `COMSTAR_VAD_SILENCE_MS` | End-of-speech silence | `1200` (Pi default override) |

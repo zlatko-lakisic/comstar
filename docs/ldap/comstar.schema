@@ -1,0 +1,36 @@
+# COMSTAR FreeIPA / 389-ds schema fragment
+# Install on the IPA server (as root), then restart dirsrv:
+#   cp comstar.schema /etc/dirsrv/slapd-*/schema/99comstar.ldif
+#   (or merge into 99user.ldif per your FreeIPA schema practice)
+# Then: ipactl restart   # or systemctl restart dirsrv@REALM
+#
+# After schema load, add objectClass: comstarPerson to users that COMSTAR may
+# recognise, and set comstarFaceId (default: same as uid).
+
+dn: cn=schema
+changetype: modify
+add: attributeTypes
+attributeTypes: ( 1.3.6.1.4.1.55555.1.1.1 NAME 'comstarFaceId'
+  DESC 'CodeProject.AI face enroll/recognize userid bound to this IPA user'
+  EQUALITY caseIgnoreMatch
+  SUBSTR caseIgnoreSubstringsMatch
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+  SINGLE-VALUE
+  X-ORIGIN 'COMSTAR' )
+-
+add: attributeTypes
+attributeTypes: ( 1.3.6.1.4.1.55555.1.1.2 NAME 'comstarVoiceId'
+  DESC 'Future speaker-enrollment id bound to this IPA user'
+  EQUALITY caseIgnoreMatch
+  SUBSTR caseIgnoreSubstringsMatch
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+  SINGLE-VALUE
+  X-ORIGIN 'COMSTAR' )
+-
+add: objectClasses
+objectClasses: ( 1.3.6.1.4.1.55555.1.2.1 NAME 'comstarPerson'
+  DESC 'COMSTAR modality bindings for an IPA user'
+  SUP top
+  AUXILIARY
+  MAY ( comstarFaceId $ comstarVoiceId )
+  X-ORIGIN 'COMSTAR' )

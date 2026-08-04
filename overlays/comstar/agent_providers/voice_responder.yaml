@@ -24,4 +24,5 @@ mcp_providers:
 skills:
   - spoken_output
   - terminal_control_voice
+  - home_assistant_voice
   - google_workspace_voice

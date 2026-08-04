@@ -21,6 +21,10 @@
     width: 100%;
     min-height: 0;
     z-index: 1;
+    /* Fallback wash if avatar.js has not painted yet. */
+    background:
+      radial-gradient(ellipse 80% 55% at 50% 48%, rgba(61, 220, 255, 0.08), transparent 72%),
+      #060d16;
   }
   #status {
     position: absolute;
@@ -139,9 +143,15 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  /* Always visible — idle is dim, active phases are bright. */
-  #phase[data-phase="idle"] { opacity: 0.72; }
-  #phase:not([data-phase="idle"]) { opacity: 1; }
+  /* Always visible — idle/sleep are dim, active phases are bright. */
+  #phase[data-phase="idle"],
+  #phase[data-phase="sleeping"] { opacity: 0.72; }
+  #phase:not([data-phase="idle"]):not([data-phase="sleeping"]) { opacity: 1; }
+  #phase[data-phase="sleeping"] .label {
+    border-color: rgba(127, 196, 255, 0.28);
+    background: rgba(8, 18, 32, 0.78);
+    color: rgba(200, 220, 240, 0.85);
+  }
   #phase[data-phase="noticed"] .label {
     border-color: rgba(180, 200, 255, 0.65);
     background: rgba(20, 28, 48, 0.92);
@@ -278,6 +288,7 @@ if (demo) statusEl.classList.add('on');
 
 const PHASE_LABELS = {
   idle: 'Ready',
+  sleeping: 'Sleeping',
   noticed: 'I see you',
   engaged: 'Hi',
   listening: 'Listening',
@@ -386,6 +397,7 @@ const bridge = new BridgeClient(bridgeUrl, {
     if (d.state === 'noticed') setPhase('noticed', 'I see you…');
     if (d.state === 'listening') setPhase('listening', 'Listening…');
     if (d.state === 'ambient') setPhase('idle');
+    if (d.state === 'sleeping') setPhase('sleeping', 'Sleeping…');
     if (d.state === 'engaged' && phaseEl.dataset.phase === 'idle') {
       setPhase('engaged', d.userid || d.displayName || '');
     }
@@ -393,22 +405,32 @@ const bridge = new BridgeClient(bridgeUrl, {
 
   speak(d) {
     speakStart = performance.now();
-    avatar.setState('responding');
-    setPhase('speaking', d.text || '');
+    // Sleep acknowledgment stays dim; do not flash "responding" brightness.
+    if (d.keepSleeping || avatar.state === 'sleeping') {
+      avatar.setState('sleeping');
+      setPhase('sleeping', d.text || 'Sleeping…');
+    } else {
+      avatar.setState('responding');
+      setPhase('speaking', d.text || '');
+    }
     if (d.text) appendChat('comstar', d.text);
     avatar.speak(d.audioUrl);
   },
 
   'speak.cancel'() {
     avatar.cancelSpeak();
-    setPhase('idle');
+    if (avatar.state === 'sleeping') setPhase('sleeping', 'Sleeping…');
+    else setPhase('idle');
   },
 
   listening(d) {
     if (d.active) {
       avatar.setState('listening');
       if (phaseEl.dataset.phase !== 'heard' && phaseEl.dataset.phase !== 'thinking') {
-        setPhase('listening', 'Listening…');
+        // Keep bridge-provided detail (e.g. sleep wake verify) when present.
+        if (phaseEl.dataset.phase !== 'listening') {
+          setPhase('listening', 'Listening…');
+        }
       }
     }
     avatar.setMicLevel(d.level ?? 0);
@@ -448,6 +470,18 @@ const bridge = new BridgeClient(bridgeUrl, {
     const phase = d.phase || 'idle';
     const detail = d.detail || '';
     setPhase(phase, detail);
+    if (phase === 'sleeping') avatar.setState('sleeping');
+    if (phase === 'listening') avatar.setState('listening');
+    if (phase === 'idle') {
+      // Ready after wake-from-sleep — keep bright but not "listening" spin.
+      if (avatar.state === 'listening' || avatar.state === 'sleeping') {
+        avatar.setState('engaged');
+      }
+    }
+    // Speaking while already Sleeping (sleep ack / greeter race): stay dim.
+    if (phase === 'speaking' && avatar.state === 'sleeping') {
+      avatar.setState('sleeping');
+    }
     if (phase === 'heard' && detail) appendChat('you', detail);
     if (phase === 'missed') appendChat('sys', detail || "Didn't catch that");
   },

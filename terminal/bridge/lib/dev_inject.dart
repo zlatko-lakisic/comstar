@@ -105,6 +105,8 @@ AttentionEvent? parseInjectEvent(String name, Map<String, dynamic> payload) {
       return FaceRecognized(
         userid,
         (payload['confidence'] as num?)?.toDouble() ?? 0.87,
+        displayName: payload['displayName']?.toString(),
+        faceId: payload['faceId']?.toString(),
       );
     case 'FaceUnknown':
       return const FaceUnknown();

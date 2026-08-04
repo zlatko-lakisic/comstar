@@ -38,6 +38,14 @@ attention:
   face_attention_trigger: true
   stranger_mode: restricted                    # restricted | greet | ignore
 
+# FreeIPA directory resolve (ADR 0005). When enabled=false, faceId == session uid.
+directory:
+  enabled: false
+  sidecar_url: ""                              # e.g. http://10.0.10.16:8780
+  require: true                                # miss/error → FaceUnknown / guest
+  cache_ttl_seconds: 600                       # 60–3600
+  timeout_ms: 1500                             # 200–10000
+
 # Dev-mode LAN binding — production must keep bind_lan: false.
 dev:
   bind_lan: false

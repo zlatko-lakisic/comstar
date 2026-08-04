@@ -17,6 +17,7 @@ class ComstarConfig {
     required this.audio,
     required this.avatar,
     required this.attention,
+    required this.directory,
     required this.dev,
     required this.sourcePath,
   });
@@ -26,6 +27,7 @@ class ComstarConfig {
   final AudioConfig audio;
   final AvatarConfig avatar;
   final AttentionConfig attention;
+  final DirectoryConfig directory;
   final DevConfig dev;
   final String sourcePath;
 
@@ -35,6 +37,7 @@ class ComstarConfig {
     'audio',
     'avatar',
     'attention',
+    'directory',
     'dev',
   };
 
@@ -79,6 +82,14 @@ class ComstarConfig {
     'stranger_mode',
   };
 
+  static const _directoryKeys = {
+    'enabled',
+    'sidecar_url',
+    'require',
+    'cache_ttl_seconds',
+    'timeout_ms',
+  };
+
   static const _devKeys = {
     'bind_lan',
     'lan_token',
@@ -109,9 +120,10 @@ class ComstarConfig {
     final audio = _parseAudio(_requireSection(root, 'audio'));
     final avatar = _parseAvatar(_requireSection(root, 'avatar'));
     final attention = _parseAttention(_requireSection(root, 'attention'));
+    final directory = _parseDirectory(_requireSection(root, 'directory'));
     final dev = _parseDev(_requireSection(root, 'dev'));
 
-    _validateRanges(vision, audio, orchestration, avatar, attention);
+    _validateRanges(vision, audio, orchestration, avatar, attention, directory);
 
     return ComstarConfig(
       orchestration: orchestration,
@@ -119,6 +131,7 @@ class ComstarConfig {
       audio: audio,
       avatar: avatar,
       attention: attention,
+      directory: directory,
       dev: dev,
       sourcePath: sourcePath,
     );
@@ -214,6 +227,17 @@ class ComstarConfig {
     );
   }
 
+  static DirectoryConfig _parseDirectory(Map<String, dynamic> map) {
+    _assertKnownKeys(map.keys, _directoryKeys, 'directory');
+    return DirectoryConfig(
+      enabled: _requireBool(map, 'enabled', 'directory'),
+      sidecarUrl: _optionalString(map, 'sidecar_url') ?? '',
+      require: _requireBool(map, 'require', 'directory'),
+      cacheTtlSeconds: _requireInt(map, 'cache_ttl_seconds', 'directory'),
+      timeoutMs: _requireInt(map, 'timeout_ms', 'directory'),
+    );
+  }
+
   static DevConfig _parseDev(Map<String, dynamic> map) {
     _assertKnownKeys(map.keys, _devKeys, 'dev');
     return DevConfig(
@@ -228,6 +252,7 @@ class ComstarConfig {
     OrchestrationConfig orchestration,
     AvatarConfig avatar,
     AttentionConfig attention,
+    DirectoryConfig directory,
   ) {
     _range('vision.ambient_fps', vision.ambientFps, 0.2, 5);
     _range('vision.engaged_fps', vision.engagedFps, vision.ambientFps, 10);
@@ -260,6 +285,19 @@ class ComstarConfig {
     if (!renderModes.contains(avatar.render)) {
       throw ConfigError(
         'avatar.render must be one of: ${renderModes.join(', ')}',
+      );
+    }
+
+    _rangeInt(
+      'directory.cache_ttl_seconds',
+      directory.cacheTtlSeconds,
+      60,
+      3600,
+    );
+    _rangeInt('directory.timeout_ms', directory.timeoutMs, 200, 10000);
+    if (directory.enabled && directory.sidecarUrl.trim().isEmpty) {
+      throw ConfigError(
+        'directory.sidecar_url must be non-empty when directory.enabled is true',
       );
     }
   }
@@ -468,6 +506,22 @@ class AttentionConfig {
 
   final bool faceAttentionTrigger;
   final String strangerMode;
+}
+
+class DirectoryConfig {
+  const DirectoryConfig({
+    required this.enabled,
+    required this.sidecarUrl,
+    required this.require,
+    required this.cacheTtlSeconds,
+    required this.timeoutMs,
+  });
+
+  final bool enabled;
+  final String sidecarUrl;
+  final bool require;
+  final int cacheTtlSeconds;
+  final int timeoutMs;
 }
 
 class DevConfig {

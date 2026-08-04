@@ -145,7 +145,9 @@ async def _main() -> None:
                             )
                             rms = float(np.sqrt(np.mean(np.square(audio / 32768.0))))
                             # Idle C525 @100% ~0.01–0.02; soft speech often ~0.06–0.12.
-                            if rms > 0.10:
+                            # Sleep listening submode needs to catch normal speech;
+                            # 0.10 was missing quieter "hey comstar" attempts.
+                            if rms > 0.07:
                                 score = float(force_wake_score)
                                 wake.mark_fired()
                         if score is not None:

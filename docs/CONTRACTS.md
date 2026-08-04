@@ -150,11 +150,15 @@ no match. **All three cases must be handled** — M0 confirmed the live module
 returns `userid: "unknown"` when a face is present but not enrolled (see fixture
 above).
 
+The CPAI `userid` string is the **biometric faceId** (enrolled as FreeIPA
+`comstarFaceId`, defaulting to IPA `uid`). It is **not** automatically the AO
+session identity — see §3b Directory resolve and ADR 0005.
+
 ### Face registration
 
 ```
 POST /v1/vision/face/register
-  userid   string
+  userid   string   # = comstarFaceId (prefer IPA uid)
   image1   file
   imageN   file
 ```
@@ -174,6 +178,38 @@ POST /v1/vision/face/list
   degrade COMSTAR's responsiveness, not crash it.
 - Three consecutive failures → emit `vision.degraded`, drop to `ambient_fps`, and
   surface a subtle indicator on the kiosk.
+
+---
+
+## 3b. Bridge → directory (FreeIPA via sidecar)
+
+**Status:** Phase 2 — see ADR 0005 and `docs/ldap/`.
+
+After the vote resolver emits a known faceId (and **before** `OpenSession`), the
+bridge resolves the biometric id to a FreeIPA person:
+
+```
+GET {directory.sidecar_url}/v1/resolve?face_id=<comstarFaceId>
+→ 200 {"uid":"zlatko","displayName":"Zlatko","groups":["comstar-users"],"dn":"..."}
+→ 404 not found
+→ 5xx / timeout → directory error
+```
+
+| outcome | `directory.require` | attention effect |
+|---|---|---|
+| 200 profile | — | `FaceRecognized(uid, conf, displayName)` → Engaged session as **uid** |
+| 404 / error | `true` | `FaceUnknown` (guest / restricted per stranger_mode) |
+| 404 / error | `false` | fail-open: treat faceId as uid (dev bring-up only) |
+| `directory.enabled: false` | — | pass-through: faceId used as uid (no LDAP) |
+
+Rules:
+
+- IdentityResolver votes on **faceId** only; LDAP is never on the per-frame path.
+- Session headers use **resolved `uid`**: `x-agentic-user-name: <uid>`,
+  `x-agentic-session-id: comstar-<uid>`.
+- Kiosk `state.displayName` and greeter prefer LDAP `displayName`/`cn`, else `uid`.
+- Biometrics are never stored in LDAP. Planner LDAP MCP is deferred
+  (`guest_allowed: false` when added).
 
 ---
 
@@ -204,6 +240,7 @@ await bridge.start(
   config: ReachConnectionConfig(
     baseUrl: cfg.orchestration.baseUrl,
     headers: {
+      // identity.userid = FreeIPA uid after directory resolve (or faceId pass-through)
       'x-agentic-user-name': identity.userid,
       'x-agentic-session-id': 'comstar-${identity.userid}',
       'x-warpgate-token': cfg.orchestration.token,
@@ -365,6 +402,11 @@ See `config/comstar.example.yaml` for the annotated version. Validation rules:
 | `orchestration.timeout_seconds` | 5 ≤ x ≤ 60 |
 | `attention.stranger_mode` | enum: restricted \| greet \| ignore |
 | `avatar.render` | enum: local \| streamed |
+| `directory.enabled` | bool |
+| `directory.sidecar_url` | non-empty when `enabled` |
+| `directory.require` | bool — fail closed when true |
+| `directory.cache_ttl_seconds` | 60 ≤ x ≤ 3600 |
+| `directory.timeout_ms` | 200 ≤ x ≤ 10000 |
 
 ---
 
@@ -386,8 +428,8 @@ speech (except wake word) are ignored until `WakeWord` exits to `listening`.
 |---|---|
 | `PersonDetected(confidence)` | vision poll |
 | `PersonAbsent` | vision poll, N consecutive frames with no person |
-| `FaceRecognized(userid, confidence)` | vision poll |
-| `FaceUnknown` | vision poll |
+| `FaceRecognized(userid, confidence, displayName?)` | vision poll + directory resolve (`userid` = IPA uid) |
+| `FaceUnknown` | vision poll, or directory miss when `require: true` |
 | `WakeWord(score)` | audio proc |
 | `SpeechStart` / `SpeechEnd(durationMs)` | audio proc |
 | `TranscriptReady(text)` | bridge STT call |

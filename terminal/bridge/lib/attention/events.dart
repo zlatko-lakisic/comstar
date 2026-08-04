@@ -13,9 +13,22 @@ final class PersonAbsent extends AttentionEvent {
 }
 
 final class FaceRecognized extends AttentionEvent {
-  const FaceRecognized(this.userid, this.confidence);
+  const FaceRecognized(
+    this.userid,
+    this.confidence, {
+    this.displayName,
+    this.faceId,
+  });
+
+  /// FreeIPA uid (AO session identity) after directory resolve.
   final String userid;
   final double confidence;
+
+  /// LDAP displayName/cn when known; else null (machine falls back to userid).
+  final String? displayName;
+
+  /// Biometric CPAI faceId when it differs from [userid].
+  final String? faceId;
 }
 
 final class FaceUnknown extends AttentionEvent {

@@ -31,8 +31,10 @@ List<String> collectInvariantViolations(MachineContext ctx) {
     }
   }
 
-  final wakeShouldBeArmed = ctx.state is Sleeping ||
-      (ctx.state is! Listening && !(ctx.halfDuplex && ctx.playing));
+  // Half-duplex: wake off while TTS plays — including Sleeping (greeter race).
+  // Listening also keeps wake off so energy/force wake cannot stack turns.
+  final wakeShouldBeArmed =
+      ctx.state is! Listening && !(ctx.halfDuplex && ctx.playing);
   if (ctx.wakeEnabled != wakeShouldBeArmed) {
     violations.add(
       'wakeEnabled (${ctx.wakeEnabled}) != expected ($wakeShouldBeArmed)',
