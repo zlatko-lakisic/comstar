@@ -36,7 +36,7 @@ class DevInjectServer {
 
   Future<void> _handleRequest(HttpRequest request) async {
     if (request.method == 'GET' && request.uri.path == '/health') {
-      await _writeJson(request, 200, {'ok': true});
+      await _writeJson(request, 200, coordinator.healthStatus());
       return;
     }
 

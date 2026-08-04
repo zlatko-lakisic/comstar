@@ -36,15 +36,21 @@ fi
 
 UNIT_DIR="$HOME/.config/systemd/user"
 mkdir -p "$UNIT_DIR"
-for unit in comstar-bridge comstar-audio comstar-kiosk comstar-stt; do
+for unit in comstar-bridge comstar-audio comstar-kiosk comstar-stt comstar-health; do
   src="$REMOTE_DIR/deploy/systemd/${unit}.service"
   if [[ -f "$src" ]]; then
     cp "$src" "$UNIT_DIR/${unit}.service"
     echo "installed $unit.service"
   fi
 done
+if [[ -f "$REMOTE_DIR/deploy/systemd/comstar-health.timer" ]]; then
+  cp "$REMOTE_DIR/deploy/systemd/comstar-health.timer" "$UNIT_DIR/comstar-health.timer"
+  echo "installed comstar-health.timer"
+fi
+chmod +x "$REMOTE_DIR/scripts/comstar_health.sh" 2>/dev/null || true
 systemctl --user daemon-reload
 systemctl --user enable comstar-bridge.service comstar-audio.service comstar-kiosk.service comstar-stt.service >/dev/null
+systemctl --user enable --now comstar-health.timer >/dev/null 2>&1 || true
 EOF
 
 echo "Running dart pub get on bridge…"
@@ -68,6 +74,7 @@ systemctl --user restart comstar-audio.service
 systemctl --user restart comstar-kiosk.service
 sleep 2
 systemctl --user --no-pager is-active comstar-bridge comstar-audio comstar-kiosk comstar-stt || true
+systemctl --user --no-pager is-active comstar-health.timer 2>/dev/null || true
 EOF
 fi
 

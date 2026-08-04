@@ -1,11 +1,13 @@
 # Handoff: AO `direct_agent` empty reply (COMSTAR irrigation / HA tools)
 
-**Status:** Resolved on AO side by **v1.28.1** (2026-08-04). Empty silent-success →
-`DirectAgentEmptyAnswerError` / `ok: false`. Skills + MCP defaults attach on
-`direct_agent`; Reach-baked backstory skill text is stripped before catalog
-re-inject. Remaining: model may still skip HA tools or pass bad args
-(`area=garden`); COMSTAR `home_assistant_voice` skill steers to irrigation
-sensors — reconnect COMSTAR after Ada deploy (done 2026-08-04 ~12:30 EDT).
+**Status:** AO empty-reply fixed in **v1.28.1**. Follow-up (2026-08-04 ~12:40): irrigation
+voice turns returned “I do not have access / tools” with `mcp:["home_assistant"]` and
+`direct_agent_ok` in ~8s — root cause was **Assist exposure**, not missing MCP.
+`GetLiveContext` only sees Assist-exposed entities; `sensor.irrigation_7d_*` (and zone
+switches/history) were **not** exposed. Exposed 35 irrigation entities to
+`conversation` Assist; refreshed `home_assistant_voice` skill. Also: tool-stall prose
+(“Please provide the tool result…”) still slipped through once — AO recovery gap /
+model leak.
 
 **For:** AO / agentic-orchestration Cursor on Ada  
 

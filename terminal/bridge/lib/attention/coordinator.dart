@@ -87,6 +87,23 @@ class AttentionCoordinator {
   final GoogleDesktopUpgrade googleDesktop;
   final DirectoryResolver directory;
   final Clock clock;
+
+  /// Snapshot for local health checks / auto-heal (inject `/health`).
+  Map<String, Object?> healthStatus() => {
+        'ok': true,
+        'state': machine.state.name,
+        'session_flag': machine.context.sessionOpen,
+        'reach_active': session.isOpen,
+        'session_open': machine.context.sessionOpen && session.isOpen,
+        'userid': session.userid,
+        'guest': session.guest,
+        'wake_enabled': machine.context.wakeEnabled,
+        'playing': machine.context.playing,
+        'followup_listening': machine.context.followUpListening,
+        'kiosk_connected': ws.hasRole('kiosk'),
+        'audio_connected': ws.hasRole('audio'),
+        'sleeping': machine.state is Sleeping,
+      };
   final AttentionMachine machine;
   final EffectRunner runner;
 
