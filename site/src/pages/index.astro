@@ -14,6 +14,7 @@ import Status from '../components/Status.astro';
 import BuiltOn from '../components/BuiltOn.astro';
 import FAQ from '../components/FAQ.astro';
 import Specs from '../components/Specs.astro';
+import About from '../components/About.astro';
 import '../styles/comstar.css';
 
 const siteUrl = 'https://zlatko-lakisic.github.io/comstar/';
@@ -117,14 +118,23 @@ try {
       <BuiltOn />
       <FAQ />
       <Specs />
+      <About />
     </main>
 
     <footer class="site-footer">
-      <div class="wrap">
+      <div class="wrap footer-grid">
+        <div class="footer-cred">
+          <p class="footer-byline">Built by Zlatko Lakisic</p>
+          <nav aria-label="Author links" class="footer-author">
+            <a href="https://github.com/zlatko-lakisic" rel="noopener noreferrer">GitHub</a>
+            <a href="https://www.linkedin.com/in/zlatko-lakisic/" rel="noopener noreferrer">LinkedIn</a>
+          </nav>
+        </div>
         <nav aria-label="Footer">
-          <a href="https://github.com/zlatko-lakisic/comstar">GitHub</a>
+          <a href="https://github.com/zlatko-lakisic/comstar">Repo</a>
           <a href="https://github.com/zlatko-lakisic/comstar/wiki">Docs</a>
           <a href="#build">Build</a>
+          <a href="#about">About</a>
           <a href="#faq">FAQ</a>
           <a href="#specs">Specs</a>
         </nav>

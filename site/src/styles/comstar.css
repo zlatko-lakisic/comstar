@@ -923,11 +923,41 @@ summary:focus-visible {
   font-size: 0.85rem;
 }
 
-.site-footer nav {
+.footer-grid {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.footer-cred {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem 1.5rem;
+}
+
+.footer-byline {
+  margin: 0;
+  color: var(--fg);
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+
+.footer-author {
   display: flex;
   flex-wrap: wrap;
   gap: 1rem;
-  margin-bottom: 1.25rem;
+}
+
+.footer-author a {
+  color: var(--cyan);
+}
+
+.site-footer nav[aria-label="Footer"] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
 }
 
 .site-footer a {
@@ -937,4 +967,33 @@ summary:focus-visible {
 .tm-note {
   max-width: 40rem;
   line-height: 1.5;
+}
+
+.eyebrow {
+  margin: 0 0 0.75rem;
+  color: var(--cyan);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.about-copy {
+  max-width: 40rem;
+  color: var(--fg-muted);
+  display: grid;
+  gap: 1rem;
+}
+
+.about-copy p {
+  margin: 0;
+}
+
+.about-copy strong {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.about-copy a {
+  color: var(--cyan);
 }
