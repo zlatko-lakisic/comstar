@@ -1,16 +1,14 @@
 #!/usr/bin/env bash
-# Install blank COMSTAR session chrome (labwc autostart + LightDM hints).
-# Idempotent: backs up existing files once with a .pre-comstar suffix.
-#
-# By default does NOT replace ~/.config/labwc/rc.xml (Pi OS schemas vary).
-# Set COMSTAR_REPLACE_LABWC_RC=1 to install the minimal shipped rc.xml.
+# Install blank COMSTAR session (no desktop chrome flash).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SRC="$ROOT/deploy/pi-session"
 LABWC_DST="${XDG_CONFIG_HOME:-$HOME/.config}/labwc"
+SESSIONS_DST="${XDG_DATA_HOME:-$HOME/.local/share}/wayland-sessions"
 LIGHTDM_SNIPPET="$SRC/lightdm/50-comstar.conf"
 LIGHTDM_DST="/etc/lightdm/lightdm.conf.d/50-comstar.conf"
+SYSTEM_SESSION_DST="/usr/share/wayland-sessions/comstar-labwc.desktop"
 
 backup_once() {
   local f="$1"
@@ -20,59 +18,63 @@ backup_once() {
   fi
 }
 
-mkdir -p "$LABWC_DST"
+install_root_bits() {
+  mkdir -p /etc/lightdm/lightdm.conf.d
+  cp "$LIGHTDM_SNIPPET" "$LIGHTDM_DST"
+  echo "installed $LIGHTDM_DST"
 
-install_file() {
-  local name="$1"
-  local src="$SRC/labwc/$name"
-  local dst="$LABWC_DST/$name"
-  if [[ ! -f "$src" ]]; then
-    echo "missing $src" >&2
-    exit 1
+  sed "s|^Exec=.*|Exec=$SRC/comstar-session.sh|" \
+    "$SRC/comstar-labwc.desktop" >"$SYSTEM_SESSION_DST"
+  chmod 644 "$SYSTEM_SESSION_DST"
+  echo "installed $SYSTEM_SESSION_DST"
+
+  if ! command -v swaybg >/dev/null 2>&1; then
+    apt-get update -qq
+    DEBIAN_FRONTEND=noninteractive apt-get install -y swaybg
   fi
+  echo "swaybg ready: $(command -v swaybg)"
+}
+
+if [[ "${1:-}" == "--root-only" ]]; then
+  install_root_bits
+  exit 0
+fi
+
+mkdir -p "$LABWC_DST" "$SESSIONS_DST"
+
+for name in autostart environment; do
+  src="$SRC/labwc/$name"
+  dst="$LABWC_DST/$name"
   backup_once "$dst"
   cp "$src" "$dst"
   echo "installed $dst"
-}
-
-install_file autostart
-install_file environment
-chmod +x "$LABWC_DST/autostart" 2>/dev/null || true
+done
+chmod +x "$LABWC_DST/autostart"
 
 if [[ "${COMSTAR_REPLACE_LABWC_RC:-0}" == "1" ]]; then
-  install_file rc.xml
-else
-  echo "skipped labwc/rc.xml (set COMSTAR_REPLACE_LABWC_RC=1 to install minimal rc)"
+  backup_once "$LABWC_DST/rc.xml"
+  cp "$SRC/labwc/rc.xml" "$LABWC_DST/rc.xml"
+  echo "installed $LABWC_DST/rc.xml"
 fi
 
-# Kill desktop panel / file-manager desktop on login; set dark wallpaper if swaybg exists.
-mkdir -p "$HOME/.config/autostart"
-cat >"$HOME/.config/autostart/comstar-no-desktop.desktop" <<'EOF'
-[Desktop Entry]
-Type=Application
-Name=COMSTAR hide desktop
-Exec=sh -c 'killall pcmanfm 2>/dev/null || true; killall wf-panel-pi 2>/dev/null || true; killall wf-panel 2>/dev/null || true; killall lxpanel 2>/dev/null || true; command -v swaybg >/dev/null && swaybg -c "#06080B" >/dev/null 2>&1 &'
-X-GNOME-Autostart-enabled=true
-EOF
-echo "installed ~/.config/autostart/comstar-no-desktop.desktop"
+chmod +x "$SRC/comstar-session.sh"
+cp "$SRC/comstar-labwc.desktop" "$SESSIONS_DST/comstar-labwc.desktop"
+sed -i "s|^Exec=.*|Exec=$SRC/comstar-session.sh|" "$SESSIONS_DST/comstar-labwc.desktop"
+echo "installed $SESSIONS_DST/comstar-labwc.desktop"
 
-if [[ "${COMSTAR_INSTALL_LIGHTDM:-1}" == "1" ]]; then
-  if [[ -f "$LIGHTDM_SNIPPET" ]]; then
-    if [[ "$(id -u)" -eq 0 ]]; then
-      mkdir -p /etc/lightdm/lightdm.conf.d
-      cp "$LIGHTDM_SNIPPET" "$LIGHTDM_DST"
-      echo "installed $LIGHTDM_DST"
-    else
-      echo "LightDM snippet needs root. Run:"
-      echo "  sudo mkdir -p /etc/lightdm/lightdm.conf.d"
-      echo "  sudo install -m 644 '$LIGHTDM_SNIPPET' '$LIGHTDM_DST'"
-    fi
-  fi
+rm -f "$HOME/.config/autostart/comstar-no-desktop.desktop"
+
+if [[ "$(id -u)" -eq 0 ]]; then
+  install_root_bits
+elif [[ "${COMSTAR_INSTALL_LIGHTDM:-1}" == "1" ]]; then
+  sudo -n "$0" --root-only || {
+    echo "Root bits need an interactive sudo. Run:"
+    echo "  sudo $0 --root-only"
+    exit 1
+  }
 fi
 
 echo
 echo "COMSTAR session install done."
-echo "Re-login or reboot for changes. Temporary desktop restore:"
-echo "  systemctl --user stop comstar-kiosk"
-echo "  rm -f ~/.config/autostart/comstar-no-desktop.desktop"
-echo "  # restore labwc backups (*.pre-comstar) if needed, then re-login"
+echo "Reboot (or: sudo systemctl restart lightdm) to enter comstar-labwc."
+echo "Restore Pi desktop: set autologin-session=LXDE-pi-labwc in $LIGHTDM_DST"

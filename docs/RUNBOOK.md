@@ -49,24 +49,21 @@ Desired panel path after a cold boot:
 
 1. **Plymouth** — COMSTAR dark splash + spinner (early kernel / init). One-time:
    `sudo bash /opt/comstar/src/scripts/install-plymouth-comstar.sh`
-2. **LightDM autologin** → **labwc** with no panels / solid `#06080B` root. One-time:
-   `bash /opt/comstar/src/scripts/install-pi-session.sh`
-   then `sudo install -m 644 …/deploy/pi-session/lightdm/50-comstar.conf /etc/lightdm/lightdm.conf.d/`
-   From the Mac: `make pi-session` (after `make deploy`).
-3. **`comstar-kiosk`** launches Chromium on a local splash server (`:8769/splash.html`)
-   with spinner artwork, polls `http://127.0.0.1:8776/kiosk/boot.txt`, then
-   `location.replace` to the live kiosk URL.
+2. **`comstar-labwc` session** — LightDM autologin into labwc **without**
+   `--merge-config`, so Pi `pcmanfm` / `wf-panel-pi` never start. Dark `swaybg`
+   then Chromium splash. One-time: `bash /opt/comstar/src/scripts/install-pi-session.sh`
+   (or `make pi-session`). This installs the wayland session + LightDM drop-in.
+3. **`comstar-kiosk`** — Chromium on `:8769/splash.html` → live kiosk when
+   bridge `boot.txt` is ready.
 
 Sources: `terminal/kiosk/splash.html`, `scripts/kiosk-launch.sh`,
 `deploy/pi-session/`, `deploy/plymouth/comstar/`. Also `make plymouth` for early boot.
 
-**Debug / temporary desktop:**
+**Debug / temporary Pi desktop:**
 
 ```bash
-systemctl --user stop comstar-kiosk
-# Restore pre-COMSTAR labwc if backed up:
-cp ~/.config/labwc/rc.xml.pre-comstar ~/.config/labwc/rc.xml
-# re-login or restart labwc
+sudo sed -i 's/comstar-labwc/LXDE-pi-labwc/g' /etc/lightdm/lightdm.conf.d/50-comstar.conf
+sudo systemctl restart lightdm
 ```
 
 ---

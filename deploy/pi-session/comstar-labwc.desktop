@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=COMSTAR Kiosk
+Comment=COMSTAR terminal session (labwc, no desktop chrome)
+Exec=/opt/comstar/src/deploy/pi-session/comstar-session.sh
+Type=Application
+DesktopNames=COMSTAR;labwc;wlroots

@@ -1,4 +1,41 @@
-# COMSTAR labwc autostart — solid dark field before Chromium covers the screen.
-# swaybg is preferred; falls back to silently doing nothing if missing.
+#!/usr/bin/env bash
+# COMSTAR labwc autostart — dark field immediately, then Chromium splash/kiosk.
+# Intentionally does NOT start pcmanfm or wf-panel-pi.
 
-swaybg -c '#06080B' >/dev/null 2>&1 &
+set -eu
+
+ROOT="${COMSTAR_ROOT:-/opt/comstar/src}"
+
+# Solid dark root as soon as the compositor is up (before Chromium).
+if command -v swaybg >/dev/null 2>&1; then
+  swaybg -c '#06080B' >/dev/null 2>&1 &
+elif command -v wbg >/dev/null 2>&1; then
+  # Fallback: generate a 1x1 PNG if needed is overkill; skip if no swaybg.
+  true
+fi
+
+# Belt-and-suspenders: if anything from a merged session appears, kill it fast.
+(
+  for _ in $(seq 1 100); do
+    pkill -x wf-panel-pi 2>/dev/null || true
+    pkill -x wf-panel 2>/dev/null || true
+    pkill -f 'pcmanfm --desktop' 2>/dev/null || true
+    pkill -f 'lwrespawn /usr/bin/wf-panel' 2>/dev/null || true
+    pkill -f 'lwrespawn /usr/bin/pcmanfm' 2>/dev/null || true
+    if pgrep -x chromium >/dev/null 2>&1; then
+      pkill -x wf-panel-pi 2>/dev/null || true
+      pkill -f 'pcmanfm --desktop' 2>/dev/null || true
+      break
+    fi
+    sleep 0.15
+  done
+) &
+
+# Portrait before Chromium fullscreen.
+if [[ -x "$ROOT/scripts/set-portrait.sh" ]]; then
+  "$ROOT/scripts/set-portrait.sh" "${COMSTAR_DISPLAY_TRANSFORM:-90}" || true
+fi
+
+# Start COMSTAR stack immediately (do not wait for desktop chrome).
+systemctl --user start comstar-bridge.service 2>/dev/null || true
+systemctl --user restart comstar-kiosk.service 2>/dev/null || true
