@@ -1,0 +1,32 @@
+# COMSTAR Plymouth script theme.
+# Assets: background.png, mark.png, spinner-00.png (ring used with Rotate).
+
+WallpaperImage = Image("background.png");
+MarkImage = Image("mark.png");
+SpinnerImage = Image("spinner-00.png");
+
+fun refresh_callback() {
+  screen_width = Window.GetWidth();
+  screen_height = Window.GetHeight();
+
+  bg = WallpaperImage.Scale(screen_width, screen_height);
+  bg.SetZ(-100);
+  bg.SetX(0);
+  bg.SetY(0);
+
+  mark_size = Math.Min(screen_width, screen_height) * 0.32;
+  mark = MarkImage.Scale(mark_size, mark_size);
+  mark.SetZ(0);
+  mark.SetX(screen_width / 2 - mark_size / 2);
+  mark.SetY(screen_height / 2 - mark_size / 2 - screen_height * 0.04);
+
+  sp_w = mark_size * 0.2;
+  angle = Math.Int(Plymouth.GetTime() * 200) % 360;
+  sp = SpinnerImage.Rotate(angle);
+  sp = sp.Scale(sp_w, sp_w);
+  sp.SetZ(10);
+  sp.SetX(screen_width / 2 - sp_w / 2);
+  sp.SetY(screen_height / 2 + mark_size * 0.42);
+}
+
+Plymouth.SetRefreshFunction(refresh_callback);

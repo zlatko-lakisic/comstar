@@ -1,0 +1,4 @@
+# COMSTAR labwc autostart — solid dark field before Chromium covers the screen.
+# swaybg is preferred; falls back to silently doing nothing if missing.
+
+swaybg -c '#06080B' >/dev/null 2>&1 &

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Launch Chromium kiosk against the bridge static server.
+# Launch Chromium: COMSTAR splash first, then hand off to the live kiosk URL.
 set -euo pipefail
 
 export DISPLAY="${DISPLAY:-:0}"
@@ -15,6 +15,11 @@ export XCURSOR_SIZE="${XCURSOR_SIZE:-24}"
 URL="${COMSTAR_KIOSK_URL:-http://127.0.0.1:8776/kiosk/?bloom=3&fps=12}"
 PROFILE="${COMSTAR_KIOSK_PROFILE:-$HOME/.config/comstar-kiosk-chromium}"
 CHROME="${COMSTAR_CHROMIUM:-/usr/bin/chromium}"
+SPLASH_PORT="${COMSTAR_KIOSK_SPLASH_PORT:-8769}"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+KIOSK_DIR="${COMSTAR_KIOSK_DIR:-$ROOT/terminal/kiosk}"
 
 # Wait for user labwc (not the LightDM greeter).
 for _ in $(seq 1 60); do
@@ -24,18 +29,47 @@ for _ in $(seq 1 60); do
   sleep 0.5
 done
 
-for _ in $(seq 1 40); do
-  if curl -fsS -m 1 "$URL" >/dev/null 2>&1; then
-    break
-  fi
-  sleep 0.5
-done
-
 # Portrait panel: rotate compositor output before Chromium goes fullscreen.
 # Override with COMSTAR_DISPLAY_TRANSFORM=270|normal if the panel is flipped.
-PORTRAIT_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/set-portrait.sh"
+PORTRAIT_SCRIPT="$SCRIPT_DIR/set-portrait.sh"
 if [[ -x "$PORTRAIT_SCRIPT" ]]; then
   "$PORTRAIT_SCRIPT" "${COMSTAR_DISPLAY_TRANSFORM:-90}" || true
+fi
+
+# Local splash HTTP server so Chromium shows branded artwork before bridge :8776 is up.
+# Polling the bridge from this origin needs Access-Control-Allow-Origin on kiosk GETs.
+ensure_splash_server() {
+  local probe="http://127.0.0.1:${SPLASH_PORT}/splash.html"
+  if curl -fsS -m 0.4 "$probe" >/dev/null 2>&1; then
+    return 0
+  fi
+  # Drop a stale listener if the port is wedged.
+  if command -v fuser >/dev/null 2>&1; then
+    fuser -k "${SPLASH_PORT}/tcp" >/dev/null 2>&1 || true
+  fi
+  python3 -m http.server "$SPLASH_PORT" --bind 127.0.0.1 --directory "$KIOSK_DIR" \
+    >/tmp/comstar-kiosk-splash.log 2>&1 &
+  disown || true
+  for _ in $(seq 1 40); do
+    if curl -fsS -m 0.4 "$probe" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "warning: splash server on :${SPLASH_PORT} did not become ready" >&2
+  return 1
+}
+
+ensure_splash_server || true
+
+TARGET_Q=$(URL="$URL" python3 -c 'import urllib.parse,os; print(urllib.parse.quote(os.environ["URL"], safe=":/?=&"))')
+if curl -fsS -m 0.4 "http://127.0.0.1:${SPLASH_PORT}/splash.html" >/dev/null 2>&1; then
+  START_URL="http://127.0.0.1:${SPLASH_PORT}/splash.html?target=${TARGET_Q}"
+elif curl -fsS -m 0.4 "http://127.0.0.1:8776/kiosk/splash.html" >/dev/null 2>&1; then
+  START_URL="http://127.0.0.1:8776/kiosk/splash.html?target=${TARGET_Q}"
+else
+  # Last resort: open kiosk URL directly (may blank until bridge is up).
+  START_URL="$URL"
 fi
 
 mkdir -p "$PROFILE"
@@ -82,6 +116,7 @@ PY
   )
 fi
 echo "Kiosk window target ${COMSTAR_KIOSK_W}x${COMSTAR_KIOSK_H}"
+echo "Kiosk start ${START_URL%%\?*}"
 
 # Avoid crash-restore interstitial / blank session restore; pin window to panel.
 if [[ -f "$PROFILE/Default/Preferences" ]]; then
@@ -135,4 +170,4 @@ exec "$CHROME" \
   --window-position=0,0 \
   --kiosk \
   --start-maximized \
-  "$URL"
+  "$START_URL"

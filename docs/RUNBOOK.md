@@ -43,6 +43,34 @@ make deploy
 
 ---
 
+## Boot sequence (splash → kiosk)
+
+Desired panel path after a cold boot:
+
+1. **Plymouth** — COMSTAR dark splash + spinner (early kernel / init). One-time:
+   `sudo bash /opt/comstar/src/scripts/install-plymouth-comstar.sh`
+2. **LightDM autologin** → **labwc** with no panels / solid `#06080B` root. One-time:
+   `bash /opt/comstar/src/scripts/install-pi-session.sh`
+   then `sudo install -m 644 …/deploy/pi-session/lightdm/50-comstar.conf /etc/lightdm/lightdm.conf.d/`
+   From the Mac: `make pi-session` (after `make deploy`).
+3. **`comstar-kiosk`** launches Chromium on a local splash server (`:8769/splash.html`)
+   with spinner artwork, polls `http://127.0.0.1:8776/kiosk/boot.txt`, then
+   `location.replace` to the live kiosk URL.
+
+Sources: `terminal/kiosk/splash.html`, `scripts/kiosk-launch.sh`,
+`deploy/pi-session/`, `deploy/plymouth/comstar/`. Also `make plymouth` for early boot.
+
+**Debug / temporary desktop:**
+
+```bash
+systemctl --user stop comstar-kiosk
+# Restore pre-COMSTAR labwc if backed up:
+cp ~/.config/labwc/rc.xml.pre-comstar ~/.config/labwc/rc.xml
+# re-login or restart labwc
+```
+
+---
+
 ## 1. Enroll a face
 
 On the Pi (or any host with the terminal camera and CPAI reachability):
@@ -353,7 +381,9 @@ make logs            # merged journal tail (when configured)
 | Fast speech cut early | VAD silence too aggressive | Raise `COMSTAR_VAD_SILENCE_MS` (e.g. 1200); hysteresis is in `terminal/audio/vad.py` |
 | Empty STT on Mac | `COMSTAR_STT_URL` unset or STT down | `make stt-dev`, export URL |
 | Wake never fires | Stub model / missing ONNX | Train ONNX, or `COMSTAR_FORCE_WAKE_SCORE=0.99`, or inject `WakeWord` on `:8781/admin/inject` |
-| Kiosk blank / no WS | Chromium not loading `http://127.0.0.1:8776/kiosk/` | Confirm bridge `:8776` up; restart `comstar-kiosk`; avoid `file://` |
+| Kiosk blank / no WS | Chromium not loading kiosk after splash | Confirm bridge `:8776` + splash `:8769`; restart `comstar-kiosk`; check `/tmp/comstar-kiosk-splash.log` |
+| Desktop flashes on boot | Session chrome not installed | `scripts/install-pi-session.sh` + reboot |
+| Rainbow / stock splash | Plymouth not installed | `sudo scripts/install-plymouth-comstar.sh` + reboot |
 | Kiosk silent | Bridge not running or wrong `bridge=` URL | Check WS on :8777 |
 | Chrome has no camera preview | Expected — kiosk has no webcam tile | Confirm bridge ffmpeg / camera LED; set `COMSTAR_CAMERA_SOURCE` |
 | No greet-by-name | Face not enrolled | `enroll_face.sh` |

@@ -259,6 +259,8 @@ class HttpAudioServer {
       headers: {
         'Content-Type': _contentType(rel),
         'Cache-Control': 'no-cache',
+        // Allow splash served from the local splash port (or file://) to poll.
+        'Access-Control-Allow-Origin': '*',
       },
     );
   }

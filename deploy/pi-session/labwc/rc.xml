@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<!-- COMSTAR labwc session — no panels, dark root.
+     Copied to ~/.config/labwc/ by scripts/install-pi-session.sh. -->
+<labwc_config>
+  <core>
+    <gap>0</gap>
+    <decorativeFullscreenTitle>no</decorativeFullscreenTitle>
+  </core>
+  <theme>
+    <name></name>
+  </theme>
+  <windowRules>
+    <windowRule identifier="chromium*">
+      <serverDecoration>no</serverDecoration>
+    </windowRule>
+  </windowRules>
+</labwc_config>

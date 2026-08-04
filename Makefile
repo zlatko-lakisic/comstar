@@ -1,4 +1,4 @@
-.PHONY: doctor bridge-dev kiosk-dev audio-sync deploy logs test stt-dev verify-cpai ao-hello site-dev site-build admin console
+.PHONY: doctor bridge-dev kiosk-dev audio-sync deploy logs test stt-dev verify-cpai ao-hello site-dev site-build admin console pi-session plymouth
 
 ROOT := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 REMOTE ?= comstar
@@ -25,6 +25,12 @@ audio-sync:
 
 deploy:
 	@COMSTAR_DEPLOY_HOST="$(REMOTE)" bash deploy/deploy.sh
+
+pi-session:
+	@ssh "$(REMOTE)" "bash $(REMOTE_DIR)/scripts/install-pi-session.sh"
+
+plymouth:
+	@ssh "$(REMOTE)" "sudo bash $(REMOTE_DIR)/scripts/install-plymouth-comstar.sh"
 
 logs:
 	@ssh "$(REMOTE)" 'journalctl --user -u comstar-bridge -u comstar-audio -u comstar-kiosk -n 80 --no-pager'

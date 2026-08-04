@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=COMSTAR
+Description=COMSTAR terminal boot splash
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/comstar
+ScriptFile=/usr/share/plymouth/themes/comstar/comstar.script

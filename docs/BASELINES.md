@@ -40,6 +40,7 @@ Do **not** store passwords or tokens in this file. SSH access should use keys (s
 | VL805 (USB) firmware | `000138c0` — up to date |
 | EEPROM release channel | `default` (`bootloader-2711`) |
 | Desktop | **LightDM** + **labwc** (Wayland); session user `md-admin` |
+| Boot UI | Plymouth theme `comstar` (optional install) → blank labwc → Chromium splash (`:8769`) → kiosk (`:8776`) |
 | Wayland socket | `/run/user/1000/wayland-0` |
 | Timezone | `US/Eastern`; NTP active / clock synchronized |
 | User linger (systemd --user) | **`Linger=no`** — must enable before relying on user units after logout |
@@ -66,7 +67,7 @@ Post-upgrade spot checks: C525 camera + mic still enumerate; CPAI reachable; eth
 | Wi-Fi IP | `192.168.90.102/24` (`wlan0`) — secondary |
 | Groups | `sudo`, `audio`, `video`, `render`, `input`, `gpio`, `i2c`, `spi`, `netdev`, … |
 | Passwordless sudo | yes (for `md-admin`) |
-| Password auth | currently enabled — **replace with SSH key** for DEV_LOOP (`~/.ssh/config` Host `comstar`, `ControlMaster`, forwards 9222/8181/5678/8779) |
+| Password auth | currently enabled — **replace with SSH key** for DEV_LOOP (`~/.ssh/config` Host `comstar`, `ControlMaster`, forwards 9222/8181/5678/8781) |
 
 Suggested `/etc/hosts` (Mac + Pi) when ready:
 

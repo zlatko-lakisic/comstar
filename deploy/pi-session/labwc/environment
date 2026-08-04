@@ -1,0 +1,4 @@
+# Optional environment for the labwc session (XDG_CONFIG_HOME/labwc/environment).
+XCURSOR_THEME=comstar-none
+XCURSOR_SIZE=24
+GTK_THEME=Adwaita-dark
