@@ -1,0 +1,27 @@
+id: ha_infra_voice
+description: >
+  NAS, Docker/Compose, Glances, and host health sensors via Home Assistant.
+capabilities: >
+  nas1/nas2 disks CPU mem NIC; compose/container health; system_monitor_*.
+good_for: nas, docker, container, server health, disk space, cpu, glances
+planner_hint: Attach for NAS / container / host health questions.
+user_goal_keywords:
+  - nas
+  - docker
+  - container
+  - compose
+  - disk
+  - server
+  - cpu
+  - memory
+  - glances
+  - uptime
+  - storage
+
+content:
+  file: ha_infra_voice/instructions.md
+
+inject:
+  target: backstory
+  heading: "## HA infra (voice)"
+  max_chars: 2800

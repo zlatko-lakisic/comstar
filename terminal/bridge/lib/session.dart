@@ -597,10 +597,11 @@ class ComstarSession {
     final timeoutSec = needsTools && config.orchestration.timeoutSeconds < 60
         ? 60
         : config.orchestration.timeoutSeconds;
+    final prompt = _voicePromptForMcps(text: text, mcps: mcps);
     try {
       final result = await _bridge.directAgent(
         agentProviderId: voiceAgentId,
-        text: text,
+        text: prompt,
         mcpProviderIds: mcps,
         timeout: Duration(seconds: timeoutSec),
       );
@@ -622,12 +623,38 @@ class ComstarSession {
       await _reopen(userid: _userid!, guest: _guest);
       final result = await _bridge.directAgent(
         agentProviderId: voiceAgentId,
-        text: text,
+        text: _voicePromptForMcps(
+          text: text,
+          mcps: mcpProvidersForVoice(utterance: text),
+        ),
         mcpProviderIds: mcpProvidersForVoice(utterance: text),
         timeout: Duration(seconds: timeoutSec),
       );
       return result['text']?.toString() ?? '';
     }
+  }
+
+  /// Steer qwen tool-use: bare questions often skip MCP and invent "no access".
+  static String _voicePromptForMcps({
+    required String text,
+    required List<String> mcps,
+  }) {
+    final trimmed = text.trim();
+    if (mcps.contains('home_assistant')) {
+      return 'Home Assistant tools are attached. Before answering, call '
+          'GetLiveContext (or equivalent HA state tools). For irrigation or '
+          'watering, use sensor.irrigation_7d_*_minutes and *_zone_history; '
+          'if 7-day minutes are 0, say so. For WAN IP use MikroTik ether1 '
+          'WAN attributes; for bandwidth use mikrotik_*_rx/_tx (kB/s); for '
+          'speedtest use sensor.speedtest_*. Do not claim you lack access '
+          'without a tool call.\n\nResident said: $trimmed';
+    }
+    if (mcps.contains('client.google_workspace')) {
+      return 'Google Workspace tools are attached. Call the matching Gmail, '
+          'Calendar, or Drive tools before answering. Do not invent data.\n\n'
+          'Resident said: $trimmed';
+    }
+    return trimmed;
   }
 
   Future<String> runGreeter(String userid) async {

@@ -1,0 +1,26 @@
+id: ha_downloads_voice
+description: >
+  qBittorrent, Sonarr, Radarr, Prowlarr status and speeds via Home Assistant.
+capabilities: >
+  qbittorrent_* status/speeds/counts; sonarr_*/radarr_* queue and disk sensors.
+good_for: torrents, downloads, qbittorrent, sonarr, radarr, prowlarr, queue
+planner_hint: Attach for torrent / *arr download questions.
+user_goal_keywords:
+  - torrent
+  - torrents
+  - qbittorrent
+  - download
+  - downloads
+  - sonarr
+  - radarr
+  - prowlarr
+  - queue
+  - seeding
+
+content:
+  file: ha_downloads_voice/instructions.md
+
+inject:
+  target: backstory
+  heading: "## HA downloads (voice)"
+  max_chars: 2800

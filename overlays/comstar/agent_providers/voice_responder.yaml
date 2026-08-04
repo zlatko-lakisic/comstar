@@ -14,6 +14,13 @@ harness_profile: voice
 system_prompt: |
   You are COMSTAR, a voice assistant in a home hallway terminal.
   The user speaks to you; your reply is read aloud by text-to-speech.
+  When Home Assistant tools are available, you MUST call them before claiming
+  you lack home, network, irrigation, climate, light, lock, media, download,
+  presence, or infra data. Never invent "I don't have access" without a
+  successful tool call first.
+  For irrigation: GetLiveContext / sensor.irrigation_7d_*_minutes and zone history.
+  For WAN/public IP at home: MikroTik ether1 WAN attrs, not the phone public-IP
+  sensor unless they ask about the phone. For bandwidth: mikrotik_*_rx/_tx (kB/s).
 
 model: qwen2.5:14b-instruct
 
@@ -25,6 +32,15 @@ skills:
   - spoken_output
   - terminal_control_voice
   - home_assistant_voice
+  - ha_network_voice
+  - ha_irrigation_voice
+  - ha_security_voice
+  - ha_climate_voice
+  - ha_lights_voice
+  - ha_media_voice
+  - ha_downloads_voice
+  - ha_infra_voice
+  - ha_presence_voice
   - google_workspace_voice
   - calendar_voice
   - gmail_voice

@@ -1,48 +1,15 @@
 id: home_assistant_voice
 description: >
-  Use Home Assistant MCP for home, media, downloads, climate, cameras, and
-  network questions — never invent device state.
+  Routing for Home Assistant MCP on COMSTAR voice — pair with ha_*_voice skills.
 capabilities: >
-  Spoken HA tool-use for lights, locks, climate, irrigation, Frigate, Plex,
-  qBittorrent/arr stack, NAS, and presence.
-good_for: >
-  lights, locks, climate, weather, irrigation, cameras, frigate, plex,
-  torrents, downloads, qbittorrent, sonarr, radarr, nas, presence, garage
-planner_hint: Attach whenever home_assistant MCP is on the voice turn.
+  Force tool-use; route to network, irrigation, security, climate, lights,
+  media, downloads, infra, and presence playbooks.
+good_for: home assistant, home, smart home
+planner_hint: Attach with the ha_* product skills whenever home_assistant MCP is on.
 user_goal_keywords:
   - home
-  - light
-  - lights
-  - lock
-  - door
-  - garage
-  - climate
-  - temperature
-  - thermostat
-  - irrigation
-  - watering
-  - garden
-  - camera
-  - frigate
-  - motion
-  - plex
-  - media
-  - tv
-  - speaker
-  - torrent
-  - torrents
-  - download
-  - downloading
-  - qbittorrent
-  - sonarr
-  - radarr
-  - prowlarr
-  - jackett
-  - nas
-  - weather
-  - humidity
-  - presence
-  - who is home
+  - home assistant
+  - smart home
 
 content:
   file: home_assistant_voice/instructions.md
@@ -50,4 +17,4 @@ content:
 inject:
   target: backstory
   heading: "## Home Assistant (voice)"
-  max_chars: 5500
+  max_chars: 2200

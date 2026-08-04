@@ -1,0 +1,26 @@
+id: ha_media_voice
+description: >
+  Plex, OwnTone, Cast TVs and speakers via Home Assistant media_player entities.
+capabilities: >
+  media_player state, play/pause/volume when supported; Plex and OwnTone garden.
+good_for: tv, plex, music, speaker, owntone, pause, volume, what is playing
+planner_hint: Attach for TV / music / Plex questions.
+user_goal_keywords:
+  - tv
+  - television
+  - plex
+  - music
+  - speaker
+  - owntone
+  - playing
+  - pause
+  - volume
+  - cast
+
+content:
+  file: ha_media_voice/instructions.md
+
+inject:
+  target: backstory
+  heading: "## HA media (voice)"
+  max_chars: 3000

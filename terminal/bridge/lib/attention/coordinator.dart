@@ -1287,6 +1287,17 @@ class AttentionCoordinator {
     return false;
   }
 
+  /// CrewAI / AO tool-loop stalls that must not be spoken aloud.
+  bool _looksLikeToolStallProse(String text) {
+    final t = text.trim().toLowerCase();
+    if (t.isEmpty) return false;
+    return t.contains('provide the tool result') ||
+        t.contains('tool result for analysis') ||
+        t.contains('waiting for the tool') ||
+        t.contains('need the tool output') ||
+        t.contains('share the tool result');
+  }
+
   Future<void> _runDirectAgent(String text, String turnId) async {
     final turnSpan = Span('turn_total');
     try {
@@ -1309,7 +1320,23 @@ class AttentionCoordinator {
         'text': clipped,
         'mcp': session.mcpProvidersForVoice(utterance: text),
       });
-      final response = await session.directVoice(text);
+      var response = await session.directVoice(text);
+      if (_looksLikeToolStallProse(response)) {
+        logWarn('direct_agent_tool_stall', 'AO returned tool-loop stall prose', data: {
+          'turn_id': turnId,
+          'preview': response.length > 80
+              ? '${response.substring(0, 80)}…'
+              : response,
+        });
+        // Prefer real HA entity reads over speaking stall text.
+        final haFallback = await _tryHomeDataIntent(text, turnId);
+        if (haFallback) return;
+        await _speakFallback(
+          "I reached Home Assistant, but didn't get a usable reading back.",
+          turnId,
+        );
+        return;
+      }
       if (response.trim().isEmpty) {
         logWarn('direct_agent_empty', 'AO returned empty reply', data: {
           'turn_id': turnId,
@@ -1357,6 +1384,11 @@ class AttentionCoordinator {
     switch (intent.kind) {
       case HomeDataIntentKind.torrentsDownloading:
         spoken = await HaAgentClient().torrentsSpokenSummary();
+      case HomeDataIntentKind.irrigationSummary:
+        spoken = await HaAgentClient().irrigationSpokenSummary();
+      case HomeDataIntentKind.networkSummary:
+        spoken = await HaAgentClient()
+            .networkSpokenSummary(query: intent.query);
     }
     if (spoken == null || spoken.trim().isEmpty) {
       logWarn('home_data_intent', 'HA agent returned empty', data: {

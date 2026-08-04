@@ -1,0 +1,31 @@
+id: ha_irrigation_voice
+description: >
+  Irrigation and garden via HA — zones, 7d minutes, soil moisture, rain delay, BHyve.
+capabilities: >
+  Zone switches, irrigation_7d_* minutes, garden_controller_soil_moisture_*,
+  rain delay, climate.bhyve_manual_watering.
+good_for: irrigation, watering, sprinklers, lawn, drip, soil moisture, garden
+planner_hint: Attach for watering / irrigation / soil questions.
+user_goal_keywords:
+  - irrigation
+  - watering
+  - water the
+  - sprinkler
+  - lawn
+  - drip
+  - soil
+  - moisture
+  - rain delay
+  - bhyve
+  - garden beds
+  - front lawn
+  - east lawn
+  - back lawn
+
+content:
+  file: ha_irrigation_voice/instructions.md
+
+inject:
+  target: backstory
+  heading: "## HA irrigation (voice)"
+  max_chars: 3500

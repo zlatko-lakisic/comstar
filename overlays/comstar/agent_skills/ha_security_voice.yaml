@@ -1,0 +1,28 @@
+id: ha_security_voice
+description: >
+  Locks, garage, doors, motion, and Frigate camera health via Home Assistant.
+capabilities: >
+  lock.*, cover.garage_door_door, motion binary_sensors, frigate FPS and health.
+good_for: lock, unlock, garage, motion, camera, frigate, security, door
+planner_hint: Attach for locks / garage / motion / camera questions.
+user_goal_keywords:
+  - lock
+  - unlock
+  - locked
+  - garage
+  - door
+  - motion
+  - camera
+  - frigate
+  - security
+  - alarm
+  - driveway motion
+  - plate
+
+content:
+  file: ha_security_voice/instructions.md
+
+inject:
+  target: backstory
+  heading: "## HA security (voice)"
+  max_chars: 3500

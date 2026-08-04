@@ -1,0 +1,26 @@
+id: ha_climate_voice
+description: >
+  Thermostats, indoor climate, and weather.home / forecast via HA.
+capabilities: >
+  climate.* setpoints and modes; weather.home; humidity/temp sensors by area.
+good_for: thermostat, temperature, humidity, weather, nest, hvac, forecast
+planner_hint: Attach for climate / weather / thermostat questions.
+user_goal_keywords:
+  - thermostat
+  - temperature
+  - humidity
+  - weather
+  - forecast
+  - nest
+  - hvac
+  - heat
+  - cool
+  - degrees
+
+content:
+  file: ha_climate_voice/instructions.md
+
+inject:
+  target: backstory
+  heading: "## HA climate (voice)"
+  max_chars: 2500

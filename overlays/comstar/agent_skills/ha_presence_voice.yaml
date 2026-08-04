@@ -1,0 +1,23 @@
+id: ha_presence_voice
+description: >
+  Who’s home — person entities and zone/area presence via Home Assistant.
+capabilities: >
+  person.* home/not_home; area-filtered live context for rooms.
+good_for: who is home, presence, where is, zone, anyone home
+planner_hint: Attach for presence / who’s home questions.
+user_goal_keywords:
+  - who is home
+  - who's home
+  - presence
+  - home or away
+  - where is
+  - anyone home
+  - zone
+
+content:
+  file: ha_presence_voice/instructions.md
+
+inject:
+  target: backstory
+  heading: "## HA presence (voice)"
+  max_chars: 2200

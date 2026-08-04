@@ -1,0 +1,24 @@
+id: ha_lights_voice
+description: >
+  Indoor and outdoor lights and smart plugs via Home Assistant.
+capabilities: >
+  light.* on/off/brightness for rooms, flood, garden, garage, patio plugs.
+good_for: lights, flood lights, garden lights, dimmer, turn on lights
+planner_hint: Attach for lighting control and status.
+user_goal_keywords:
+  - light
+  - lights
+  - flood
+  - lamp
+  - dimmer
+  - brightness
+  - patio plug
+  - walkway
+
+content:
+  file: ha_lights_voice/instructions.md
+
+inject:
+  target: backstory
+  heading: "## HA lights (voice)"
+  max_chars: 3000

@@ -1,0 +1,40 @@
+id: ha_network_voice
+description: >
+  Home network via HA — WAN/LAN IPs, MikroTik interface bandwidth, VLANs,
+  speedtest, perimeter switch ports, NAS NICs.
+capabilities: >
+  GetLiveContext / state for local_ip, public IPs, speedtest_*, mikrotik_*_rx/tx,
+  VLAN and WireGuard rates, basement switch port speeds.
+good_for: >
+  wan ip, public ip, local ip, bandwidth, mikrotik, vlan, wifi clients, speedtest,
+  interface rate, nas network
+planner_hint: Attach for network / IP / bandwidth / router questions.
+user_goal_keywords:
+  - wan
+  - ip
+  - public ip
+  - local ip
+  - bandwidth
+  - mikrotik
+  - router
+  - vlan
+  - wifi
+  - wireless
+  - ethernet
+  - speedtest
+  - ping
+  - download speed
+  - upload speed
+  - interface
+  - wireguard
+  - vpn
+  - sfp
+  - network
+
+content:
+  file: ha_network_voice/instructions.md
+
+inject:
+  target: backstory
+  heading: "## HA network (voice)"
+  max_chars: 4500

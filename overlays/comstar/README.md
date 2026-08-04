@@ -37,6 +37,27 @@ re-injecting via the catalog path. Reach still packs `skills:` on the agent and
 registers skill bodies in `session_overlay_register`; the backstory bake remains
 as a compatibility path for older AO builds.
 
+### Home Assistant voice skills
+
+AO `home_assistant` MCP only sees **Assist-exposed** entities. Product skills below
+map this home’s real entity inventory (~9.7k entities) into spoken playbooks:
+
+| Skill | Topics |
+|-------|--------|
+| `home_assistant_voice` | Routing + tool-first rule |
+| `ha_network_voice` | WAN/LAN IPs, MikroTik RX/TX, VLANs, WireGuard, speedtest, switch ports, NAS NICs |
+| `ha_irrigation_voice` | 7d minutes, rain delay, soil, BHyve, Orbit program switches |
+| `ha_security_voice` | Locks, garage cover, motion, Frigate cameras/FPS |
+| `ha_climate_voice` | Thermostats, weather, limited energy sensors |
+| `ha_lights_voice` | Indoor/outdoor lights and patio plugs |
+| `ha_media_voice` | Cast TVs/speakers, OwnTone, Plex clients |
+| `ha_downloads_voice` | qBittorrent, Sonarr, Radarr |
+| `ha_infra_voice` | NAS1/NAS2, Compose/containers, Glances/system monitor |
+| `ha_presence_voice` | `person.*`, `zone.home` |
+
+Wire the HA set on `client.voice_responder`. Bridge may also answer torrents /
+irrigation / network via HA agent HTTP when AO tool loops stall.
+
 ### Google Workspace voice skills (`mcp-server-google-workspace@0.2.6`)
 
 | Skill | Tools covered |
