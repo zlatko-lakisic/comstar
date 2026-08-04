@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "sync-avatar": "cp ../terminal/kiosk/avatar.js ../terminal/kiosk/presets.js public/avatar/",
+    "sync-avatar": "cp ../terminal/kiosk/presets.js public/avatar/",
     "dev": "npm run sync-avatar && astro dev",
     "build": "npm run sync-avatar && astro build",
     "preview": "astro preview"

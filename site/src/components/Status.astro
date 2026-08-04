@@ -1,4 +1,9 @@
 ---
+interface Props {
+  lastCommit?: string;
+}
+const { lastCommit = '' } = Astro.props;
+
 const working = [
   'Person detection and face recognition',
   'Identity-mapped sessions',
@@ -8,7 +13,7 @@ const working = [
   'Avatar, Google pairing, terminal control',
 ];
 const unfinished = [
-  'Wake word model untrained — bring-up uses a key press',
+  'Wake word model untrained: bring-up uses a key press',
   'Room-distance microphone testing not done',
   'No 24-hour soak test yet',
   'One person has used it',
@@ -17,7 +22,6 @@ const unfinished = [
 <section class="section" id="status">
   <div class="wrap reveal">
     <div class="status-box">
-      <p class="eyebrow amber">Where this actually is</p>
       <h2>Pre-alpha. Here is exactly what that means.</h2>
       <div class="status-cols">
         <div>
@@ -46,6 +50,12 @@ const unfinished = [
         </div>
         <div class="progress-bar"><span></span></div>
       </div>
+      {lastCommit && (
+        <p class="activity status-activity">
+          Last commit: {lastCommit} · Phase 1 at ~75% ·
+          <a href="https://github.com/zlatko-lakisic/comstar/wiki/Progress-Tracker">tracker</a>
+        </p>
+      )}
     </div>
   </div>
 </section>

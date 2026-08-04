@@ -9,7 +9,6 @@ const presets = [
 ---
 <section class="section" id="presets">
   <div class="wrap reveal">
-    <p class="eyebrow">Make it yours</p>
     <h2>The face is an SVG. The brain is rewriteable.</h2>
     <p class="lede">
       The voice is a config line. COMSTAR is a face for agentic-orchestration,
@@ -24,6 +23,7 @@ const presets = [
           class="preset-btn"
           data-preset={p.id}
           aria-pressed={i === 0 ? 'true' : 'false'}
+          aria-label={`Use ${p.label} emblem`}
         >
           <div class="preset-stage" data-preset-stage={p.id}></div>
           {p.label}

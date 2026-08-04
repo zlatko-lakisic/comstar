@@ -6,11 +6,11 @@ const faqs = [
   },
   {
     q: 'Do I need an NVIDIA GPU?',
-    a: 'Yes, effectively. The Pi is a thin terminal. Vision, preferred speech, and orchestration run on a machine with a GPU. Without one you can still develop on a Mac with local fallbacks, but the production path assumes Ada-class hardware on the LAN.',
+    a: 'Yes, effectively. The Pi is a thin terminal. Vision, preferred speech, and orchestration run on a machine with a GPU. Without one you can still develop on a Mac with local fallbacks, but the production path assumes an NVIDIA GPU host on your LAN.',
   },
   {
     q: 'How fast is it, really?',
-    a: 'The budget is under 15 seconds end-to-end, ideally under 6. Orchestration (MCP tool calls) dominates. STT is about 1–5 s depending on Ada GPU vs Pi CPU fallback. Numbers on the walk-up strip are targets until M8 UAT is measured.',
+    a: 'The budget is under 15 seconds end-to-end, ideally under 6. Orchestration (MCP tool calls) dominates. STT is about 1 to 5 s depending on GPU host vs Pi CPU fallback. Numbers on the walk-up strip are targets until M8 UAT is measured.',
   },
   {
     q: 'Is it always recording?',
@@ -40,8 +40,7 @@ const faqs = [
 ---
 <section class="section" id="faq">
   <div class="wrap reveal">
-    <p class="eyebrow">Questions</p>
-    <h2>Ask the sceptical ones.</h2>
+    <h2>Questions</h2>
     <div class="faq">
       {faqs.map((f) => (
         <details>

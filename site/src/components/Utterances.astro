@@ -3,56 +3,55 @@ const rows = [
   {
     say: "What's on my calendar this afternoon?",
     does: 'Reads your next three events.',
-    icon: '01',
+    special: false,
   },
   {
     say: 'Did Sarah reply to my email yet?',
     does: 'Checks your inbox and summarises.',
-    icon: '02',
+    special: false,
   },
   {
     say: 'Turn off the kitchen lights',
     does: 'Home Assistant, instantly.',
-    icon: '03',
+    special: false,
   },
   {
     say: 'Is anyone else in the room?',
     does: 'Actually looks, and tells you.',
-    icon: '04',
+    special: true,
   },
   {
     say: 'Turn it down a bit',
     does: 'Adjusts its own speaker volume.',
-    icon: '05',
+    special: false,
   },
   {
     say: 'Go to sleep',
     does: 'Goes dormant until you say the wake word.',
-    icon: '06',
+    special: false,
   },
   {
     say: 'What did we decide about the deck last week?',
     does: 'Recalls it from your session memory.',
-    icon: '07',
+    special: true,
   },
 ];
 ---
 <section class="section" id="utterances">
   <div class="wrap reveal">
-    <p class="eyebrow">Say this, it does that</p>
-    <h2>Capability, without a demo booking.</h2>
+    <h2>Say this, it does that</h2>
     <p class="lede">
-      Hover a line to see the reply. Two of these are the whole point:
-      vision as a tool mid-answer, and memory scoped to who is standing there.
+      Real things you can ask. Replies are what the agent does, not marketing copy.
     </p>
     <ul class="utterances">
       {rows.map((r) => (
-        <li class="utterance" tabindex="0">
+        <li class:list={['utterance', 'is-open', { special: r.special }]}>
           <div class="utterance-say">
-            <span class="utterance-icon" aria-hidden="true">{r.icon}</span>
+            <span class="utterance-icon" aria-hidden="true"></span>
             <span>“{r.say}”</span>
           </div>
           <p class="utterance-reply">{r.does}</p>
+          {r.special && <span class="utterance-tag">Only COMSTAR does this</span>}
         </li>
       ))}
     </ul>

@@ -1,18 +1,4 @@
 ---
-/**
- * Live COMSTAR avatar mount. Client script in product.js owns the instance.
- */
-interface Props {
-  id?: string;
-  class?: string;
-  label?: string;
-}
-const { id = 'hero-stage', class: className = 'hero-stage', label = 'COMSTAR avatar' } = Astro.props;
+/** Live hero mount point. product.js calls mountHero(). */
 ---
-<div
-  id={id}
-  class={className}
-  role="img"
-  aria-label={label}
-  data-avatar-mount
-></div>
+<div id="hero-avatar"></div>

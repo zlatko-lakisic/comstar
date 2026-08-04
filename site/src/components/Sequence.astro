@@ -28,7 +28,6 @@ const beats = [
 ---
 <section class="section" id="sequence">
   <div class="wrap reveal">
-    <p class="eyebrow">The fifteen seconds</p>
     <h2>Walk up. Get answered.</h2>
     <p class="lede">
       The product is a sequence. These timestamps are the latency budget
@@ -40,31 +39,37 @@ const beats = [
           <div class="beat-art" aria-hidden="true">
             {b.art === 'walk' && (
               <svg viewBox="0 0 64 64" fill="none">
-                <circle cx="32" cy="32" r="22" stroke="#3DDCFF" stroke-opacity="0.35" stroke-width="1.5"/>
-                <circle cx="32" cy="22" r="6" stroke="#E6EDF3" stroke-width="1.5"/>
-                <path d="M20 48c2-8 8-12 12-12s10 4 12 12" stroke="#E6EDF3" stroke-width="1.5" stroke-linecap="round"/>
+                <rect x="38" y="18" width="14" height="20" rx="2" stroke="#3DDCFF" stroke-width="1.5"/>
+                <circle cx="45" cy="28" r="3" stroke="#3DDCFF" stroke-width="1.2"/>
+                <circle cx="22" cy="22" r="5" stroke="#E6EDF3" stroke-width="1.5"/>
+                <path d="M12 48c2-9 6-14 10-14s8 5 10 14" stroke="#E6EDF3" stroke-width="1.5" stroke-linecap="round"/>
+                <path d="M28 36l6 2" stroke="#A8B6C4" stroke-width="1.2" stroke-linecap="round"/>
               </svg>
             )}
             {b.art === 'face' && (
               <svg viewBox="0 0 64 64" fill="none">
-                <rect x="14" y="14" width="36" height="36" rx="8" stroke="#3DDCFF" stroke-width="1.5"/>
-                <circle cx="32" cy="30" r="8" stroke="#E6EDF3" stroke-width="1.5"/>
-                <path d="M22 46c2-5 6-8 10-8s8 3 10 8" stroke="#E6EDF3" stroke-width="1.5" stroke-linecap="round"/>
-                <path d="M44 18l6-6M50 18l-6-6" stroke="#3DDCFF" stroke-width="1.5" stroke-linecap="round"/>
+                <rect x="38" y="18" width="14" height="20" rx="2" stroke="#3DDCFF" stroke-width="1.5"/>
+                <circle cx="45" cy="28" r="3" fill="#3DDCFF" fill-opacity="0.35" stroke="#3DDCFF" stroke-width="1.2"/>
+                <circle cx="22" cy="22" r="5" stroke="#E6EDF3" stroke-width="1.5"/>
+                <path d="M12 48c2-9 6-14 10-14s8 5 10 14" stroke="#E6EDF3" stroke-width="1.5" stroke-linecap="round"/>
+                <path d="M40 14l4-5M48 14l-4-5" stroke="#3DDCFF" stroke-width="1.5" stroke-linecap="round"/>
               </svg>
             )}
             {b.art === 'ask' && (
               <svg viewBox="0 0 64 64" fill="none">
-                <path d="M16 28c0-8 7-14 16-14s16 6 16 14-7 14-16 14c-2 0-4-.3-6-.8L16 46l2-8.5C17 35 16 31.5 16 28z" stroke="#E6EDF3" stroke-width="1.5"/>
-                <circle cx="26" cy="28" r="1.5" fill="#3DDCFF"/>
-                <circle cx="32" cy="28" r="1.5" fill="#3DDCFF"/>
-                <circle cx="38" cy="28" r="1.5" fill="#3DDCFF"/>
+                <rect x="38" y="18" width="14" height="20" rx="2" stroke="#3DDCFF" stroke-width="1.5"/>
+                <path d="M10 24c0-6 5-11 12-11s12 5 12 11-5 11-12 11c-1.5 0-3-.2-4.5-.6L10 40l1.5-7C10.5 31 10 27.5 10 24z" stroke="#E6EDF3" stroke-width="1.5"/>
+                <circle cx="18" cy="24" r="1.2" fill="#3DDCFF"/>
+                <circle cx="22" cy="24" r="1.2" fill="#3DDCFF"/>
+                <circle cx="26" cy="24" r="1.2" fill="#3DDCFF"/>
               </svg>
             )}
             {b.art === 'speak' && (
               <svg viewBox="0 0 64 64" fill="none">
-                <circle cx="32" cy="32" r="10" stroke="#3DDCFF" stroke-width="1.5"/>
-                <path d="M32 10v6M32 48v6M10 32h6M48 32h6M16 16l4 4M44 44l4 4M16 48l4-4M44 20l4-4" stroke="#A8B6C4" stroke-width="1.5" stroke-linecap="round"/>
+                <rect x="22" y="16" width="20" height="28" rx="3" stroke="#3DDCFF" stroke-width="1.5"/>
+                <circle cx="32" cy="30" r="6" stroke="#3DDCFF" stroke-width="1.5"/>
+                <path d="M32 20v3M32 37v3M24 30h3M37 30h3" stroke="#A8B6C4" stroke-width="1.3" stroke-linecap="round"/>
+                <path d="M18 44h28" stroke="#6E7F90" stroke-width="1.5" stroke-linecap="round"/>
               </svg>
             )}
           </div>
@@ -75,6 +80,10 @@ const beats = [
         </article>
       ))}
     </div>
-    <p class="target-note">Target times — labelled until M8 walk-up UAT is measured.</p>
+    <p class="latency-note">
+      Most of that is the agent thinking. Simple questions land in six seconds;
+      anything that has to call out to your calendar or your house takes longer.
+    </p>
+    <p class="target-note">Target times. Labelled until M8 walk-up UAT is measured.</p>
   </div>
 </section>

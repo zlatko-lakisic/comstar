@@ -1,14 +1,13 @@
 ---
 const sessions = [
-  { initials: 'ZL', name: 'You', detail: 'Full calendar · mail · lights · memory' },
-  { initials: 'AL', name: 'Partner', detail: 'Their session · their tools · their history' },
-  { initials: '?', name: 'Guest', detail: 'Talks. No calendar. No mail. No lights.', guest: true },
+  { label: 'You', detail: 'Full calendar · mail · lights · memory' },
+  { label: 'Your partner', detail: 'Their session · their tools · their history' },
+  { label: 'A guest', detail: 'Talks. No calendar. No mail. No lights.', guest: true },
 ];
 ---
 <section class="section" id="identity">
   <div class="wrap identity-grid reveal">
     <div class="identity-copy">
-      <p class="eyebrow">It knows who's talking</p>
       <h2>Every other smart display waits to be spoken to.</h2>
       <p>
         An Echo Show has a camera. A Nest Hub has a camera. Neither one changes
@@ -30,9 +29,9 @@ const sessions = [
     <div class="session-panels" aria-label="Three people, three sessions">
       {sessions.map((s) => (
         <div class:list={['session-panel', { guest: s.guest }]}>
-          <div class="face">{s.initials}</div>
+          <div class="face" aria-hidden="true"></div>
           <div>
-            <strong>{s.name}</strong>
+            <strong>{s.label}</strong>
             <span>{s.detail}</span>
           </div>
         </div>
