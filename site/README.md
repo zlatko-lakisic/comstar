@@ -2,7 +2,7 @@
 
 Outcome-focused landing page for GitHub Pages
 (`https://zlatko-lakisic.github.io/comstar/`). Documentation stays on the
-wiki (and later `/docs/`) — this site sells the walk-up, not the contracts.
+wiki (and later `/docs/`) - this site sells the walk-up, not the contracts.
 
 ## Develop
 

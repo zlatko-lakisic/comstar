@@ -1,5 +1,5 @@
 /**
- * COMSTAR product page — animated hero.
+ * COMSTAR product page - animated hero.
  *
  * Renders the emblem at hero scale and runs it through the real attention
  * ladder on a loop: ambient, noticed, engaged, listening, responding. The

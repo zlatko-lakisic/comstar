@@ -1,13 +1,13 @@
 ---
 const specs = [
-  ['Terminal', 'Raspberry Pi 4 Model B, 4 GB+ (8 GB recommended for heavy local avatar)'],
-  ['Camera', 'UVC webcam (bring-up: Logitech C525). Vision only.'],
+  ['Terminal', 'Raspberry Pi 4 Model B, 4 GB'],
+  ['Camera', 'UVC webcam (bring-up: Logitech C525): vision only'],
   ['Microphone', 'Dedicated array preferred (ReSpeaker Lite / XMOS); webcam mic for bring-up only'],
   ['Display', 'HDMI panel, roughly 800×480 to 1280×720'],
-  ['Audio out', 'HDMI or powered speakers via kiosk Chromium (ADR 0001)'],
-  ['AI server', 'NVIDIA GPU host: CodeProject.AI, AO, preferred speech sidecars'],
+  ['Audio out', 'HDMI or powered speakers, played by the kiosk browser'],
+  ['AI server', 'NVIDIA GPU host: CodeProject.AI, agentic-orchestration, preferred speech sidecars'],
   ['Ports (Pi)', 'Bridge HTTP :8776 · kiosk WS :8777 · audio WS :8778'],
-  ['Ports (AI server)', 'AO :8765 · CPAI :32168 · STT :8090 · TTS :8091'],
+  ['Ports (AI server)', 'Orchestration :8765 · CodeProject.AI :32168 · STT :8090 · TTS :8091'],
   ['Languages', 'Dart (bridge) · Python (audio, speech) · Chromium kiosk'],
   ['Licence', 'Apache-2.0'],
 ];

@@ -48,6 +48,9 @@ jobs:
             exit 1
           fi
 
+      - name: Warn on internal jargon / em dashes
+        run: python3 site/tools/check_public_copy.py
+
       - uses: actions/upload-pages-artifact@v3
         if: github.ref == 'refs/heads/main'
         with:
