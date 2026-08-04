@@ -31,6 +31,18 @@ class HttpAudioServer {
   /// Returns true if the action was accepted.
   Future<bool> Function(String action)? onSleepAction;
 
+  /// Live avatar tuning — push options to the kiosk over WS.
+  /// Returns the applied option map (echo) or null on failure.
+  Future<Map<String, dynamic>?> Function(Map<String, dynamic> options)?
+      onAvatarOptions;
+
+  /// Last options accepted via `/control/avatar` (for GET).
+  Map<String, dynamic> _avatarOptions = const {
+    'bloom': 3,
+    'fps': 12,
+    'scale': 0.62,
+  };
+
   HttpServer? _server;
   final _files = <String, String>{};
 
@@ -56,7 +68,7 @@ class HttpAudioServer {
   Future<Response> _handle(Request request) async {
     final path = request.url.path;
 
-    if (path == 'control/sleep' || path == 'control/volume') {
+    if (path == 'control/sleep' || path == 'control/volume' || path == 'control/avatar') {
       return _handleControl(request, path);
     }
 
@@ -88,6 +100,10 @@ class HttpAudioServer {
   }
 
   Future<Response> _handleControl(Request request, String path) async {
+    if (path == 'control/avatar') {
+      return _handleAvatarControl(request);
+    }
+
     final ctrl = control;
     if (ctrl == null) {
       return _json(503, {'ok': false, 'error': 'control_unavailable'});
@@ -159,6 +175,46 @@ class HttpAudioServer {
         return _json(400, {'ok': false, 'error': 'bad_action'});
     }
     return _json(result['ok'] == true ? 200 : 500, result);
+  }
+
+  Future<Response> _handleAvatarControl(Request request) async {
+    if (request.method == 'GET') {
+      return _json(200, {'ok': true, ..._avatarOptions});
+    }
+    if (request.method != 'POST') {
+      return Response(405, body: 'Method not allowed');
+    }
+    final body = await _readJson(request);
+    final next = Map<String, dynamic>.from(_avatarOptions);
+    void takeNum(String key, {String? alias, double? min, double? max}) {
+      final raw = body[key] ?? (alias != null ? body[alias] : null);
+      if (raw is! num) return;
+      var v = raw.toDouble();
+      if (min != null) v = v < min ? min : v;
+      if (max != null) v = v > max ? max : v;
+      next[key] = v;
+    }
+
+    takeNum('bloom', min: 0, max: 24);
+    takeNum('fps', alias: 'maxFps', min: 8, max: 60);
+    takeNum('scale', alias: 'emblemScale', min: 0.2, max: 1.2);
+    final emblem = body['emblem'];
+    if (emblem != null && emblem.toString().trim().isNotEmpty) {
+      next['emblem'] = emblem.toString().trim();
+    }
+
+    final hook = onAvatarOptions;
+    if (hook != null) {
+      final applied = await hook(next);
+      if (applied == null) {
+        return _json(503, {'ok': false, 'error': 'kiosk_unavailable'});
+      }
+      _avatarOptions = Map<String, dynamic>.from(applied);
+    } else {
+      _avatarOptions = next;
+    }
+    logInfo('avatar_options', 'Avatar options updated', data: _avatarOptions);
+    return _json(200, {'ok': true, ..._avatarOptions});
   }
 
   Future<Map<String, dynamic>> _readJson(Request request) async {

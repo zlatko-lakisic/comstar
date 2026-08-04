@@ -59,6 +59,7 @@ export class ComstarAvatar {
     this.emblemScale = opts.emblemScale ?? 0.62;
     this.bloom = opts.bloom ?? 0;
     this.maxFps = Math.max(8, Math.min(60, opts.maxFps ?? 12));
+    this.emblemName = typeof opts.emblem === 'string' ? opts.emblem : 'starburst';
     this.emblem = resolveEmblem(opts.emblem);
 
     this.state = 'ambient';
@@ -303,6 +304,71 @@ export class ComstarAvatar {
     const cx = (box.x_min + box.x_max) / 2;
     const cy = (box.y_min + box.y_max) / 2;
     this.setGaze((cx / frameWidth) * 2 - 1, -((cy / frameHeight) * 2 - 1));
+  }
+
+  /**
+   * Live tuning without remounting the page.
+   * @param {{bloom?: number, maxFps?: number, fps?: number, emblemScale?: number, scale?: number, emblem?: string}} opts
+   * @returns {{bloom: number, maxFps: number, emblemScale: number, emblem: string}}
+   */
+  setOptions(opts = {}) {
+    if (opts.bloom != null && Number.isFinite(Number(opts.bloom))) {
+      this._applyBloom(Number(opts.bloom));
+    }
+    const fpsRaw = opts.maxFps ?? opts.fps;
+    if (fpsRaw != null && Number.isFinite(Number(fpsRaw))) {
+      this.maxFps = Math.max(8, Math.min(60, Number(fpsRaw)));
+    }
+    const scaleRaw = opts.emblemScale ?? opts.scale;
+    if (scaleRaw != null && Number.isFinite(Number(scaleRaw))) {
+      this.emblemScale = Math.max(0.2, Math.min(1.2, Number(scaleRaw)));
+    }
+    if (opts.emblem != null && String(opts.emblem).trim()) {
+      const name = String(opts.emblem).trim();
+      const next = resolveEmblem(name);
+      if (next) {
+        this.emblemName = name;
+        this.emblem = next;
+        const state = this.state;
+        const thinking = this.thinking;
+        this._build();
+        this.setState(state);
+        this.setThinking(thinking);
+      }
+    }
+    return this.getOptions();
+  }
+
+  /** @returns {{bloom: number, maxFps: number, emblemScale: number, emblem: string}} */
+  getOptions() {
+    return {
+      bloom: this.bloom,
+      maxFps: this.maxFps,
+      emblemScale: this.emblemScale,
+      emblem: this.emblemName || 'starburst',
+    };
+  }
+
+  _applyBloom(value) {
+    const bloom = Math.max(0, Math.min(24, value));
+    this.bloom = bloom;
+    if (!this.svg || !this.halo) return;
+    const filter = this.svg.querySelector('filter feGaussianBlur');
+    if (filter) filter.setAttribute('stdDeviation', String(bloom));
+    const filterEl = this.svg.querySelector('filter');
+    const filterId = filterEl?.id;
+    if (bloom > 0 && filterId) {
+      this.halo.style.display = '';
+      this.halo.setAttribute('filter', `url(#${filterId})`);
+      this.bars = [
+        ...this.core.querySelectorAll('.cs-bars rect'),
+        ...this.halo.querySelectorAll('.cs-bars rect'),
+      ];
+    } else {
+      this.halo.removeAttribute('filter');
+      this.halo.style.display = 'none';
+      this.bars = [...this.core.querySelectorAll('.cs-bars rect')];
+    }
   }
 
   speak(audioUrl) {

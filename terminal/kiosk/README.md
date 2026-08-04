@@ -29,16 +29,26 @@ Open `http://localhost:5173/debug.html`. Must be served over HTTP; opening the
 file directly fails on ES module CORS.
 
 You get all five states, live sliders for emblem scale and bloom, a gaze slider
-with auto-sweep, a mic level slider that can be driven from your actual
-microphone, and a synthetic test utterance that exercises the real amplitude
-path without Piper or a network.
+(and auto-sweep), and a mic-level slider that can also wire to the real
+microphone. Changes apply immediately via `avatar.setOptions` — no reload.
+
+On the Pi, push the same knobs without restarting Chromium:
+
+```bash
+# from the Pi (or SSH tunnel to 8776)
+curl -sS -X POST http://127.0.0.1:8776/control/avatar \
+  -H 'content-type: application/json' \
+  -d '{"bloom":3,"fps":12,"scale":0.62}'
+curl -sS http://127.0.0.1:8776/control/avatar
+```
+
+Bridge pushes `avatar.options` to the kiosk over WS.
 
 ## Sizing it on the real panel
 
 Two values must be set by eye against the actual screen. Both are live in
-`debug.html`, and both are also query parameters (`?scale=` and `?bloom=`) so
-you can tune them on the Pi from the Mac without a redeploy.
-
+`debug.html`, via `POST /control/avatar` on the Pi, and as query parameters
+(`?scale=` and `?bloom=`) for cold start.
 | Option | Default | What goes wrong |
 |---|---|---|
 | `emblemScale` | `0.62` | Too high and the star points run off the edges. Portrait panels need a lower value than you expect, because the emblem is sized by the short axis but the points extend along the long one. |

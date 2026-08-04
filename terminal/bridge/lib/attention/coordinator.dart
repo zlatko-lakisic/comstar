@@ -72,6 +72,7 @@ class AttentionCoordinator {
     this.control.loadPersistedVolume();
     audioServer.control = this.control;
     audioServer.onSleepAction = _onSleepHttp;
+    audioServer.onAvatarOptions = applyAvatarOptions;
   }
 
   final ComstarConfig config;
@@ -2162,5 +2163,28 @@ class AttentionCoordinator {
 
   void _broadcastKiosk(Envelope envelope) {
     ws.sendToRole('kiosk', envelope);
+  }
+
+  Future<Map<String, dynamic>?> applyAvatarOptions(
+    Map<String, dynamic> options,
+  ) async {
+    final data = Map<String, dynamic>.from(options)
+      ..remove('tier')
+      ..remove('max_tier')
+      ..remove('cpu_ema')
+      ..remove('source');
+    _broadcastKiosk(
+      Envelope.create(type: 'avatar.options', data: data),
+    );
+    logInfo('avatar_options_push', 'Pushed avatar options to kiosk', data: {
+      'bloom': options['bloom'],
+      'fps': options['fps'],
+      'scale': options['scale'],
+      'emblem': options['emblem'],
+      'source': options['source'] ?? 'manual',
+      'tier': options['tier'],
+      'cpu_ema': options['cpu_ema'],
+    });
+    return options;
   }
 }

@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:args/args.dart';
 import 'package:comstar_bridge/attention/clock.dart';
 import 'package:comstar_bridge/attention/coordinator.dart';
+import 'package:comstar_bridge/avatar_load_governor.dart';
 import 'package:comstar_bridge/config.dart';
 import 'package:comstar_bridge/dev_inject.dart';
 import 'package:comstar_bridge/envelope.dart';
@@ -146,8 +147,45 @@ Future<void> main(List<String> arguments) async {
   await coordinator.googleDesktop.start();
 
   // Push host CPU/mem to the kiosk sparkline (~1 Hz after first delta sample).
+  // Optionally adapt avatar bloom/fps from the same samples.
   final hostMetrics = HostMetrics();
   await hostMetrics.sample(); // prime /proc/stat delta
+  final avatarAdapt = _avatarAdaptEnabled();
+  final governor = AvatarLoadGovernor(
+    preferredBloom: _envDouble('COMSTAR_AVATAR_BLOOM_MAX', 3),
+    preferredFps: _envDouble('COMSTAR_AVATAR_FPS_MAX', 12),
+    minBloom: 0,
+    minFps: _envDouble('COMSTAR_AVATAR_FPS_MIN', 8),
+    stressCpu: _envDouble('COMSTAR_AVATAR_CPU_STRESS', 75),
+    comfortCpu: _envDouble('COMSTAR_AVATAR_CPU_COMFORT', 50),
+    criticalCpu: _envDouble('COMSTAR_AVATAR_CPU_CRITICAL', 90),
+    enabled: avatarAdapt,
+  );
+  if (avatarAdapt) {
+    logInfo('avatar_adapt_enabled', 'Avatar load governor active', data: {
+      'bloom_max': governor.preferredBloom,
+      'fps_max': governor.preferredFps,
+      'stress_cpu': governor.stressCpu,
+      'comfort_cpu': governor.comfortCpu,
+    });
+  }
+
+  // Manual /control/avatar updates become the new preferred ceiling + pause auto.
+  final priorAvatarHook = audioServer.onAvatarOptions;
+  audioServer.onAvatarOptions = (opts) async {
+    final source = opts['source']?.toString();
+    if (source != 'adapt') {
+      governor.setPreferred(
+        bloom: (opts['bloom'] as num?)?.toDouble(),
+        fps: (opts['fps'] as num?)?.toDouble(),
+      );
+      governor.pauseAuto();
+    }
+    final hook = priorAvatarHook;
+    if (hook != null) return hook(opts);
+    return coordinator!.applyAvatarOptions(opts);
+  };
+
   final healthTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
     try {
       final sample = await hostMetrics.sample();
@@ -155,6 +193,10 @@ Future<void> main(List<String> arguments) async {
         'kiosk',
         Envelope.create(type: 'health', data: sample.toJson()),
       );
+      final adapted = governor.onCpu(sample.cpuPercent);
+      if (adapted != null) {
+        await coordinator?.applyAvatarOptions(adapted);
+      }
     } on Object catch (e) {
       logWarn('health_sample_failed', e.toString());
     }
@@ -306,4 +348,16 @@ Future<void> _runVisionOnce() async {
   } finally {
     client.dispose();
   }
+}
+
+bool _avatarAdaptEnabled() {
+  final v = Platform.environment['COMSTAR_AVATAR_ADAPT']?.trim().toLowerCase();
+  if (v == null || v.isEmpty) return true; // on by default
+  return v == '1' || v == 'true' || v == 'yes';
+}
+
+double _envDouble(String key, double fallback) {
+  final raw = Platform.environment[key]?.trim();
+  if (raw == null || raw.isEmpty) return fallback;
+  return double.tryParse(raw) ?? fallback;
 }

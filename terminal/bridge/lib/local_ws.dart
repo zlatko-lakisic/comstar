@@ -295,6 +295,7 @@ class LocalWs {
       'phase',
       'error',
       'config',
+      'avatar.options',
       'health',
       'listen.start',
       'listen.stop',

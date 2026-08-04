@@ -48,6 +48,7 @@ ignored, never fatal — this is how we ship kiosk and bridge independently.
 | `pairing.qr` | `{active, phase?, url?, userCode?, qrSvg?}` | Show/hide Google OAuth device-code QR. `phase` is `awaiting` (user must approve), `verifying` (tokens received, tools starting), or `idle`. Same attempt as the spoken user code. `active:false` clears the overlay. |
 | `error` | `{code, message}` | Display a non-fatal error affordance. |
 | `config` | `{avatarUrl, mood, cameraPose}` | Sent once on connect. |
+| `avatar.options` | `{bloom?, fps?, scale?, emblem?}` | Live avatar tuning (no kiosk restart). `bloom` SVG blur stdDeviation (`0` off); `fps` animation cap 8–60; `scale` emblem size; `emblem` preset name. Omitted fields unchanged. |
 
 ### Kiosk → Bridge
 
@@ -333,8 +334,18 @@ Reachable only from the Pi, exposed to the orchestrator over
 | `volume_adjust` | `{delta:-100..100}` | `{ok, percent, muted}` |
 | `volume_mute` | `{muted:bool}` | `{ok, percent, muted}` |
 
-Bridge loopback HTTP (127.0.0.1:8776) backs sleep/volume: `POST /control/sleep`,
-`GET|POST /control/volume`. Guest sessions must **not** register `client.terminal`.
+Bridge loopback HTTP (127.0.0.1:8776) backs sleep/volume/avatar: `POST /control/sleep`,
+`GET|POST /control/volume`, `GET|POST /control/avatar` (live `bloom`/`fps`/`scale`/`emblem`
+→ bridge pushes `avatar.options` to the kiosk). Guest sessions must **not** register
+`client.terminal`.
+
+**Avatar load governor (optional, default on):** bridge samples host CPU with the
+health sparkline (~2 s). When EMA CPU ≥ `COMSTAR_AVATAR_CPU_STRESS` (default 75),
+it steps bloom/fps down toward a floor; when CPU stays ≤ `COMSTAR_AVATAR_CPU_COMFORT`
+(default 50) for a few samples, it eases back toward
+`COMSTAR_AVATAR_BLOOM_MAX` / `COMSTAR_AVATAR_FPS_MAX`. Manual `/control/avatar`
+pauses auto-adapt for 60 s and becomes the new recovery ceiling.
+Disable with `COMSTAR_AVATAR_ADAPT=0`.
 
 See `docs/adr/0004-terminal-control.md`.
 

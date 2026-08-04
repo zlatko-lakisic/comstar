@@ -355,10 +355,9 @@ let speakStart = 0;
 const avatar = new ComstarAvatar(document.getElementById('stage'), {
   // Preset: starburst | reactor | sentinel | spectrum | instrument
   emblem: params.get('emblem') || 'starburst',
-  // Pi defaults: no SVG bloom + low fps (GPU was pegged at 100%).
-  // Override: ?bloom=3&fps=24  or  COMSTAR_KIOSK_URL=...
+  // Pi: modest SVG bloom + capped fps. Override: ?bloom=0&fps=12 or COMSTAR_KIOSK_URL.
   emblemScale: parseFloat(params.get('scale') || '0.62'),
-  bloom: parseFloat(params.get('bloom') || '0'),
+  bloom: parseFloat(params.get('bloom') || '3'),
   maxFps: parseFloat(params.get('fps') || '12'),
   onEvent(type, data) {
     if (type === 'speak.started') {
@@ -388,6 +387,23 @@ const bridge = new BridgeClient(bridgeUrl, {
 
   config(d) {
     if (d.mood) avatar.setState(d.mood);
+  },
+
+  'avatar.options'(d) {
+    const applied = avatar.setOptions({
+      bloom: d.bloom,
+      fps: d.fps ?? d.maxFps,
+      scale: d.scale ?? d.emblemScale,
+      emblem: d.emblem,
+    });
+    console.info('[avatar] options', applied);
+    if (demo && statusEl) {
+      const s = avatar.stats();
+      statusEl.textContent =
+        `state ${avatar.state}  fps ${s.fps}  ` +
+        `gaze ${avatar.gaze.x.toFixed(2)}  amp ${avatar.amplitude.toFixed(2)}  ` +
+        `scale ${avatar.emblemScale}  bloom ${avatar.bloom}`;
+    }
   },
 
   state(d) {
