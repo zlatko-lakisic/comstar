@@ -1,13 +1,17 @@
 # Handoff: AO `direct_agent` empty reply (COMSTAR irrigation / HA tools)
 
+**Status:** Resolved on AO side by **v1.28.1** (2026-08-04). Empty silent-success →
+`DirectAgentEmptyAnswerError` / `ok: false`. Skills + MCP defaults attach on
+`direct_agent`; Reach-baked backstory skill text is stripped before catalog
+re-inject. Remaining: model may still skip HA tools or pass bad args
+(`area=garden`); COMSTAR `home_assistant_voice` skill steers to irrigation
+sensors — reconnect COMSTAR after Ada deploy (done 2026-08-04 ~12:30 EDT).
+
 **For:** AO / agentic-orchestration Cursor on Ada  
-**From:** COMSTAR bridge (Pi `comstar` / Mac repo `Projects/comstar`)  
-**Date:** 2026-08-04  
-**AO:** v1.28.0 at `http://10.0.10.16:8765` (`toolRoot=/app/tool`, k8s execution)
 
 ---
 
-## Ask
+## Ask (original)
 
 Investigate why `direct_agent` with `client.voice_responder` + `mcpProviderIds: ["home_assistant"]` returns **HTTP/WS success with empty answer text** for irrigation questions, and why tool turns take long enough that COMSTAR used to cut them off at 15s.
 

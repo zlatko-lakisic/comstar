@@ -31,9 +31,11 @@ AO `stdio` / `streamable_http` disk catalog entries.
 
 ## Skills note
 
-AO `direct_agent` currently passes `skills: []`. COMSTAR therefore **injects** listed
-skill bodies into the agent `backstory` at pack time so voice turns still receive them.
-Skills are also registered on the session overlay for future workflow attachment.
+AO `direct_agent` (v1.28.1+) attaches agent-entry `skills` from the session
+overlay catalog and **strips** Reach-baked `## …` backstory skill text before
+re-injecting via the catalog path. Reach still packs `skills:` on the agent and
+registers skill bodies in `session_overlay_register`; the backstory bake remains
+as a compatibility path for older AO builds.
 
 ### Google Workspace voice skills (`mcp-server-google-workspace@0.2.6`)
 

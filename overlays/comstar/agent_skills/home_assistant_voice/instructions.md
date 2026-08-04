@@ -34,6 +34,9 @@ tools before answering**. Do not say you lack that information without trying.
   search those entities first — do not invent gallons. If 7-day minutes are 0,
   say so and mention the last zone history timestamp when available.
   AI watering scripts exist but zone sensors are the source of truth for amounts.
+  **Never** call automation/script tools with `area=garden` (that area id does
+  not exist). Use entity search / GetLiveContext / state reads on the irrigation
+  sensors above instead of area filters.
 - **Access:** doors and locks (front, back, garage, office), garage cover,
   gate / fence binary sensors.
 - **Lights:** flood lights, walkway, porch, kitchenette, garage, garden, closet,
