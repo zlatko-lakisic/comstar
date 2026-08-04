@@ -77,12 +77,23 @@ class GoogleDesktopUpgrade {
 
   String get callbackUrl => '${redirectBase!}/oauth/google/callback';
 
-  Future<void> start() async {
+  Future<void> start({bool sharedServer = false}) async {
     if (_server != null) return;
     if (desktopClientId == null || redirectBase == null) {
       logInfo(
         'google_desktop_oauth_skip',
         'Desktop OAuth callback not started (missing DESKTOP client or REDIRECT_BASE)',
+      );
+      return;
+    }
+    if (sharedServer) {
+      logInfo(
+        'google_desktop_oauth_shared',
+        'Desktop OAuth mounted on shared admin HTTP',
+        data: {
+          'port': port,
+          'callback': callbackUrl,
+        },
       );
       return;
     }
@@ -113,6 +124,47 @@ class GoogleDesktopUpgrade {
       return '0.0.0.0';
     }
     return '127.0.0.1';
+  }
+
+  /// Whether this service would bind `0.0.0.0` if it owned the port.
+  bool get wantsLanBind => _bindHost() == '0.0.0.0';
+
+  /// Handle an OAuth path on a shared [HttpServer] (admin :8781).
+  Future<void> handleHttp(HttpRequest request) async {
+    if (desktopClientId == null || redirectBase == null) {
+      request.response
+        ..statusCode = 503
+        ..headers.contentType = ContentType.json
+        ..write(jsonEncode({
+          'ok': false,
+          'error': 'oauth_not_configured',
+        }));
+      await request.response.close();
+      return;
+    }
+
+    final headers = <String, String>{};
+    request.headers.forEach((name, values) {
+      if (values.isNotEmpty) headers[name] = values.join(',');
+    });
+    final bodyBytes = await request.fold<List<int>>(
+      <int>[],
+      (prev, chunk) => prev..addAll(chunk),
+    );
+    final shelfRequest = Request(
+      request.method,
+      request.requestedUri,
+      headers: headers,
+      body: bodyBytes,
+    );
+    final shelfResponse = await _router(shelfRequest);
+    request.response.statusCode = shelfResponse.statusCode;
+    shelfResponse.headers.forEach((name, value) {
+      if (name.toLowerCase() == 'transfer-encoding') return;
+      request.response.headers.set(name, value);
+    });
+    await request.response.addStream(shelfResponse.read());
+    await request.response.close();
   }
 
   Future<Response> _router(Request request) async {

@@ -6,8 +6,8 @@ import 'package:args/args.dart';
 import 'package:comstar_bridge/attention/clock.dart';
 import 'package:comstar_bridge/attention/coordinator.dart';
 import 'package:comstar_bridge/avatar_load_governor.dart';
+import 'package:comstar_bridge/admin_server.dart';
 import 'package:comstar_bridge/config.dart';
-import 'package:comstar_bridge/dev_inject.dart';
 import 'package:comstar_bridge/envelope.dart';
 import 'package:comstar_bridge/env_sources.dart';
 import 'package:comstar_bridge/host_metrics.dart';
@@ -142,14 +142,24 @@ Future<void> main(List<String> arguments) async {
 
   await coordinator.start(visionPoller: visionPoller);
 
-  final devInject = DevInjectServer(coordinator: coordinator);
-  await devInject.start();
-  await coordinator.googleDesktop.start();
+  final adminDir = Directory('$repoRoot/terminal/admin');
+  final hostMetrics = HostMetrics();
+  await hostMetrics.sample(); // prime /proc/stat delta
+  final admin = AdminServer(
+    coordinator: coordinator,
+    config: config,
+    adminRoot: adminDir.existsSync()
+        ? adminDir.path
+        : '$repoRoot/terminal/admin',
+    hostMetrics: hostMetrics,
+    oauth: coordinator.googleDesktop,
+    kioskRoot: kioskDir.existsSync() ? kioskDir.path : null,
+  );
+  await admin.start();
+  await coordinator.googleDesktop.start(sharedServer: true);
 
   // Push host CPU/mem to the kiosk sparkline (~1 Hz after first delta sample).
   // Optionally adapt avatar bloom/fps from the same samples.
-  final hostMetrics = HostMetrics();
-  await hostMetrics.sample(); // prime /proc/stat delta
   final avatarAdapt = _avatarAdaptEnabled();
   final governor = AvatarLoadGovernor(
     preferredBloom: _envDouble('COMSTAR_AVATAR_BLOOM_MAX', 3),
@@ -217,7 +227,7 @@ Future<void> main(List<String> arguments) async {
     logInfo('shutdown', 'SIGTERM received, draining');
     healthTimer.cancel();
     await coordinator?.googleDesktop.stop();
-    await devInject.stop();
+    await admin.stop();
     await coordinator?.stop();
     stt.dispose();
     await visionPoller?.dispose();

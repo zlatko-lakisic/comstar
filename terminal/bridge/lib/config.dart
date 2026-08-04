@@ -19,6 +19,7 @@ class ComstarConfig {
     required this.attention,
     required this.directory,
     required this.dev,
+    this.admin = const AdminConfig(),
     required this.sourcePath,
   });
 
@@ -29,6 +30,7 @@ class ComstarConfig {
   final AttentionConfig attention;
   final DirectoryConfig directory;
   final DevConfig dev;
+  final AdminConfig admin;
   final String sourcePath;
 
   static const _topLevelKeys = {
@@ -39,6 +41,7 @@ class ComstarConfig {
     'attention',
     'directory',
     'dev',
+    'admin',
   };
 
   static const _orchestrationKeys = {
@@ -95,6 +98,11 @@ class ComstarConfig {
     'lan_token',
   };
 
+  static const _adminKeys = {
+    'bind_lan',
+    'token',
+  };
+
   static ComstarConfig loadFile(String path) {
     final file = File(path);
     if (!file.existsSync()) {
@@ -122,6 +130,14 @@ class ComstarConfig {
     final attention = _parseAttention(_requireSection(root, 'attention'));
     final directory = _parseDirectory(_requireSection(root, 'directory'));
     final dev = _parseDev(_requireSection(root, 'dev'));
+    final adminRaw = root['admin'];
+    final admin = adminRaw == null
+        ? const AdminConfig()
+        : _parseAdmin(
+            adminRaw is Map
+                ? Map<String, dynamic>.from(adminRaw)
+                : (throw ConfigError('Section admin must be a mapping')),
+          );
 
     _validateRanges(vision, audio, orchestration, avatar, attention, directory);
 
@@ -133,6 +149,7 @@ class ComstarConfig {
       attention: attention,
       directory: directory,
       dev: dev,
+      admin: admin,
       sourcePath: sourcePath,
     );
   }
@@ -146,6 +163,26 @@ class ComstarConfig {
         isDevConfigFile &&
         dev.bindLan &&
         dev.lanToken.isNotEmpty;
+  }
+
+  /// Token for admin HTTP auth (env wins, then `admin.token`, then `dev.lan_token`).
+  String get adminAuthToken {
+    final env = Platform.environment['COMSTAR_ADMIN_TOKEN']?.trim() ?? '';
+    if (env.isNotEmpty) return env;
+    if (admin.token.trim().isNotEmpty) return admin.token.trim();
+    if (dev.lanToken.trim().isNotEmpty) return dev.lanToken.trim();
+    return '';
+  }
+
+  /// Bind admin :8781 to all interfaces when explicitly enabled + token present.
+  ///
+  /// Enabled by `admin.bind_lan`, `COMSTAR_ADMIN_BIND_LAN=1`, or the WS
+  /// triple-gate (`devLanBindingEnabled`). Never binds LAN without a token.
+  bool get adminLanBindingEnabled {
+    final token = adminAuthToken;
+    if (token.isEmpty) return false;
+    final envBind = Platform.environment['COMSTAR_ADMIN_BIND_LAN'] == '1';
+    return admin.bindLan || envBind || devLanBindingEnabled;
   }
 
   static Map<String, dynamic> _requireSection(
@@ -243,6 +280,16 @@ class ComstarConfig {
     return DevConfig(
       bindLan: _requireBool(map, 'bind_lan', 'dev'),
       lanToken: _optionalString(map, 'lan_token') ?? '',
+    );
+  }
+
+  static AdminConfig _parseAdmin(Map<String, dynamic> map) {
+    _assertKnownKeys(map.keys, _adminKeys, 'admin');
+    return AdminConfig(
+      bindLan: map.containsKey('bind_lan')
+          ? _requireBool(map, 'bind_lan', 'admin')
+          : false,
+      token: _optionalString(map, 'token') ?? '',
     );
   }
 
@@ -532,4 +579,15 @@ class DevConfig {
 
   final bool bindLan;
   final String lanToken;
+}
+
+/// Admin HTTP console (:8781/admin). Independent of WS `dev.bind_lan` triple-gate.
+class AdminConfig {
+  const AdminConfig({
+    this.bindLan = false,
+    this.token = '',
+  });
+
+  final bool bindLan;
+  final String token;
 }

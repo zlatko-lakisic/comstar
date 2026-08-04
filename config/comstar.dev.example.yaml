@@ -48,3 +48,8 @@ directory:
 dev:
   bind_lan: true
   lan_token: "change-me-dev-token"
+
+# Optional; COMSTAR_ADMIN_* env preferred on the Pi.
+admin:
+  bind_lan: false
+  token: ""

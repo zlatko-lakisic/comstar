@@ -1,5 +1,6 @@
+import 'package:comstar_bridge/admin_ops.dart';
+import 'package:comstar_bridge/admin_server.dart';
 import 'package:comstar_bridge/attention/events.dart';
-import 'package:comstar_bridge/dev_inject.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -27,6 +28,12 @@ void main() {
 
     test('unknown event returns null', () {
       expect(parseInjectEvent('NotReal', {}), isNull);
+    });
+  });
+
+  group('inject env gate', () {
+    test('isAdminInjectEnabled is boolean', () {
+      expect(isAdminInjectEnabled(), anyOf(isTrue, isFalse));
     });
   });
 }

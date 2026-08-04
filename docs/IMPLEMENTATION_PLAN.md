@@ -368,11 +368,10 @@ Follow-up window, `max_utterance_seconds`, orchestration timeout, identity TTL,
 absence debounce. All driven off the injected `Tick`, no `Timer` objects — timers
 you can't fast-forward are timers you can't test.
 
-**M3.7 — Dev console with event injection** *(4h)* — see `docs/DEV_LOOP.md` §2
-Served on `:8779` in dev mode, opened on the Mac. Live state ladder, identity and
-confidence, camera thumbnail with the YOLO box, mic meter, last 20 transitions,
-latency spans for the last 5 turns — plus buttons that inject synthetic events
-straight into `handle(Event)`.
+**M3.7 — Dev console with event injection** *(partial)* — see `docs/DEV_LOOP.md` §2
+Admin UI on `:8781/admin` (always-on; shares port with Google OAuth) with status,
+logs, restart/reboot/sleep, and inject buttons when `COMSTAR_ENV=dev`. Remaining
+polish: attention ladder diagram, camera thumbnail, latency span bars.
 
 The injection panel is the point. The `TranscriptReady(text)` box alone means you can
 test twenty phrasings of a question in a minute without speaking or walking into

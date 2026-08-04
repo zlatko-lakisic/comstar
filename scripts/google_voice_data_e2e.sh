@@ -4,7 +4,7 @@
 #   ssh comstar 'bash /opt/comstar/src/scripts/google_voice_data_e2e.sh'
 set -euo pipefail
 
-INJECT="${INJECT_URL:-http://127.0.0.1:8779/inject}"
+INJECT="${INJECT_URL:-http://127.0.0.1:8781/admin/inject}"
 USERID="${COMSTAR_USER:-zlatko}"
 PASS=0
 FAIL=0

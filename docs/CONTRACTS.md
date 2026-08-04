@@ -22,8 +22,49 @@ reconnects with backoff.
 > required simultaneously: `COMSTAR_ENV=dev`, a matching `dev.lan_token` on every
 > connection, and a config file named `comstar.dev.yaml` rather than `comstar.yaml`.
 > A T0 test asserts `comstar.example.yaml` ships with `dev.bind_lan: false`. The
-> bridge logs a `warn` on every dev-mode start naming the bound interface. Ports
-> 8779 (dev console) and the VM service port are subject to the same gates.
+> bridge logs a `warn` on every dev-mode start naming the bound interface. Port
+> 8781 (admin + OAuth) LAN bind is gated separately via `COMSTAR_ADMIN_BIND_LAN`
+> / `admin.bind_lan` (and OAuth’s own bind rules); the VM service port stays
+> subject to the WS triple-gate.
+
+### Admin console (`:8781/admin`) — VERIFIED 2026-08-04
+
+Always-on HTTP in the bridge process (production and dev), sharing port **8781**
+with Google Desktop OAuth. Path split:
+
+| Prefix | Role |
+|---|---|
+| `/admin/*` | Ops UI + admin APIs |
+| `/oauth/google/*` | Desktop Google OAuth (unchanged callbacks) |
+| `/health` | Alias → `/admin/health` (heal script) |
+
+**Bind:** `127.0.0.1` by default. Bind `0.0.0.0` when any of:
+
+1. `admin.bind_lan: true` **and** a non-empty admin token, or
+2. `COMSTAR_ADMIN_BIND_LAN=1` **and** `COMSTAR_ADMIN_TOKEN` (preferred on Pi), or
+3. the WS LAN triple-gate is active (`devLanBindingEnabled`), or
+4. Google OAuth would have bound LAN (`COMSTAR_OAUTH_BIND_LAN` / redirect base)
+
+Token resolution (first non-empty): `COMSTAR_ADMIN_TOKEN` → `admin.token` →
+`dev.lan_token`. When LAN-bound with a token, every `/admin/*` request except
+`GET /admin/health` must present `X-Comstar-Lan-Token` or `?token=`. OAuth paths
+never require the admin token.
+
+| Route | Method | Auth | Meaning |
+|---|---|---|---|
+| `/admin/` | GET | token if LAN-bound | Static admin UI |
+| `/admin/health` `/health` | GET | none | Attention/session/WS snapshot (heal script) |
+| `/admin/api/status` | GET | token if LAN-bound | Extended status + host metrics + AO/CPAI probes |
+| `/admin/api/logs` | GET | token if LAN-bound | SSE `journalctl --user` tail |
+| `/admin/api/restart` | POST | token if LAN-bound | `{unit: bridge\|audio\|kiosk\|stt\|health\|all}` |
+| `/admin/api/reboot` | POST | token if LAN-bound | `{confirm: "reboot"}` → `sudo /sbin/reboot` |
+| `/admin/api/sleep` | POST | token if LAN-bound | `{action: enter\|exit}` |
+| `/admin/inject` | POST | token if LAN-bound | Attention event inject; **403 unless `COMSTAR_ENV=dev`** |
+| `/oauth/google/*` | * | none | Desktop OAuth start/callback/resend |
+
+Restart units are whitelisted (`comstar-*.service` only). Loopback:
+`ssh -L 8781:127.0.0.1:8781 comstar` → `http://127.0.0.1:8781/admin/`. LAN:
+`http://<pi-ip>:8781/admin/?token=<admin-token>`.
 
 ### Envelope
 

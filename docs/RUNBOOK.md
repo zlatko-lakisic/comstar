@@ -25,8 +25,9 @@ Hardware baseline: `docs/BASELINES.md`. Dev workflow: `docs/DEV_LOOP.md`.
 ### Health / auto-heal
 
 `scripts/comstar_health.sh` (timer every 2 min) checks units, ports, AO, CPAI, and
-bridge `/health` (attention state + kiosk/audio WS). With `COMSTAR_HEALTH_HEAL=1`
-it restarts dead units / disconnected clients after two consecutive misses.
+bridge `GET http://127.0.0.1:8781/admin/health` (always-on; attention state + kiosk/audio WS).
+With `COMSTAR_HEALTH_HEAL=1` it restarts dead units / disconnected clients after two
+consecutive misses. Full admin UI: `http://127.0.0.1:8781/admin/` via SSH tunnel (`make admin`).
 
 ```bash
 ssh comstar 'COMSTAR_HEALTH_HEAL=1 bash /opt/comstar/src/scripts/comstar_health.sh'
@@ -247,9 +248,18 @@ model is deployed to `models/hey_comstar.onnx` (or the path in config).
 
 ---
 
-## 5. Dev event injection
+## 5. Admin console + event injection
 
-When `COMSTAR_ENV=dev`, the bridge serves **POST http://127.0.0.1:8779/inject**:
+The bridge always serves **http://127.0.0.1:8781/admin/** (admin UI + APIs; Google
+OAuth shares `:8781` at `/oauth/google/*`). Heal uses `GET /admin/health` (also
+`/health`). From the Mac: `make admin` (needs `LocalForward 8781` in SSH config).
+
+LAN access: set `COMSTAR_ADMIN_BIND_LAN=1` and `COMSTAR_ADMIN_TOKEN` on the bridge
+unit (see `~/.config/comstar/admin.env` on the Pi), then open
+`http://<pi-ip>:8781/admin/?token=<token>`. Without the token, UI/API return 401;
+`/admin/health` stays open for the heal script.
+
+When `COMSTAR_ENV=dev`, **POST /admin/inject** accepts synthetic attention events:
 
 ```json
 {"event": "TranscriptReady", "text": "What time is it?"}
@@ -258,10 +268,10 @@ When `COMSTAR_ENV=dev`, the bridge serves **POST http://127.0.0.1:8779/inject**:
 Supported events: `PersonDetected`, `PersonAbsent`, `FaceRecognized`,
 `FaceUnknown`, `WakeWord`, `SpeechStart`, `SpeechEnd`, `TranscriptReady`,
 `ResponseReady`, `PlaybackEnded`, `Tick`, `AttentionError`, `VisionDegraded`,
-`VisionRecovered`.
+`VisionRecovered`, `EnterSleep`, `ExitSleep`.
 
-Injected events are logged with `src: injected`. A full dev console UI is planned
-(M3.7); this endpoint is the minimal harness.
+Injected events are logged with `src: injected`. Restart / reboot / sleep /
+live logs are on `/api/*` (see `docs/CONTRACTS.md` admin console).
 
 ---
 
@@ -326,7 +336,8 @@ make logs            # merged journal tail (when configured)
 |---|---|---|
 | Bridge WS (kiosk) | `127.0.0.1:8777` | kiosk connects, `ready` logged |
 | Bridge WS (audio) | `127.0.0.1:8778` | audio process connects |
-| Dev inject | `127.0.0.1:8779` | dev only |
+| Admin / health | `127.0.0.1:8781` | `/admin/*` always; `/oauth/google/*` OAuth; `/admin/inject` when `COMSTAR_ENV=dev` |
+| Dev inject | `127.0.0.1:8781/admin/inject` | `COMSTAR_ENV=dev` |
 | STT | Ada `:8090` or local | `curl http://<stt-host>:8090/health`; bridge log `speech_reach` vs `speech_fallback` |
 | TTS | Ada `:8091` or local | `curl http://<tts-host>:8091/health` (or POST `/v1/audio/speech`) |
 | AO Reach | `10.0.10.16:8765` | `spike/reach_hello.dart` |
@@ -341,7 +352,7 @@ make logs            # merged journal tail (when configured)
 | Empty / junk STT | STT down, wrong engine, or short utterance | Check Ada speech `/health` or `systemctl --user status comstar-stt`; `/tmp/comstar-last-utterance.wav`; raise finalize threshold |
 | Fast speech cut early | VAD silence too aggressive | Raise `COMSTAR_VAD_SILENCE_MS` (e.g. 1200); hysteresis is in `terminal/audio/vad.py` |
 | Empty STT on Mac | `COMSTAR_STT_URL` unset or STT down | `make stt-dev`, export URL |
-| Wake never fires | Stub model / missing ONNX | Train ONNX, or `COMSTAR_FORCE_WAKE_SCORE=0.99`, or inject `WakeWord` on `:8779` |
+| Wake never fires | Stub model / missing ONNX | Train ONNX, or `COMSTAR_FORCE_WAKE_SCORE=0.99`, or inject `WakeWord` on `:8781/admin/inject` |
 | Kiosk blank / no WS | Chromium not loading `http://127.0.0.1:8776/kiosk/` | Confirm bridge `:8776` up; restart `comstar-kiosk`; avoid `file://` |
 | Kiosk silent | Bridge not running or wrong `bridge=` URL | Check WS on :8777 |
 | Chrome has no camera preview | Expected — kiosk has no webcam tile | Confirm bridge ffmpeg / camera LED; set `COMSTAR_CAMERA_SOURCE` |

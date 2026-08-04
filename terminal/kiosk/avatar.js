@@ -19,22 +19,12 @@
  */
 
 import { resolveEmblem } from './presets.js';
+import { STATE_PARAMS } from './emblem.js';
 
-const STATE_PARAMS = {
-  //            spin  opacity  scale  sway
-  // Ambient spin kept low — Pi GPU was pegged at 100% from continuous SVG work.
-  ambient:    { spin: 2,  op: 0.70, sc: 0.92, sway: 0.40 },
-  // Sleep: clearly dim vs Ready/Listening (0.40 still read as “fully lit” on
-  // the dark IPS panel). Listening / awake fade up to 1.0.
-  sleeping:   { spin: 1,  op: 0.22, sc: 0.88, sway: 0.30 },
-  noticed:    { spin: 18, op: 0.80, sc: 0.94, sway: 0.35 },
-  engaged:    { spin: 0,  op: 1.00, sc: 1.00, sway: 0.12 },
-  listening:  { spin: 8,  op: 1.00, sc: 1.00, sway: 0.12 },
-  responding: { spin: 14, op: 1.00, sc: 1.00, sway: 0.12 },
-};
+export { STATE_PARAMS };
 
-// Opacity ease is slower than spin/scale so sleep ↔ listen reads as a fade,
-// but still fast enough that “go to sleep” dims within ~0.5s.
+// Opacity ease is slower than spin/scale so sleep <-> listen reads as a fade,
+// but still fast enough that "go to sleep" dims within ~0.5s.
 const STATE_DAMPING = 3.5;
 const OPACITY_DAMPING = 3.2;
 const GAZE_DAMPING = 2.5;
@@ -278,15 +268,9 @@ export class ComstarAvatar {
 
   setState(state) {
     if (!STATE_PARAMS[state]) return;
-    const prev = this.state;
     this.state = state;
-    // Snap sleep dim so "go to sleep" reads immediately (fade still used leaving sleep).
-    if (state === 'sleeping' && prev !== 'sleeping') {
-      this.cur.op = STATE_PARAMS.sleeping.op;
-      this.cur.sc = STATE_PARAMS.sleeping.sc;
-      this.cur.sway = STATE_PARAMS.sleeping.sway;
-      this.cur.spin = STATE_PARAMS.sleeping.spin;
-    }
+    // Sleep ↔ listen/engaged both ease via STATE_DAMPING / OPACITY_DAMPING in
+    // _frame — do not snap enter-sleep or wake-from-sleep looks one-sided.
   }
 
   setThinking(active) { this.thinking = !!active; }
@@ -406,6 +390,13 @@ export class ComstarAvatar {
   // ----------------------------------------------------------------- loop
 
   _targetFps() {
+    // Keep full rate while easing into/out of sleep so the fade matches wake.
+    const target = STATE_PARAMS[this.state] || STATE_PARAMS.ambient;
+    const easing =
+      Math.abs(this.cur.op - target.op) > 0.02 ||
+      Math.abs(this.cur.sc - target.sc) > 0.01;
+    if (easing) return this.maxFps;
+
     // Idle ambient / sleep is mostly decorative — run cooler on the Pi.
     if ((this.state === 'ambient' || this.state === 'sleeping') && !this.thinking) {
       return Math.min(12, this.maxFps);

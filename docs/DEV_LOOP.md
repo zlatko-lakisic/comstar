@@ -41,7 +41,7 @@ Host comstar
   LocalForward 9222 127.0.0.1:9222   # Chromium DevTools
   LocalForward 8181 127.0.0.1:8181   # Dart VM service
   LocalForward 5678 127.0.0.1:5678   # Python debugpy
-  LocalForward 8779 127.0.0.1:8779   # COMSTAR dev console
+  LocalForward 8781 127.0.0.1:8781   # COMSTAR admin + Google OAuth
 ```
 
 `ControlPersist` is not cosmetic — every `make` target below opens an SSH
@@ -163,44 +163,49 @@ make deploy             # build bridge for arm64, rsync all three, restart, tail
 
 ---
 
-## 2. The dev console — stop walking into frame
+## 2. The admin console — stop walking into frame
 
-The single highest-leverage tool in this document. The bridge serves a control panel
-on `:8779` (dev mode only). Open it on the Mac next to your editor.
+The single highest-leverage tool in this document. The bridge always serves an admin UI on `:8781` under `/admin` (Google OAuth shares
+the same port at `/oauth/google/*`). Loopback by default; bind LAN with
+`COMSTAR_ADMIN_BIND_LAN=1` + `COMSTAR_ADMIN_TOKEN` (or `admin.bind_lan` /
+token in config). Open on the Mac:
 
-**Left pane — live state:**
-- Current attention state, with the ladder drawn and the active rung lit
-- Current identity, confidence, votes accumulated, TTL remaining
-- Live camera thumbnail with the YOLO box drawn on it
-- Mic level meter and last wake score
-- Last 20 transitions with timestamps
-- Latency spans for the last 5 turns, as stacked bars
+```bash
+make admin    # http://127.0.0.1:8781/admin/ via LocalForward
+# LAN: http://<pi-ip>:8781/admin/?token=<COMSTAR_ADMIN_TOKEN>
+```
 
-**Right pane — event injection.** Buttons that push synthetic events straight into
-the state machine, bypassing hardware:
+**Status pane:** attention state, identity, session/Reach, kiosk/audio WS,
+sleep, CPU/mem, AO/CPAI probes, unit active flags.
+
+**Actions:** restart bridge / audio / kiosk / stt / all; force sleep / wake;
+reboot Pi (typed `reboot` confirm).
+
+**Log tail:** live `journalctl --user` for bridge/audio/kiosk/stt/health,
+filterable by text.
+
+**Dev inject** (only when `COMSTAR_ENV=dev`): buttons that push synthetic
+events into the state machine, bypassing hardware:
 
 | Button | Injects |
 |---|---|
 | Person enters / leaves | `PersonDetected(0.9)` / `PersonAbsent` |
-| Recognise as… *(dropdown of enrolled userids)* | `FaceRecognized(userid, 0.87)` |
+| Recognise as… *(userid field)* | `FaceRecognized(userid, 0.87)` |
 | Unknown face | `FaceUnknown` |
 | Fire wake word | `WakeWord(0.8)` |
 | Speak… *(text box)* | `TranscriptReady(text)` — skips mic and STT entirely |
 | Playback ended | `PlaybackEnded` |
-| Force timeout | orchestration timeout path |
-| Kill CPAI / AO / STT | flips the corresponding client into failure mode |
 
 The text box is the one you'll use most: type a question, hit enter, and the full
 orchestration → TTS → avatar path runs with no speaking and no walking. Testing
 twenty phrasings takes a minute instead of ten.
 
-**Bottom — the log tail**, filtered by `evt` prefix, with `turn_id` clickable to
-isolate one turn.
-
 Event injection routes through the *same* `handle(Event)` entry point as real
 hardware, so nothing is bypassed except the sensors. Injected events are tagged
 `src: "injected"` in the logs so you can never mistake a synthetic run for a real
 one.
+
+Camera thumbnail / attention ladder diagram remain later polish (M3.7 remainder).
 
 ---
 
@@ -324,7 +329,7 @@ Checks, and prints a pass/fail table:
 | faster-whisper on Pi (`:8090`) or Mac `make stt-dev` |
 | Piper/sherpa TTS on Pi (`:8091`) |
 | Camera and mic enumerate on the Pi |
-| Ports 8777/8778/8779 free or held by the expected process |
+| Ports 8777/8778/8781 free or held by the expected process |
 | Clock skew between Mac and Pi < 1 s *(latency spans are meaningless otherwise)* |
 
 Run this first whenever something is behaving strangely. Most "the bridge is broken"
@@ -346,7 +351,8 @@ make deploy          full build + deploy + restart all units
 make rollback        redeploy the previous release symlink
 make logs            merged coloured tail        [F=prefix] [TURN=id]
 make logs-export     dump a window as jsonl      [SINCE="..."]
-make console         open the dev console in a browser
+make admin           open/print admin console URL (:8781/admin via SSH tunnel)
+make console         alias for make admin
 make test            T0-T2 local
 make test-integ      T3 against real services
 make test-hw         T4 on the Pi, results streamed back

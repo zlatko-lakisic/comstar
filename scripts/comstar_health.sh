@@ -7,7 +7,7 @@ set -euo pipefail
 HEAL="${COMSTAR_HEALTH_HEAL:-0}"
 AO_URL="${COMSTAR_AO_URL:-http://10.0.10.16:8765}"
 CPAI_URL="${COMSTAR_CPAI_URL:-http://10.0.10.16:32168}"
-BRIDGE_HEALTH="${COMSTAR_BRIDGE_HEALTH:-http://127.0.0.1:8779/health}"
+BRIDGE_HEALTH="${COMSTAR_BRIDGE_HEALTH:-http://127.0.0.1:8781/admin/health}"
 STATE_DIR="${XDG_RUNTIME_DIR:-/tmp}/comstar-health"
 mkdir -p "$STATE_DIR"
 LOG_TAG="comstar-health"
@@ -66,7 +66,7 @@ inject() {
   local payload="$1"
   [[ "$HEAL" == "1" ]] || return 0
   curl -fsS --connect-timeout 2 --max-time 4 \
-    -X POST http://127.0.0.1:8779/inject \
+    -X POST http://127.0.0.1:8781/admin/inject \
     -H 'Content-Type: application/json' \
     -d "$payload" >/dev/null 2>&1 || return 1
   return 0
@@ -181,7 +181,7 @@ PY
 else
   bad "bridge /health unreachable (inject down?)"
   if unit_active comstar-bridge; then
-    # Port 8779 only when COMSTAR_ENV=dev — still try restart if other ports ok
+    # Port 8781 admin/health — still try restart if other ports ok
     if ! port_up 8778; then
       restart_unit comstar-bridge
     fi

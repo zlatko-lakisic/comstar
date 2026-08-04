@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>COMSTAR Admin</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="admin.css" />
+</head>
+<body>
+  <div id="tokenGate" class="token-gate" hidden>
+    <div class="token-gate__inner">
+      <div id="gateEmblem" class="token-gate__emblem"></div>
+      <label class="token-gate__label" for="gateToken">LAN token</label>
+      <input id="gateToken" type="password" autocomplete="off" class="token-gate__input" />
+      <p id="gateErr" class="token-gate__err" hidden></p>
+    </div>
+  </div>
+
+  <div id="app" class="app">
+    <header class="top" id="topBar">
+      <div class="top__left">
+        <span class="top__glyph" aria-hidden="true">◈</span>
+        <span class="top__brand">COMSTAR</span>
+        <span class="top__host" id="hostname">—</span>
+      </div>
+      <div class="top__right">
+        <span class="badge" id="bindBadge">LOOPBACK</span>
+        <span class="badge badge--amber" id="devBadge" hidden>DEV</span>
+        <span class="top__uptime mono" id="uptime">—</span>
+        <span class="live" id="liveDot" title="poll status"></span>
+        <span class="top__clock mono" id="clock">—</span>
+      </div>
+    </header>
+    <div class="lan-rule" id="lanRule" hidden></div>
+
+    <div class="layout">
+      <aside class="rail panel">
+        <div id="railEmblem" class="rail__emblem"></div>
+        <div class="rail__state" id="railState">—</div>
+        <div class="rail__user mono" id="railUser"></div>
+        <dl class="rail__kv" id="railKv"></dl>
+        <p class="freshness mono" id="railFresh">—</p>
+      </aside>
+
+      <main class="main">
+        <section class="panel" id="healthPanel">
+          <div class="panel__head">
+            <h2>Health</h2>
+            <span class="freshness mono" id="healthFresh">—</span>
+          </div>
+          <div class="health-grid" id="healthGrid"></div>
+          <div class="metrics-row" id="metricsRow"></div>
+        </section>
+
+        <section class="panel" id="actionsPanel">
+          <div class="panel__head">
+            <h2>Actions</h2>
+            <span class="freshness mono" id="actionsFresh">—</span>
+          </div>
+          <div id="actionsRoot"></div>
+        </section>
+
+        <section class="panel panel--inject" id="injectPanel" hidden>
+          <div class="panel__head">
+            <h2 class="inject-heading">Inject (dev)</h2>
+          </div>
+          <div id="injectRoot"></div>
+        </section>
+
+        <section class="panel panel--logs">
+          <div class="panel__head">
+            <h2>Logs</h2>
+            <div class="logs-controls" id="logsControls"></div>
+          </div>
+          <div id="logsRoot" class="logs-root"></div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <div id="modalRoot"></div>
+  <script type="module" src="admin.js"></script>
+</body>
+</html>

@@ -1,4 +1,4 @@
-.PHONY: doctor bridge-dev kiosk-dev audio-sync deploy logs test stt-dev verify-cpai ao-hello site-dev site-build
+.PHONY: doctor bridge-dev kiosk-dev audio-sync deploy logs test stt-dev verify-cpai ao-hello site-dev site-build admin console
 
 ROOT := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 REMOTE ?= comstar
@@ -28,6 +28,12 @@ deploy:
 
 logs:
 	@ssh "$(REMOTE)" 'journalctl --user -u comstar-bridge -u comstar-audio -u comstar-kiosk -n 80 --no-pager'
+
+admin console:
+	@echo "COMSTAR admin: http://127.0.0.1:8781/admin/"
+	@echo "Requires SSH LocalForward 8781 (or LAN + ?token=)."
+	@echo "Probe: curl -sS http://127.0.0.1:8781/admin/health"
+	@command -v open >/dev/null && open "http://127.0.0.1:8781/admin/" || true
 
 test:
 	cd terminal/bridge && dart test

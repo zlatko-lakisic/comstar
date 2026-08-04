@@ -46,7 +46,14 @@ directory:
   cache_ttl_seconds: 600                       # 60–3600
   timeout_ms: 1500                             # 200–10000
 
-# Dev-mode LAN binding — production must keep bind_lan: false.
+# Dev-mode LAN binding for kiosk/audio WebSockets — production must keep
+# bind_lan: false (triple-gate: COMSTAR_ENV=dev + comstar.dev.yaml + token).
 dev:
   bind_lan: false
   lan_token: ""
+
+# Admin console (:8781/admin). Can bind LAN independently of WS triple-gate.
+# Prefer COMSTAR_ADMIN_BIND_LAN=1 + COMSTAR_ADMIN_TOKEN in systemd (never commit).
+admin:
+  bind_lan: false
+  token: ""
