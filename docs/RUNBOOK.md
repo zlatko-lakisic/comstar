@@ -26,11 +26,20 @@ Hardware baseline: `docs/BASELINES.md`. Dev workflow: `docs/DEV_LOOP.md`.
 
 `scripts/comstar_health.sh` (timer every 2 min) checks units, ports, AO, CPAI, and
 bridge `GET http://127.0.0.1:8781/admin/health` (always-on; attention state + kiosk/audio WS).
-With `COMSTAR_HEALTH_HEAL=1` it restarts dead units / disconnected clients after two
-consecutive misses. Full admin UI: `http://127.0.0.1:8781/admin/` via SSH tunnel (`make admin`).
+It also runs `scripts/comstar_audio_health.sh` for PipeWire speaker/mic:
+
+- default sink must be `COMSTAR_SPEAKER_SOURCE` (Pi: `comstar_hdmi`)
+- ACP HDMI / headphone profiles must stay `off` (dual-open breaks playback)
+- default mic present, not a monitor, unmuted
+
+With `COMSTAR_HEALTH_HEAL=1`, after consecutive misses it restarts the PipeWire
+stack, re-runs `prefer-hdmi-audio.sh`, and restarts `comstar-audio` (5 min cooldown
+between full audio heals). Full admin UI: `http://127.0.0.1:8781/admin/` via SSH
+tunnel (`make admin`).
 
 ```bash
 ssh comstar 'COMSTAR_HEALTH_HEAL=1 bash /opt/comstar/src/scripts/comstar_health.sh'
+ssh comstar 'COMSTAR_HEALTH_HEAL=1 bash /opt/comstar/src/scripts/comstar_audio_health.sh'
 systemctl --user status comstar-health.timer
 ```
 

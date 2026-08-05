@@ -8,6 +8,8 @@ WorkingDirectory=/opt/comstar/src
 Environment=COMSTAR_HEALTH_HEAL=1
 Environment=COMSTAR_AO_URL=http://10.0.10.16:8765
 Environment=COMSTAR_CPAI_URL=http://10.0.10.16:32168
+Environment=COMSTAR_SPEAKER_SOURCE=comstar_hdmi
+Environment=COMSTAR_ROOT=/opt/comstar/src
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
 Environment=XDG_RUNTIME_DIR=/run/user/1000
 ExecStart=/bin/bash /opt/comstar/src/scripts/comstar_health.sh

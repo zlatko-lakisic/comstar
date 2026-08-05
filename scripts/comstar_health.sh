@@ -188,6 +188,21 @@ else
   fi
 fi
 
+# --- PipeWire speaker / mic (HDMI comstar_hdmi + USB mic) ---
+AUDIO_HEALTH="${COMSTAR_ROOT:-/opt/comstar/src}/scripts/comstar_audio_health.sh"
+if [[ -x "$AUDIO_HEALTH" ]]; then
+  # Inherit HEAL; do not fail the whole script on audio-only FAIL when healing.
+  set +e
+  COMSTAR_HEALTH_HEAL="$HEAL" bash "$AUDIO_HEALTH"
+  audio_rc=$?
+  set -e
+  if [[ "$HEAL" != "1" && "$audio_rc" -ne 0 ]]; then
+    FAIL=$((FAIL + 1))
+  fi
+else
+  bad "missing $AUDIO_HEALTH"
+fi
+
 log "Results: PASS=$PASS FAIL=$FAIL HEALED=$HEALED"
 # Timer mode: exit 0 unless units still down after heal attempts.
 if [[ "$HEAL" == "1" ]]; then
