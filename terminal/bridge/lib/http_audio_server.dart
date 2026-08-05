@@ -198,9 +198,17 @@ class HttpAudioServer {
     takeNum('bloom', min: 0, max: 24);
     takeNum('fps', alias: 'maxFps', min: 8, max: 60);
     takeNum('scale', alias: 'emblemScale', min: 0.2, max: 1.2);
-    final emblem = body['emblem'];
-    if (emblem != null && emblem.toString().trim().isNotEmpty) {
-      next['emblem'] = emblem.toString().trim();
+    // Preset names only — matches kiosk resolveEmblem allowlist (no raw SVG).
+    const allowedEmblems = {
+      'starburst',
+      'reactor',
+      'sentinel',
+      'spectrum',
+      'instrument',
+    };
+    final emblem = body['emblem']?.toString().trim();
+    if (emblem != null && allowedEmblems.contains(emblem)) {
+      next['emblem'] = emblem;
     }
 
     final hook = onAvatarOptions;
