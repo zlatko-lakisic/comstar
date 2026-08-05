@@ -342,7 +342,7 @@ attention:
 | `COMSTAR_SPEECH_OVERRIDE` | When `1`, map `COMSTAR_STT_URL` / `COMSTAR_TTS_URL` into Reach speech URL overrides (ao_reach ≥ 0.3) | unset |
 | `COMSTAR_STT_OVERRIDE` / `COMSTAR_TTS_OVERRIDE` | Dedicated Reach speech URL overrides (win over the mapped URLs) | unset |
 | `COMSTAR_SPEECH_TOKEN` | Optional bearer for AO speech sidecars | same as Ada `AGENTIC_SPEECH_TOKEN` |
-| `COMSTAR_LOCAL_SPEAKER` | Play TTS via `paplay` without kiosk | `1` |
+| `COMSTAR_LOCAL_SPEAKER` | Play TTS via `paplay` (also with kiosk; Pi Chromium often has no Pulse sink) | `1` |
 | `COMSTAR_VAD_SILENCE_MS` | End-of-speech silence | `1200` (Pi default override) |
 
 Aliases: `COMSTAR_CAMERA_INPUT` / `COMSTAR_CAMERA_DEVICE`, `COMSTAR_MIC_DEVICE`, `COMSTAR_SPEAKER_SINK` / `COMSTAR_AUDIO_SINK`.

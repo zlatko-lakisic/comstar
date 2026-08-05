@@ -78,6 +78,23 @@ echo "installed $SESSIONS_DST/comstar-labwc.desktop"
 
 rm -f "$HOME/.config/autostart/comstar-no-desktop.desktop"
 
+# HDMI prefer script (PipeWire sink selection after session start).
+mkdir -p "$HOME/.config/comstar"
+cp "$SRC/prefer-hdmi-audio.sh" "$HOME/.config/comstar/prefer-hdmi-audio.sh"
+chmod +x "$HOME/.config/comstar/prefer-hdmi-audio.sh"
+echo "installed $HOME/.config/comstar/prefer-hdmi-audio.sh"
+
+# Optional named HDMI sink — install only if missing (machine-specific; do not clobber).
+PW_DST="$HOME/.config/pipewire/pipewire.conf.d"
+PW_CONF="$PW_DST/99-comstar-hdmi.conf"
+if [[ ! -f "$PW_CONF" && ! -f "${PW_CONF}.broken" && ! -f "${PW_CONF}.off" ]]; then
+  mkdir -p "$PW_DST"
+  cp "$SRC/pipewire/99-comstar-hdmi.conf.example" "$PW_CONF"
+  echo "installed $PW_CONF (verify aplay -D hdmi:0 before reboot)"
+else
+  echo "skip pipewire HDMI conf (already present or previously disabled)"
+fi
+
 if [[ "$(id -u)" -eq 0 ]]; then
   install_root_bits
 elif [[ "${COMSTAR_INSTALL_LIGHTDM:-1}" == "1" ]]; then

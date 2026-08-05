@@ -232,15 +232,29 @@ export class ComstarAvatar {
     this._wired = true;
     try {
       this.ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const src = this.ctx.createMediaElementSource(this.audio);
+      this._mediaSrc = this.ctx.createMediaElementSource(this.audio);
       this.analyser = this.ctx.createAnalyser();
       this.analyser.fftSize = 256;
       this.analyser.smoothingTimeConstant = 0.75;
       this._bins = new Uint8Array(this.analyser.frequencyBinCount);
-      src.connect(this.analyser);
-      this.analyser.connect(this.ctx.destination);
+      this._mediaSrc.connect(this.analyser);
+      this._outputMuted = false;
     } catch {
       this.analyser = null;   // speech still plays, only the pulse is lost
+      this._mediaSrc = null;
+    }
+  }
+
+  /** When true, keep analyser (emblem pulse) but do not feed speakers — paplay owns HDMI. */
+  _setOutputMuted(mute) {
+    this._outputMuted = !!mute;
+    this.audio.muted = !!mute;
+    if (!this.analyser || !this.ctx) return;
+    try {
+      this.analyser.disconnect();
+    } catch { /* not connected */ }
+    if (!mute) {
+      this.analyser.connect(this.ctx.destination);
     }
   }
 
@@ -355,8 +369,13 @@ export class ComstarAvatar {
     }
   }
 
-  speak(audioUrl) {
+  /**
+   * @param {string} audioUrl
+   * @param {{ muteOutput?: boolean }} [opts]
+   */
+  speak(audioUrl, opts = {}) {
     this._ensureAnalyser();
+    this._setOutputMuted(!!opts.muteOutput);
     if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
     this._speaking = true;
     this._started = false;

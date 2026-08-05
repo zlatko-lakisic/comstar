@@ -316,6 +316,7 @@ class AttentionCoordinator {
               'text': text,
               'audioUrl': audioUrl,
               if (sleepAck) 'keepSleeping': true,
+              ..._kioskSpeakAudioFlags(),
             },
           ),
         );
@@ -1931,7 +1932,11 @@ class AttentionCoordinator {
       _broadcastKiosk(
         Envelope.create(
           type: 'speak',
-          data: {'text': spoken, 'audioUrl': audioUrl},
+          data: {
+            'text': spoken,
+            'audioUrl': audioUrl,
+            ..._kioskSpeakAudioFlags(),
+          },
         ),
       );
       unawaited(_maybePlayLocal(audioUrl));
@@ -2043,7 +2048,11 @@ class AttentionCoordinator {
       _broadcastKiosk(
         Envelope.create(
           type: 'speak',
-          data: {'text': greeting, 'audioUrl': audioUrl},
+          data: {
+            'text': greeting,
+            'audioUrl': audioUrl,
+            ..._kioskSpeakAudioFlags(),
+          },
         ),
       );
       unawaited(_maybePlayLocal(audioUrl));
@@ -2075,11 +2084,24 @@ class AttentionCoordinator {
         Envelope.create(
           type: 'speak',
           turnId: turnId,
-          data: {'text': line, 'audioUrl': audioUrl},
+          data: {
+            'text': line,
+            'audioUrl': audioUrl,
+            ..._kioskSpeakAudioFlags(),
+          },
         ),
       );
       unawaited(_maybePlayLocal(audioUrl));
     }
+  }
+
+  /// When paplay owns the speakers, tell the kiosk to decode for timing /
+  /// analyser only — no WebAudio → destination (avoids HDMI double-play).
+  Map<String, Object> _kioskSpeakAudioFlags() {
+    if (Platform.environment['COMSTAR_LOCAL_SPEAKER'] == '1') {
+      return const {'muteOutput': true};
+    }
+    return const {};
   }
 
   String? _lookupFallbackWav(String line) {
@@ -2097,9 +2119,9 @@ class AttentionCoordinator {
   }
 
   Future<void> _maybePlayLocal(String audioUrl) async {
-    // Prefer kiosk playback. Local paplay is fallback only — never both
-    // (dual path echoes on the same HDMI sink).
-    if (ws.hasRole('kiosk')) return;
+    // Local paplay when COMSTAR_LOCAL_SPEAKER=1. Kiosk still decodes the WAV for
+    // speak.ended / emblem pulse, but speak envelopes set muteOutput so Chromium
+    // does not also drive HDMI (dual output).
     final allowLocal = Platform.environment['COMSTAR_LOCAL_SPEAKER'] == '1';
     if (!allowLocal) return;
     final path = audioServer.filePathForUrl(audioUrl);
@@ -2115,6 +2137,7 @@ class AttentionCoordinator {
         logInfo('local_speaker', 'Played via paplay', data: {
           'path': path,
           'speaker_source': sink ?? 'default',
+          'kiosk': ws.hasRole('kiosk'),
         });
         // Synthetic speak.ended if kiosk absent so follow-up can open.
         if (!ws.hasRole('kiosk')) {
@@ -2132,6 +2155,7 @@ class AttentionCoordinator {
         logInfo('local_speaker', 'Played via aplay', data: {
           'path': path,
           'speaker_source': sink ?? 'default',
+          'kiosk': ws.hasRole('kiosk'),
         });
         if (!ws.hasRole('kiosk')) {
           _cancelSpeakWatchdog();

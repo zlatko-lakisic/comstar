@@ -36,6 +36,20 @@ if [[ -x "$ROOT/scripts/set-portrait.sh" ]]; then
   "$ROOT/scripts/set-portrait.sh" "${COMSTAR_DISPLAY_TRANSFORM:-90}" || true
 fi
 
+# Ensure PipeWire stack is up (comstar-labwc does not inherit LXDE audio autostart).
+systemctl --user reset-failed pipewire.service 2>/dev/null || true
+systemctl --user start pipewire.socket pipewire.service 2>/dev/null || true
+systemctl --user start wireplumber.service 2>/dev/null || true
+systemctl --user start pipewire-pulse.socket pipewire-pulse.service 2>/dev/null || true
+
+# Named HDMI sink + mute ACP dual-open (see pipewire/99-comstar-hdmi.conf.example).
+if [[ -x "$HOME/.config/comstar/prefer-hdmi-audio.sh" ]]; then
+  "$HOME/.config/comstar/prefer-hdmi-audio.sh" >/tmp/comstar-prefer-hdmi.log 2>&1 || true
+elif [[ -x "$ROOT/deploy/pi-session/prefer-hdmi-audio.sh" ]]; then
+  "$ROOT/deploy/pi-session/prefer-hdmi-audio.sh" >/tmp/comstar-prefer-hdmi.log 2>&1 || true
+fi
+
 # Start COMSTAR stack immediately (do not wait for desktop chrome).
 systemctl --user start comstar-bridge.service 2>/dev/null || true
 systemctl --user restart comstar-kiosk.service 2>/dev/null || true
+systemctl --user start comstar-audio.service 2>/dev/null || true

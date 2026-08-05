@@ -430,7 +430,7 @@ const bridge = new BridgeClient(bridgeUrl, {
       setPhase('speaking', d.text || '');
     }
     if (d.text) appendChat('comstar', d.text);
-    avatar.speak(d.audioUrl);
+    avatar.speak(d.audioUrl, { muteOutput: !!d.muteOutput });
   },
 
   'speak.cancel'() {

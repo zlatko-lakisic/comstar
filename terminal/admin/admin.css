@@ -1,8 +1,10 @@
 :root {
-  --bg:            #06080B;
-  --surface:       #0B0E12;
-  --surface-2:     #10151C;
-  --surface-3:     #141A22;
+  /* Surfaces match the kiosk emblem field (#06080B) so the rail avatar
+     blends into the panel instead of sitting in a lighter rectangle. */
+  --bg:            #04060A;
+  --surface:       #06080B;
+  --surface-2:     #0B0E12;
+  --surface-3:     #10151C;
   --border:        rgba(61, 220, 255, 0.10);
   --border-strong: rgba(61, 220, 255, 0.22);
 
@@ -210,6 +212,9 @@ html, body {
 .rail__emblem {
   width: 180px;
   height: 180px;
+  background: var(--surface);
+  border-radius: 0;
+  overflow: hidden;
 }
 .rail__state {
   font-size: 15px;
@@ -334,8 +339,15 @@ html, body {
   background: rgba(255, 92, 92, 0.20);
   border-color: var(--red);
 }
-.btn.is-ok { border-color: var(--cyan); }
-.btn.is-fail { border-color: var(--red); }
+.btn.is-ok {
+  border-color: var(--cyan);
+  color: var(--cyan);
+  box-shadow: inset 0 0 0 1px rgba(61, 220, 255, 0.25);
+}
+.btn.is-fail {
+  border-color: var(--red);
+  color: var(--red);
+}
 
 .actions-row {
   display: flex;
@@ -344,9 +356,9 @@ html, body {
   margin-bottom: 10px;
 }
 .action-err {
+  width: 100%;
   margin: 6px 0 0;
-  font-family: var(--font-mono);
-  font-size: 12px;
+  font: 400 12px var(--font-mono);
   color: var(--red);
 }
 

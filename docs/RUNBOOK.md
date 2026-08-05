@@ -16,7 +16,7 @@ Hardware baseline: `docs/BASELINES.md`. Dev workflow: `docs/DEV_LOOP.md`.
 | Local TTS | Optional fallback: `comstar-tts` on `127.0.0.1:8091` (Piper via sherpa-onnx) |
 | Local STT | Optional fallback: `comstar-stt` on `127.0.0.1:8090` (faster-whisper) |
 | Production speech | Prefer AO-advertised sidecars on Ada (Reach `SpeechClient`); see §3 |
-| Local speaker | `COMSTAR_LOCAL_SPEAKER=1` plays via `paplay` when kiosk absent |
+| Local speaker | `COMSTAR_LOCAL_SPEAKER=1` plays via `paplay` (including when kiosk is connected) |
 | Camera source | `COMSTAR_CAMERA_SOURCE` (alias: `COMSTAR_CAMERA_INPUT`) — e.g. `/dev/video0` |
 | Mic source | `COMSTAR_MIC_SOURCE` — sounddevice index or name substring (e.g. `C525`) |
 | Speaker source | `COMSTAR_SPEAKER_SOURCE` — Pulse/PipeWire sink for local `paplay` |

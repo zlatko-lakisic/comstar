@@ -20,8 +20,9 @@ Environment=COMSTAR_VAD_SILENCE_MS=1000
 Environment=COMSTAR_MIC_AGC=1
 Environment=COMSTAR_MIC_AGC_TARGET=0.055
 Environment=COMSTAR_MIC_AGC_MAX_GAIN=1.8
-ExecStartPre=/usr/bin/pactl set-source-volume @DEFAULT_SOURCE@ 75%
-ExecStartPre=/usr/bin/amixer -c 3 set Mic 70% unmute
+# Soft-fail (-): do not block start if Pulse/ALSA bus is still coming up.
+ExecStartPre=-/usr/bin/pactl set-source-volume @DEFAULT_SOURCE@ 75%
+ExecStartPre=-/usr/bin/amixer -c 3 set Mic 70% unmute
 # Fallback if card index differs (ignore failure):
 ExecStartPre=-/bin/sh -c 'amixer -c "$(awk "/C525|Webcam/{print \$1; exit}" /proc/asound/cards)" set Mic 70% unmute >/dev/null 2>&1'
 ExecStart=/opt/comstar/src/terminal/audio/.venv/bin/python __main__.py
