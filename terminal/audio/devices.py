@@ -66,7 +66,14 @@ def describe_input_device(device: int | str | None) -> dict[str, Any]:
     try:
         import sounddevice as sd
 
-        info = sd.query_devices(device)
+        # ``query_devices(None)`` returns the full DeviceList (no ``.get``).
+        info = (
+            sd.query_devices(kind="input")
+            if device is None
+            else sd.query_devices(device)
+        )
+        if not isinstance(info, dict):
+            return {"device": device if device is not None else "default"}
         return {
             "device": device if device is not None else "default",
             "name": info.get("name"),

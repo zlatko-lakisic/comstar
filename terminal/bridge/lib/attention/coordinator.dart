@@ -10,6 +10,7 @@ import 'package:comstar_bridge/attention/machine.dart';
 import 'package:comstar_bridge/attention/runner.dart';
 import 'package:comstar_bridge/attention/states.dart';
 import 'package:comstar_bridge/config.dart';
+import 'package:comstar_bridge/clock_intent.dart';
 import 'package:comstar_bridge/directory/directory_resolver.dart';
 import 'package:comstar_bridge/envelope.dart';
 import 'package:comstar_bridge/env_sources.dart';
@@ -26,7 +27,9 @@ import 'package:comstar_bridge/home_data_intent.dart';
 import 'package:comstar_bridge/http_audio_server.dart';
 import 'package:comstar_bridge/local_ws.dart';
 import 'package:comstar_bridge/log.dart';
+import 'package:comstar_bridge/phrase_bank.dart';
 import 'package:comstar_bridge/session.dart';
+import 'package:comstar_bridge/social_intent.dart';
 import 'package:comstar_bridge/stt.dart';
 import 'package:comstar_bridge/utterance_gate.dart';
 import 'package:comstar_bridge/terminal_control.dart';
@@ -69,6 +72,8 @@ class AttentionCoordinator {
           clock: clock ?? SystemClock(),
         ),
         runner = EffectRunner() {
+    phraseBank = PhraseBank();
+    phraseBank.load();
     this.control.loadPersistedVolume();
     audioServer.control = this.control;
     audioServer.onSleepAction = _onSleepHttp;
@@ -103,6 +108,10 @@ class AttentionCoordinator {
         'kiosk_connected': ws.hasRole('kiosk'),
         'audio_connected': ws.hasRole('audio'),
         'sleeping': machine.state is Sleeping,
+        'phrase_bank': {
+          for (final c in PhraseCategory.all) c: phraseBank.count(c),
+          'updated_at': phraseBank.updatedAt?.toUtc().toIso8601String(),
+        },
       };
   final AttentionMachine machine;
   final EffectRunner runner;
@@ -132,7 +141,9 @@ class AttentionCoordinator {
 
   var _captureSampleRate = 16000;
   WebSocketChannel? _audioChannel;
-  final Map<String, String> _greetingCache = {};
+  late final PhraseBank phraseBank;
+  Timer? _phraseRefreshTimer;
+  var _phraseRefreshInFlight = false;
   DateTime? _speakStartedAt;
   Duration? _lastTtsTotal;
   /// WAV (or text-estimate) play length for the in-flight speak — not TTS synth time.
@@ -156,11 +167,14 @@ class AttentionCoordinator {
       await visionPoller.start();
       _visionSub = visionPoller.events.listen(_onVisionEvent);
     }
+    _armPhraseBankRefresh();
   }
 
   Future<void> stop() async {
     _tickTimer?.cancel();
     _tickTimer = null;
+    _phraseRefreshTimer?.cancel();
+    _phraseRefreshTimer = null;
     _cancelSpeakWatchdog();
     _followUpTimer?.cancel();
     _followUpTimer = null;
@@ -178,12 +192,28 @@ class AttentionCoordinator {
 
   void handleWsMessage(String role, Envelope envelope) {
     if (role == 'audio') {
+      if (envelope.type == 'ready') {
+        // Audio reconnect defaults wake_enabled=true locally; sync from machine.
+        _syncAudioWakeGate();
+      }
       _handleAudioEnvelope(envelope);
       return;
     }
     if (role == 'kiosk') {
       _handleKioskEnvelope(envelope);
     }
+  }
+
+  void _syncAudioWakeGate() {
+    final enabled = machine.context.wakeEnabled && !machine.context.playing;
+    _sendAudio(
+      Envelope.create(type: 'wake.enable', data: {'enabled': enabled}),
+    );
+    logInfo('wake_sync', 'Synced wake gate to audio', data: {
+      'enabled': enabled,
+      'state': machine.state.name,
+      'playing': machine.context.playing,
+    });
   }
 
   void handleBinaryAudio(Uint8List chunk) {
@@ -580,7 +610,13 @@ class AttentionCoordinator {
         // (no ONNX on Pi) must STT-confirm "hey/hello comstar" — not bare hello.
         if (machine.state is Sleeping && model != 'hey_comstar') {
           // TTS still playing — ignore energy wakes (HDMI echo / greeter race).
-          if (machine.context.playing) break;
+          if (machine.context.playing) {
+            logInfo('sleep_wake_ignored', 'Energy wake while TTS playing', data: {
+              'score': score,
+              'model': model,
+            });
+            break;
+          }
           unawaited(_beginSleepWakeVerify(score));
           break;
         }
@@ -683,11 +719,13 @@ class AttentionCoordinator {
         turnId: turnId,
         data: {
           'turn_id': turnId,
-          // Force-wake fires after the phrase; keep a long ring pre-roll so
-          // "hey comstar" is still in the buffer for STT confirm.
-          'maxMs': 4000,
-          'preRollMs': 2800,
-          'vadSettleMs': 4000,
+          // Pre-roll counts toward maxMs in the streamer — leave headroom so
+          // we still capture ~4s of live audio after the energy spike (TV ads
+          // were ending verify in ~2s with only commercial in the buffer).
+          'maxMs': 7500,
+          'preRollMs': 2500,
+          // VAD starts after pre-roll flush so silence after "hey comstar" ends.
+          'vadSettleMs': 2600,
           'clearRing': false,
         },
       ),
@@ -738,9 +776,9 @@ class AttentionCoordinator {
           turnId: turnId,
           data: {
             'turn_id': turnId,
-            'maxMs': 4000,
-            'preRollMs': 2800,
-            'vadSettleMs': 4000,
+            'maxMs': 7500,
+            'preRollMs': 2500,
+            'vadSettleMs': 2600,
             'clearRing': false,
           },
         ),
@@ -779,6 +817,8 @@ class AttentionCoordinator {
       if (ok && machine.state is Sleeping) {
         // Machine exits sleep and opens follow-up Listening with settleMs: 0.
         handle(WakeWord(score));
+        // Defer greeting until mic is armed so we do not cancel follow-up gen.
+        unawaited(_speakSleepWakeLineWhenReady());
       } else {
         _returnSleepHud();
       }
@@ -798,12 +838,17 @@ class AttentionCoordinator {
     _broadcastKiosk(
       Envelope.create(type: 'listening', data: {'active': false}),
     );
-    // Reject / abort paths mute wake for verify; restore if still dormant.
+    // Reject / abort paths mute wake for verify; restore after a short cooldown
+    // so continuous TV energy cannot immediately re-enter sleep-verify.
     if (machine.state is Sleeping && !machine.context.playing) {
-      machine.context.wakeEnabled = true;
-      _sendAudio(
-        Envelope.create(type: 'wake.enable', data: {'enabled': true}),
-      );
+      Timer(const Duration(milliseconds: 2500), () {
+        if (machine.state is! Sleeping || machine.context.playing) return;
+        if (_sleepWakeVerifyInFlight) return;
+        machine.context.wakeEnabled = true;
+        _sendAudio(
+          Envelope.create(type: 'wake.enable', data: {'enabled': true}),
+        );
+      });
     }
   }
 
@@ -977,9 +1022,7 @@ class AttentionCoordinator {
           // Speak muted wake for half-duplex; always re-arm after sleep TTS.
           machine.context.playing = false;
           machine.context.wakeEnabled = true;
-          _sendAudio(
-            Envelope.create(type: 'wake.enable', data: {'enabled': true}),
-          );
+          _syncAudioWakeGate();
           _returnSleepHud();
         } else {
           _broadcastPhase('idle', detail: '');
@@ -1304,6 +1347,12 @@ class AttentionCoordinator {
     try {
       final local = await _tryTerminalIntent(text, turnId);
       if (local) return;
+
+      final clock = await _tryClockIntent(text, turnId);
+      if (clock) return;
+
+      final social = await _trySocialIntent(text, turnId);
+      if (social) return;
 
       final google = await _tryGoogleIntent(text, turnId);
       if (google) return;
@@ -1960,7 +2009,11 @@ class AttentionCoordinator {
       case TerminalIntentKind.sleepEnter:
         handle(const EnterSleep());
         result = control.sleepStatus();
-        spoken = 'Okay, going to sleep. Say hey comstar when you need me.';
+        spoken = _phraseFor(
+          PhraseCategory.sleepEnter,
+          fallback:
+              'Okay, entering sleep mode. Say hey comstar when you need me.',
+        );
       case TerminalIntentKind.volumeMute:
         result = control.volumeMute(true);
         spoken = result['ok'] == true
@@ -2004,6 +2057,52 @@ class AttentionCoordinator {
     return true;
   }
 
+  /// Time / date / season / timezone from this terminal's system clock.
+  Future<bool> _tryClockIntent(String text, String turnId) async {
+    final intent = parseClockIntent(text);
+    if (intent == null) return false;
+
+    final tzLabel = Platform.environment['COMSTAR_TZ']?.trim().isNotEmpty == true
+        ? Platform.environment['COMSTAR_TZ']!.trim()
+        : config.attention.timezone.trim();
+    final spoken = formatClockAnswer(
+      intent,
+      timezoneLabel: tzLabel.isEmpty ? null : tzLabel,
+    );
+    logInfo('clock_intent', 'Answered from terminal clock', data: {
+      'turn_id': turnId,
+      'kind': intent.kind.name,
+      'spoken': spoken,
+    });
+    await _speakText(spoken, turnId);
+    return true;
+  }
+
+  /// Social check-ins answered locally (phrase bank + templates).
+  Future<bool> _trySocialIntent(String text, String turnId) async {
+    final intent = parseSocialIntent(text);
+    if (intent == null) return false;
+
+    final name =
+        machine.context.cachedDisplayName ?? machine.context.cachedUserid;
+    final bankLine = config.phrases.enabled
+        ? phraseBank.pick(PhraseCategory.social, name: name)
+        : null;
+    final spoken = formatSocialAnswer(
+      intent,
+      bankLine: bankLine,
+      name: name,
+    );
+    logInfo('social_intent', 'Answered social locally', data: {
+      'turn_id': turnId,
+      'kind': intent.kind.name,
+      'from_bank': bankLine != null && bankLine.trim().isNotEmpty,
+      'spoken': spoken.length > 80 ? '${spoken.substring(0, 80)}…' : spoken,
+    });
+    await _speakText(spoken, turnId);
+    return true;
+  }
+
   Future<void> _runGreeterAfterSession(String userid) async {
     final pending = _sessionOpenFuture;
     if (pending != null) {
@@ -2026,10 +2125,18 @@ class AttentionCoordinator {
 
   Future<void> _runGreeter(String userid) async {
     try {
-      final cached = _greetingCache[userid];
-      final greeting = cached ?? await session.runGreeter(userid);
-      if (greeting.trim().isEmpty) return;
-      _greetingCache[userid] = greeting;
+      final name = machine.context.cachedDisplayName ?? userid;
+      var greeting = phraseBank.pick(PhraseCategory.engage, name: name);
+      if (greeting == null || greeting.trim().isEmpty) {
+        greeting = await session.runGreeter(userid);
+        if (greeting.trim().isEmpty) return;
+        // Only seed templates; concrete names would pollute the shared bank.
+        if (greeting.contains(PhraseBank.nameSlot) || greeting.contains('{name}')) {
+          phraseBank.replaceCategory(PhraseCategory.engage, [greeting]);
+          phraseBank.save();
+        }
+        greeting = PhraseBank.fillName(greeting, name);
+      }
 
       // Half-duplex: mute wake while greeting plays.
       machine.context.playing = true;
@@ -2062,6 +2169,163 @@ class AttentionCoordinator {
       _sendAudio(
         Envelope.create(type: 'wake.enable', data: {'enabled': true}),
       );
+    }
+  }
+
+  String _phraseFor(
+    String category, {
+    required String fallback,
+    String? name,
+  }) {
+    if (!config.phrases.enabled) return fallback;
+    return phraseBank.pick(category, name: name) ?? fallback;
+  }
+
+  /// Short line after confirmed sleep wake; skip if bank empty.
+  ///
+  /// Waits for follow-up mic arm first so we do not bump `_followUpGen` and
+  /// cancel the post-wake listen window before it starts.
+  Future<void> _speakSleepWakeLineWhenReady() async {
+    if (!config.phrases.enabled) return;
+    for (var i = 0; i < 40; i++) {
+      if (machine.context.followUpMicArmedAtMs != null) break;
+      if (machine.state is! Engaged) return;
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
+    await _speakSleepWakeLine();
+  }
+
+  Future<void> _speakSleepWakeLine() async {
+    if (!config.phrases.enabled) return;
+    if (machine.state is! Engaged) return;
+    final name = machine.context.cachedDisplayName ?? machine.context.cachedUserid;
+    final line = phraseBank.pick(PhraseCategory.sleepWake, name: name);
+    if (line == null || line.trim().isEmpty) return;
+    try {
+      machine.context.playing = true;
+      _followUpGen++;
+      _sendAudio(Envelope.create(type: 'listen.stop'));
+      _sendAudio(
+        Envelope.create(type: 'wake.enable', data: {'enabled': false}),
+      );
+      final ttsSpan = Span('tts_total');
+      final path = await tts.synthesizeToFile(line);
+      _lastTtsTotal = Duration(milliseconds: ttsSpan.elapsedMs);
+      ttsSpan.close();
+      _noteSpeakDuration(path: path, text: line);
+      final audioUrl = audioServer.registerFile(path);
+      _beginSpeakWatchdog();
+      _broadcastPhase('speaking', detail: line);
+      _broadcastKiosk(
+        Envelope.create(
+          type: 'speak',
+          turnId: 'sleep-wake',
+          data: {
+            'text': line,
+            'audioUrl': audioUrl,
+            ..._kioskSpeakAudioFlags(),
+          },
+        ),
+      );
+      unawaited(_maybePlayLocal(audioUrl));
+    } catch (e) {
+      logWarn('sleep_wake_phrase_failed', e.toString());
+      machine.context.playing = false;
+      _sendAudio(
+        Envelope.create(type: 'wake.enable', data: {'enabled': true}),
+      );
+    }
+  }
+
+  void _armPhraseBankRefresh() {
+    _phraseRefreshTimer?.cancel();
+    _phraseRefreshTimer = null;
+    if (!config.phrases.enabled) return;
+    // Soon after start, then on the configured cadence.
+    _phraseRefreshTimer = Timer(const Duration(seconds: 45), () {
+      unawaited(_refreshPhraseBanksIfNeeded(force: false));
+      _phraseRefreshTimer = Timer.periodic(
+        config.phrases.refreshEvery,
+        (_) => unawaited(_refreshPhraseBanksIfNeeded(force: false)),
+      );
+    });
+  }
+
+  bool get _phraseRefreshBusy {
+    // Only avoid colliding with an in-flight speak or AO voice turn.
+    return machine.context.playing ||
+        machine.context.directAgentInFlight ||
+        machine.context.sttPending ||
+        machine.state is Responding ||
+        _sleepWakeVerifyInFlight;
+  }
+
+  Future<void> _refreshPhraseBanksIfNeeded({required bool force}) async {
+    if (!config.phrases.enabled) return;
+    if (_phraseRefreshInFlight) return;
+    if (!force && !phraseBank.needsRefresh(config.phrases.refreshEvery)) {
+      return;
+    }
+    if (_phraseRefreshBusy) {
+      logInfo('phrase_bank_refresh_deferred', 'Busy; will retry later', data: {
+        'state': machine.state.name,
+        'playing': machine.context.playing,
+        'stt_pending': machine.context.sttPending,
+        'direct_agent': machine.context.directAgentInFlight,
+      });
+      Timer(const Duration(seconds: 90), () {
+        unawaited(_refreshPhraseBanksIfNeeded(force: force));
+      });
+      return;
+    }
+
+    _phraseRefreshInFlight = true;
+    final openedForRefresh = !session.isOpen;
+    try {
+      if (openedForRefresh) {
+        await session.open(userid: 'phrase-bank', guest: true);
+      } else {
+        await session.ensureReady(quiet: true);
+      }
+
+      final counts = <String, int>{};
+      for (final category in PhraseCategory.all) {
+        final lines = await session.runPhraseBank(
+          category: category,
+          count: config.phrases.bankSize,
+        );
+        if (lines.isNotEmpty) {
+          phraseBank.replaceCategory(category, lines);
+          counts[category] = phraseBank.count(category);
+        } else {
+          counts[category] = phraseBank.count(category);
+          logWarn('phrase_bank_empty', 'AO returned no lines', data: {
+            'category': category,
+          });
+        }
+      }
+      phraseBank.save();
+      logInfo('phrase_bank_refreshed', 'Phrase banks updated', data: {
+        'counts': counts,
+        'path': phraseBank.path.path,
+        'opened_guest': openedForRefresh,
+      });
+    } catch (e) {
+      logWarn('phrase_bank_refresh_failed', e.toString());
+    } finally {
+      if (openedForRefresh &&
+          session.isOpen &&
+          session.userid == 'phrase-bank' &&
+          !_phraseRefreshBusy &&
+          machine.state is! Engaged &&
+          machine.state is! Listening &&
+          machine.state is! Responding) {
+        try {
+          await session.close();
+          machine.context.sessionOpen = false;
+        } catch (_) {}
+      }
+      _phraseRefreshInFlight = false;
     }
   }
 

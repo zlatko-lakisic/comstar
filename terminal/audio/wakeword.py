@@ -48,12 +48,15 @@ class WakeWordEngine:
         """Start refractory (used by force-wake / inject paths)."""
         self._last_fire_monotonic = time.monotonic()
 
+    def can_fire(self) -> bool:
+        """True when wake is enabled and past refractory (ONNX or force-wake)."""
+        if not self._enabled:
+            return False
+        return (time.monotonic() - self._last_fire_monotonic) >= self.refractory_s
+
     def process(self, pcm: bytes) -> float | None:
         """Return wake score if above threshold and past refractory, else None."""
-        if not self._enabled or self._model is None:
-            return None
-        now = time.monotonic()
-        if now - self._last_fire_monotonic < self.refractory_s:
+        if not self.can_fire() or self._model is None:
             return None
         try:
             import numpy as np
@@ -64,7 +67,7 @@ class WakeWordEngine:
                 return None
             best = max(float(v) for v in scores.values())
             if best >= self.threshold:
-                self._last_fire_monotonic = now
+                self.mark_fired()
                 return best
         except Exception:  # noqa: BLE001
             return None

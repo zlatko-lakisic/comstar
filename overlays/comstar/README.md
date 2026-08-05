@@ -23,6 +23,9 @@ overlays/comstar/
 | `agent_harnesses/` | Documentation / future smoke runner (`harness_profile` on agents) |
 | `harnesses/` | Live E2E / eval packs (e.g. `scripts/google_voice_data_e2e.sh`) |
 
+Agents of note: `client.greeter` (live engage fallback), `client.phrase_bank`
+(batch lines for engage / sleep_enter / sleep_wake banks), `client.voice_responder`.
+
 ## MCP note
 
 `mcp_providers/*.yaml` keep AO-style metadata (`description`, `planner_hint`, …) plus

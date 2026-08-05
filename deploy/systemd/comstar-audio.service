@@ -11,6 +11,9 @@ Environment=COMSTAR_WAKEWORD_MODEL=/opt/comstar/src/models/hey_comstar.onnx
 # Energy-gated wake until hey_comstar.onnx is trained. Bridge ignores wake in
 # Ambient/Noticed so this cannot race face recognition into a silent guest session.
 Environment=COMSTAR_FORCE_WAKE_SCORE=0.99
+# TV ads sat ~0.06 RMS and stole sleep-verify; near-mic speech usually >0.08.
+Environment=COMSTAR_FORCE_WAKE_RMS=0.08
+Environment=COMSTAR_FORCE_WAKE_REFRACTORY_S=5.0
 Environment=COMSTAR_LOG=info
 Environment=COMSTAR_VAD_SILENCE_MS=1000
 # Mic: empty = default; index ("3") or name substring ("C525") for sounddevice

@@ -14,7 +14,7 @@ from devices import describe_input_device, mic_source_spec, resolve_sounddevice_
 from log import log_info, log_warn
 from stream import PcmStreamer
 from vad import VadEngine
-from wakeword import WakeWordEngine
+from wakeword import REFRACTORY_S, WakeWordEngine
 
 
 async def _main() -> None:
@@ -28,6 +28,14 @@ async def _main() -> None:
     force_wake_score = os.environ.get("COMSTAR_FORCE_WAKE_SCORE") or None
     if force_wake_score is not None and not force_wake_score.strip():
         force_wake_score = None
+    # Longer refractory for energy force-wake so TV / hallway noise cannot
+    # spam sleep-verify STT every ~2s after each reject.
+    force_refractory_s = float(
+        os.environ.get(
+            "COMSTAR_FORCE_WAKE_REFRACTORY_S",
+            "5.0" if force_wake_score is not None else str(REFRACTORY_S),
+        )
+    )
 
     mic_spec = mic_source_spec()
     try:
@@ -61,7 +69,13 @@ async def _main() -> None:
         capture = AudioCapture(device=mic_device, on_level=lambda _rms: None, agc=agc)
         capture.start()
         vad = VadEngine(silence_ms=vad_silence_ms)
-        wake = WakeWordEngine(wakeword_model, threshold=wakeword_threshold)
+        wake = WakeWordEngine(
+            wakeword_model,
+            threshold=wakeword_threshold,
+            refractory_s=(
+                force_refractory_s if force_wake_score is not None else REFRACTORY_S
+            ),
+        )
         streamer = PcmStreamer(
             capture=capture,
             send_binary=send_binary,
@@ -136,7 +150,11 @@ async def _main() -> None:
                     pcm = capture.snapshot()
                     if len(pcm) >= 3200:
                         score = wake.process(pcm[-3200:])
-                        if score is None and force_wake_score is not None:
+                        if (
+                            score is None
+                            and force_wake_score is not None
+                            and wake.can_fire()
+                        ):
                             # Energy gate so silence does not spam forced wakes.
                             import numpy as np
 
@@ -144,12 +162,25 @@ async def _main() -> None:
                                 np.float32,
                             )
                             rms = float(np.sqrt(np.mean(np.square(audio / 32768.0))))
-                            # Idle C525 @100% ~0.01–0.02; soft speech often ~0.06–0.12.
-                            # Sleep listening submode needs to catch normal speech;
-                            # 0.10 was missing quieter "hey comstar" attempts.
-                            if rms > 0.07:
+                            # Idle C525 ~0.01–0.02; soft speech ~0.05–0.12; TV ads
+                            # were ~0.055–0.07 and stole sleep-verify windows.
+                            # Near-mic "hey comstar" usually clears 0.08+.
+                            force_rms = float(
+                                os.environ.get("COMSTAR_FORCE_WAKE_RMS", "0.08")
+                            )
+                            if rms > force_rms:
                                 score = float(force_wake_score)
                                 wake.mark_fired()
+                                log_info(
+                                    "force_wake",
+                                    "Energy force-wake",
+                                    data={
+                                        "rms": rms,
+                                        "threshold": force_rms,
+                                        "score": score,
+                                        "refractory_s": wake.refractory_s,
+                                    },
+                                )
                         if score is not None:
                             await client.send(
                                 "wake",

@@ -1,9 +1,12 @@
 import 'package:comstar_bridge/terminal_intent.dart';
+import 'package:comstar_bridge/clock_intent.dart';
+import 'package:comstar_bridge/social_intent.dart';
 
 /// Whether [text] looks like a real voice prompt worth sending to AO.
 ///
 /// Drops Whisper fragments, ambient bleed, and one-word noise while allowing
-/// short device commands (`go to sleep`) and clear questions/imperatives.
+/// short device commands (`go to sleep`), clock/social check-ins, and clear
+/// questions/imperatives.
 bool isActionableUtterance(String text) {
   final raw = text.trim();
   if (raw.isEmpty) return false;
@@ -18,6 +21,8 @@ bool isActionableUtterance(String text) {
   if (lower.isEmpty) return false;
 
   if (parseTerminalIntent(collapsed) != null) return true;
+  if (parseClockIntent(collapsed) != null) return true;
+  if (parseSocialIntent(collapsed) != null) return true;
 
   final words = lower.split(' ').where((w) => w.isNotEmpty).toList();
   if (words.isEmpty) return false;
@@ -151,6 +156,9 @@ bool isActionableUtterance(String text) {
     'weather',
     'google',
     'sleep',
+    'time',
+    'date',
+    'season',
   };
   final hasCue = words.any(cues.contains);
   if (!hasCue) return false;

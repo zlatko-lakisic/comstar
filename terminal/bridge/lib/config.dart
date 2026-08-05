@@ -20,6 +20,7 @@ class ComstarConfig {
     required this.directory,
     required this.dev,
     this.admin = const AdminConfig(),
+    this.phrases = const PhrasesConfig(),
     required this.sourcePath,
   });
 
@@ -31,6 +32,7 @@ class ComstarConfig {
   final DirectoryConfig directory;
   final DevConfig dev;
   final AdminConfig admin;
+  final PhrasesConfig phrases;
   final String sourcePath;
 
   static const _topLevelKeys = {
@@ -42,6 +44,7 @@ class ComstarConfig {
     'directory',
     'dev',
     'admin',
+    'phrases',
   };
 
   static const _orchestrationKeys = {
@@ -83,6 +86,7 @@ class ComstarConfig {
   static const _attentionKeys = {
     'face_attention_trigger',
     'stranger_mode',
+    'timezone',
   };
 
   static const _directoryKeys = {
@@ -101,6 +105,12 @@ class ComstarConfig {
   static const _adminKeys = {
     'bind_lan',
     'token',
+  };
+
+  static const _phrasesKeys = {
+    'enabled',
+    'refresh_hours',
+    'bank_size',
   };
 
   static ComstarConfig loadFile(String path) {
@@ -138,8 +148,17 @@ class ComstarConfig {
                 ? Map<String, dynamic>.from(adminRaw)
                 : (throw ConfigError('Section admin must be a mapping')),
           );
+    final phrasesRaw = root['phrases'];
+    final phrases = phrasesRaw == null
+        ? const PhrasesConfig()
+        : _parsePhrases(
+            phrasesRaw is Map
+                ? Map<String, dynamic>.from(phrasesRaw)
+                : (throw ConfigError('Section phrases must be a mapping')),
+          );
 
     _validateRanges(vision, audio, orchestration, avatar, attention, directory);
+    _validatePhrases(phrases);
 
     return ComstarConfig(
       orchestration: orchestration,
@@ -150,6 +169,7 @@ class ComstarConfig {
       directory: directory,
       dev: dev,
       admin: admin,
+      phrases: phrases,
       sourcePath: sourcePath,
     );
   }
@@ -261,6 +281,7 @@ class ComstarConfig {
       faceAttentionTrigger:
           _requireBool(map, 'face_attention_trigger', 'attention'),
       strangerMode: _requireString(map, 'stranger_mode', 'attention'),
+      timezone: _optionalString(map, 'timezone') ?? '',
     );
   }
 
@@ -291,6 +312,26 @@ class ComstarConfig {
           : false,
       token: _optionalString(map, 'token') ?? '',
     );
+  }
+
+  static PhrasesConfig _parsePhrases(Map<String, dynamic> map) {
+    _assertKnownKeys(map.keys, _phrasesKeys, 'phrases');
+    return PhrasesConfig(
+      enabled: map.containsKey('enabled')
+          ? _requireBool(map, 'enabled', 'phrases')
+          : true,
+      refreshHours: map.containsKey('refresh_hours')
+          ? _requireInt(map, 'refresh_hours', 'phrases')
+          : 6,
+      bankSize: map.containsKey('bank_size')
+          ? _requireInt(map, 'bank_size', 'phrases')
+          : 8,
+    );
+  }
+
+  static void _validatePhrases(PhrasesConfig phrases) {
+    _rangeInt('phrases.refresh_hours', phrases.refreshHours, 1, 168);
+    _rangeInt('phrases.bank_size', phrases.bankSize, 3, 24);
   }
 
   static void _validateRanges(
@@ -549,10 +590,15 @@ class AttentionConfig {
   const AttentionConfig({
     required this.faceAttentionTrigger,
     required this.strangerMode,
+    this.timezone = '',
   });
 
   final bool faceAttentionTrigger;
   final String strangerMode;
+
+  /// Optional IANA / human label for spoken TZ answers (e.g. America/New_York).
+  /// Clock itself always uses the terminal's system [DateTime.now].
+  final String timezone;
 }
 
 class DirectoryConfig {
@@ -590,4 +636,19 @@ class AdminConfig {
 
   final bool bindLan;
   final String token;
+}
+
+/// Periodic AO phrase banks for engage / sleep / social lines.
+class PhrasesConfig {
+  const PhrasesConfig({
+    this.enabled = true,
+    this.refreshHours = 6,
+    this.bankSize = 8,
+  });
+
+  final bool enabled;
+  final int refreshHours;
+  final int bankSize;
+
+  Duration get refreshEvery => Duration(hours: refreshHours);
 }

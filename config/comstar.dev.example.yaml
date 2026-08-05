@@ -36,6 +36,7 @@ avatar:
 attention:
   face_attention_trigger: false
   stranger_mode: restricted
+  timezone: America/New_York
 
 # Directory optional in Mac bring-up; require:false = fail-open to faceId.
 directory:

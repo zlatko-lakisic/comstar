@@ -341,6 +341,18 @@ pack time (AO `direct_agent` does not attach skills today).
 
 `agent_providers/greeter.yaml` — Engaged greeting (skill: `spoken_output`).
 Separate agent because it must be fast (target <1.5s) and has an empty MCP set.
+Live fallback when the phrase bank is empty.
+
+`agent_providers/phrase_bank.yaml` — Batch writer for engage / sleep_enter /
+sleep_wake / social text banks (optional `[[name]]` slots; not `{name}`, which AO
+templates consume). Bridge refreshes `~/.cache/comstar/phrase_banks.json` on a
+timer (`phrases.*` in config).
+
+**Bridge-local voice short-circuits** (before `client.voice_responder`): sleep /
+volume (`terminal_intent`), clock / date / season / timezone from the Pi system
+clock (`clock_intent`; optional spoken label `attention.timezone` or
+`COMSTAR_TZ`), and social check-ins (`social_intent` + social phrase bank). Do
+not route these through AO `time` MCP.
 
 ---
 
@@ -453,6 +465,7 @@ See `config/comstar.example.yaml` for the annotated version. Validation rules:
 | `audio.followup_window_seconds` | 0 ≤ x ≤ 30 |
 | `orchestration.timeout_seconds` | 5 ≤ x ≤ 60 |
 | `attention.stranger_mode` | enum: restricted \| greet \| ignore |
+| `attention.timezone` | optional spoken TZ label (IANA or human); clock uses Pi system time |
 | `avatar.render` | enum: local \| streamed |
 | `directory.enabled` | bool |
 | `directory.sidecar_url` | non-empty when `enabled` |

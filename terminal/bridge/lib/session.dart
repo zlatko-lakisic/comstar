@@ -6,6 +6,7 @@ import 'package:comstar_bridge/config.dart';
 import 'package:comstar_bridge/google/mcp_yaml.dart';
 import 'package:comstar_bridge/google/token_store.dart';
 import 'package:comstar_bridge/log.dart';
+import 'package:comstar_bridge/phrase_bank.dart';
 import 'package:comstar_bridge/speech_routing.dart';
 
 /// Thin interface over ao_reach [SessionBridge] for tests and stubs.
@@ -350,6 +351,7 @@ class ComstarSession {
 
   static const voiceAgentId = 'client.voice_responder';
   static const greeterAgentId = 'client.greeter';
+  static const phraseBankAgentId = 'client.phrase_bank';
 
   /// Hosted / tunnel MCP ids for known-user voice turns.
   ///
@@ -688,5 +690,72 @@ class ComstarSession {
       );
       return result['text']?.toString() ?? '';
     }
+  }
+
+  /// Batch-generate spoken lines for one phrase-bank category via AO.
+  Future<List<String>> runPhraseBank({
+    required String category,
+    int count = 8,
+  }) async {
+    await ensureReady();
+    final prompt = _phraseBankPrompt(category: category, count: count);
+    try {
+      final result = await _bridge.directAgent(
+        agentProviderId: phraseBankAgentId,
+        text: prompt,
+        mcpProviderIds: const [],
+        timeout: const Duration(seconds: 45),
+      );
+      return PhraseBank.parseAgentText(result['text']?.toString() ?? '');
+    } catch (e) {
+      final msg = e.toString();
+      final overlayGone = msg.contains('unknown agent_provider_id');
+      final bridgeDead = msg.contains('not active') ||
+          msg.contains('session bridge') ||
+          msg.contains('disconnected');
+      if (!overlayGone && !bridgeDead) rethrow;
+      logWarn(
+        'session_renew_retry',
+        'Phrase bank failed; renewing session and retrying',
+        data: {'error': msg, 'category': category},
+      );
+      await _reopen(userid: _userid!, guest: _guest);
+      final result = await _bridge.directAgent(
+        agentProviderId: phraseBankAgentId,
+        text: prompt,
+        mcpProviderIds: const [],
+        timeout: const Duration(seconds: 45),
+      );
+      return PhraseBank.parseAgentText(result['text']?.toString() ?? '');
+    }
+  }
+
+  static String _phraseBankPrompt({
+    required String category,
+    required int count,
+  }) {
+    final focus = switch (category) {
+      'engage' =>
+        'Someone just walked up to the terminal (engage / welcome). '
+            'Warm hello; may softly offer help.',
+      'sleep_enter' =>
+        'The user told COMSTAR to put ITSELF into sleep mode (dormant). '
+            'The user is NOT going to bed. Do NOT say good night, sweet dreams, '
+            'sleep well, or tuck them in. Acknowledge you are entering sleep mode; '
+            'mention they can say hey comstar to wake you.',
+      'sleep_wake' =>
+        'COMSTAR just woke from sleep after hearing hey comstar. Short '
+            'I-am-listening line; ready for their request.',
+      'social' =>
+        'Someone asked a social check-in with no task (whats up, how are you, '
+            'whats shaking, thanks). Reply in character as the hallway terminal: '
+            'warm, brief, lightly witty; invite a real request without being pushy.',
+      _ => 'Short household terminal phrases.',
+    };
+    return 'Write exactly $count spoken phrases for category "$category". '
+        '$focus '
+        'English only — no Chinese or other non-English scripts. '
+        'Mix lines that include the literal token [[name]] with anonymous lines '
+        'that do not. One phrase per line. No numbering or markdown.';
   }
 }

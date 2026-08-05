@@ -15,6 +15,7 @@ class FakeReachBridge implements ReachSessionBridge {
   List<String> fakeRegisteredAgentIds = const [
     'client.voice_responder',
     'client.greeter',
+    'client.phrase_bank',
   ];
   double? fakeExpiresAt;
   int refreshCount = 0;
