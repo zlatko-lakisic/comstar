@@ -1,0 +1,17 @@
+[Unit]
+Description=COMSTAR shared conversation memory
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/comstar/src
+Environment=COMSTAR_MEMORY_HOST=0.0.0.0
+Environment=COMSTAR_MEMORY_PORT=8792
+Environment=COMSTAR_MEMORY_DIR=%h/.local/share/comstar/conversation
+ExecStart=/usr/bin/python3 /opt/comstar/src/scripts/comstar_memory_server.py
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

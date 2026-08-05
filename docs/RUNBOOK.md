@@ -21,6 +21,7 @@ Hardware baseline: `docs/BASELINES.md`. Dev workflow: `docs/DEV_LOOP.md`.
 | Mic source | `COMSTAR_MIC_SOURCE` — sounddevice index or name substring (e.g. `C525`) |
 | Speaker source | `COMSTAR_SPEAKER_SOURCE` — Pulse/PipeWire sink for local `paplay` |
 | Phrase banks | `phrases:` in config — AO-refreshed engage / sleep_enter / sleep_wake / social lines (`~/.cache/comstar/phrase_banks.json`) |
+| Conversation memory | `memory:` + `comstar-memory` on `:8792` — rolling chat + durable FTS facts across terminals |
 | `~/.config/systemd/user/` | User units: `comstar-bridge`, `comstar-audio`, `comstar-kiosk`, `comstar-stt`, `comstar-tts`, `comstar-health.timer` |
 
 ### Health / auto-heal

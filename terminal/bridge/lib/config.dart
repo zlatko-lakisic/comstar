@@ -21,6 +21,7 @@ class ComstarConfig {
     required this.dev,
     this.admin = const AdminConfig(),
     this.phrases = const PhrasesConfig(),
+    this.memory = const MemoryConfig(),
     required this.sourcePath,
   });
 
@@ -33,6 +34,7 @@ class ComstarConfig {
   final DevConfig dev;
   final AdminConfig admin;
   final PhrasesConfig phrases;
+  final MemoryConfig memory;
   final String sourcePath;
 
   static const _topLevelKeys = {
@@ -45,6 +47,7 @@ class ComstarConfig {
     'dev',
     'admin',
     'phrases',
+    'memory',
   };
 
   static const _orchestrationKeys = {
@@ -113,6 +116,17 @@ class ComstarConfig {
     'bank_size',
   };
 
+  static const _memoryKeys = {
+    'enabled',
+    'max_turns',
+    'max_inject_chars',
+    'store_dir',
+    'url',
+    'durable',
+    'max_facts_inject',
+    'max_facts_chars',
+  };
+
   static ComstarConfig loadFile(String path) {
     final file = File(path);
     if (!file.existsSync()) {
@@ -156,9 +170,18 @@ class ComstarConfig {
                 ? Map<String, dynamic>.from(phrasesRaw)
                 : (throw ConfigError('Section phrases must be a mapping')),
           );
+    final memoryRaw = root['memory'];
+    final memory = memoryRaw == null
+        ? const MemoryConfig()
+        : _parseMemory(
+            memoryRaw is Map
+                ? Map<String, dynamic>.from(memoryRaw)
+                : (throw ConfigError('Section memory must be a mapping')),
+          );
 
     _validateRanges(vision, audio, orchestration, avatar, attention, directory);
     _validatePhrases(phrases);
+    _validateMemory(memory);
 
     return ComstarConfig(
       orchestration: orchestration,
@@ -170,6 +193,7 @@ class ComstarConfig {
       dev: dev,
       admin: admin,
       phrases: phrases,
+      memory: memory,
       sourcePath: sourcePath,
     );
   }
@@ -332,6 +356,39 @@ class ComstarConfig {
   static void _validatePhrases(PhrasesConfig phrases) {
     _rangeInt('phrases.refresh_hours', phrases.refreshHours, 1, 168);
     _rangeInt('phrases.bank_size', phrases.bankSize, 3, 24);
+  }
+
+  static MemoryConfig _parseMemory(Map<String, dynamic> map) {
+    _assertKnownKeys(map.keys, _memoryKeys, 'memory');
+    return MemoryConfig(
+      enabled: map.containsKey('enabled')
+          ? _requireBool(map, 'enabled', 'memory')
+          : true,
+      maxTurns: map.containsKey('max_turns')
+          ? _requireInt(map, 'max_turns', 'memory')
+          : 20,
+      maxInjectChars: map.containsKey('max_inject_chars')
+          ? _requireInt(map, 'max_inject_chars', 'memory')
+          : 3500,
+      storeDir: _optionalString(map, 'store_dir') ?? '',
+      url: _optionalString(map, 'url') ?? '',
+      durable: map.containsKey('durable')
+          ? _requireBool(map, 'durable', 'memory')
+          : true,
+      maxFactsInject: map.containsKey('max_facts_inject')
+          ? _requireInt(map, 'max_facts_inject', 'memory')
+          : 8,
+      maxFactsChars: map.containsKey('max_facts_chars')
+          ? _requireInt(map, 'max_facts_chars', 'memory')
+          : 1200,
+    );
+  }
+
+  static void _validateMemory(MemoryConfig memory) {
+    _rangeInt('memory.max_turns', memory.maxTurns, 2, 100);
+    _rangeInt('memory.max_inject_chars', memory.maxInjectChars, 500, 12000);
+    _rangeInt('memory.max_facts_inject', memory.maxFactsInject, 1, 32);
+    _rangeInt('memory.max_facts_chars', memory.maxFactsChars, 200, 4000);
   }
 
   static void _validateRanges(
@@ -651,4 +708,34 @@ class PhrasesConfig {
   final int bankSize;
 
   Duration get refreshEvery => Duration(hours: refreshHours);
+}
+
+/// Per-userid rolling conversation memory (cross-terminal via [url] or shared dir).
+class MemoryConfig {
+  const MemoryConfig({
+    this.enabled = true,
+    this.maxTurns = 20,
+    this.maxInjectChars = 3500,
+    this.storeDir = '',
+    this.url = '',
+    this.durable = true,
+    this.maxFactsInject = 8,
+    this.maxFactsChars = 1200,
+  });
+
+  final bool enabled;
+  final int maxTurns;
+  final int maxInjectChars;
+
+  /// Local/NFS directory for JSON histories when [url] is empty.
+  final String storeDir;
+
+  /// Shared HTTP memory server (`scripts/comstar_memory_server.py`).
+  /// Env `COMSTAR_MEMORY_URL` overrides when set.
+  final String url;
+
+  /// Phase 2: extract + retrieve durable facts (prefs / remember-that).
+  final bool durable;
+  final int maxFactsInject;
+  final int maxFactsChars;
 }

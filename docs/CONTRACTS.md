@@ -354,6 +354,13 @@ clock (`clock_intent`; optional spoken label `attention.timezone` or
 `COMSTAR_TZ`), and social check-ins (`social_intent` + social phrase bank). Do
 not route these through AO `time` MCP.
 
+**Conversation memory:** per recognized `userid` rolling transcript
+(last `memory.max_turns` turns) plus durable facts (`memory.durable`) extracted
+from “remember that…”, prefs, name, etc. Injected into AO voice prompts; guests
+get none. Shared across terminals via `memory.url` →
+`scripts/comstar_memory_server.py` (SQLite FTS for facts). This is COMSTAR-owned
+RAG-lite — not AO `memory` MCP (still unavailable on this Ada host).
+
 ---
 
 ## 5. MCP tools exposed by COMSTAR

@@ -46,6 +46,19 @@ phrases:
   refresh_hours: 6                            # 1–168
   bank_size: 8                                 # 3–24 lines per category
 
+# Rolling conversation memory (per recognized userid). Guests get none.
+# Prefer url (shared HTTP) so multiple hallway terminals share one history.
+# Env overrides: COMSTAR_MEMORY_URL, COMSTAR_MEMORY_DIR, COMSTAR_TERMINAL_ID.
+memory:
+  enabled: true
+  max_turns: 20                                # 2–100
+  max_inject_chars: 3500                       # 500–12000
+  store_dir: ""                                # default ~/.local/share/comstar/conversation
+  url: "http://127.0.0.1:8792"                 # scripts/comstar_memory_server.py
+  durable: true                                # Phase 2 prefs / remember-that facts
+  max_facts_inject: 8                          # 1–32
+  max_facts_chars: 1200                        # 200–4000
+
 # FreeIPA directory resolve (ADR 0005). When enabled=false, faceId == session uid.
 directory:
   enabled: false

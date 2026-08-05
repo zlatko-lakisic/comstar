@@ -11,6 +11,7 @@ import 'package:comstar_bridge/attention/runner.dart';
 import 'package:comstar_bridge/attention/states.dart';
 import 'package:comstar_bridge/config.dart';
 import 'package:comstar_bridge/clock_intent.dart';
+import 'package:comstar_bridge/conversation_memory.dart';
 import 'package:comstar_bridge/directory/directory_resolver.dart';
 import 'package:comstar_bridge/envelope.dart';
 import 'package:comstar_bridge/env_sources.dart';
@@ -57,6 +58,7 @@ class AttentionCoordinator {
     GoogleDevicePairing? googlePairing,
     GoogleDesktopUpgrade? googleDesktopUpgrade,
     DirectoryResolver? directory,
+    ConversationMemory? conversationMemory,
   })  : clock = clock ?? SystemClock(),
         control = control ?? TerminalControl(),
         googleTokens = googleTokenStore ?? GoogleTokenStore(),
@@ -67,6 +69,8 @@ class AttentionCoordinator {
               config: config.directory,
               clock: clock ?? SystemClock(),
             ),
+        conversationMemory =
+            conversationMemory ?? ConversationMemory.fromConfig(config),
         machine = AttentionMachine(
           config: config,
           clock: clock ?? SystemClock(),
@@ -91,6 +95,7 @@ class AttentionCoordinator {
   final GoogleDevicePairing googleOAuth;
   final GoogleDesktopUpgrade googleDesktop;
   final DirectoryResolver directory;
+  final ConversationMemory conversationMemory;
   final Clock clock;
 
   /// Snapshot for local health checks / auto-heal (inject `/health`).
@@ -111,6 +116,10 @@ class AttentionCoordinator {
         'phrase_bank': {
           for (final c in PhraseCategory.all) c: phraseBank.count(c),
           'updated_at': phraseBank.updatedAt?.toUtc().toIso8601String(),
+        },
+        'memory': {
+          'enabled': conversationMemory.enabled,
+          'userid': _memoryUserid,
         },
       };
   final AttentionMachine machine;
@@ -1365,12 +1374,17 @@ class AttentionCoordinator {
 
       final clipped =
           text.length > 500 ? '${text.substring(0, 500)}…' : text;
+      final memoryUser = _memoryUserid;
+      final agentText = memoryUser != null
+          ? await conversationMemory.wrapForAgent(memoryUser, text)
+          : text;
       logInfo('direct_agent', 'Calling voice agent', data: {
         'turn_id': turnId,
         'text': clipped,
+        'memory': memoryUser != null,
         'mcp': session.mcpProvidersForVoice(utterance: text),
       });
-      var response = await session.directVoice(text);
+      var response = await session.directVoice(agentText);
       if (_looksLikeToolStallProse(response)) {
         logWarn('direct_agent_tool_stall', 'AO returned tool-loop stall prose', data: {
           'turn_id': turnId,
@@ -1404,6 +1418,7 @@ class AttentionCoordinator {
             ? '${response.substring(0, 80)}…'
             : response,
       });
+      unawaited(_rememberExchange(userText: text, assistantText: response));
       final ttsSpan = Span('tts_total');
       final path = await tts.synthesizeToFile(response);
       _lastTtsTotal = Duration(milliseconds: ttsSpan.elapsedMs);
@@ -1419,6 +1434,29 @@ class AttentionCoordinator {
       );
     } finally {
       turnSpan.close();
+    }
+  }
+
+  String? get _memoryUserid {
+    if (session.guest) return null;
+    final id = session.userid ?? machine.context.cachedUserid;
+    return ConversationMemory.isMemoryUser(id) ? id : null;
+  }
+
+  Future<void> _rememberExchange({
+    required String userText,
+    required String assistantText,
+  }) async {
+    final uid = _memoryUserid;
+    if (uid == null) return;
+    try {
+      await conversationMemory.recordExchange(
+        userid: uid,
+        userText: userText,
+        assistantText: assistantText,
+      );
+    } catch (e) {
+      logWarn('memory_record_failed', e.toString());
     }
   }
 
@@ -1452,7 +1490,7 @@ class AttentionCoordinator {
       'kind': intent.kind.name,
       'chars': spoken.length,
     });
-    await _speakText(spoken, turnId);
+    await _speakText(spoken, turnId, rememberUserText: text);
     return true;
   }
 
@@ -1534,7 +1572,7 @@ class AttentionCoordinator {
         'chars': spoken.length,
         'preview': spoken.length > 160 ? '${spoken.substring(0, 160)}…' : spoken,
       });
-      await _speakText(spoken, turnId);
+      await _speakText(spoken, turnId, rememberUserText: text);
       return true;
     } catch (e) {
       logWarn('google_data_failed', e.toString(), data: {
@@ -1544,6 +1582,7 @@ class AttentionCoordinator {
       await _speakText(
         'I could not read that from Google right now. Try again in a moment.',
         turnId,
+        rememberUserText: text,
       );
       return true;
     } finally {
@@ -1945,7 +1984,11 @@ class AttentionCoordinator {
   }
 
   /// Turn reply via the attention machine (must be in Responding).
-  Future<void> _speakText(String spoken, String turnId) async {
+  Future<void> _speakText(
+    String spoken,
+    String turnId, {
+    String? rememberUserText,
+  }) async {
     final ttsSpan = Span('tts_total');
     final path = await tts.synthesizeToFile(spoken);
     _lastTtsTotal = Duration(milliseconds: ttsSpan.elapsedMs);
@@ -1953,6 +1996,14 @@ class AttentionCoordinator {
     _noteSpeakDuration(path: path, text: spoken);
     final audioUrl = audioServer.registerFile(path);
     handle(ResponseReady(spoken, audioUrl));
+    if (rememberUserText != null) {
+      unawaited(
+        _rememberExchange(
+          userText: rememberUserText,
+          assistantText: spoken,
+        ),
+      );
+    }
   }
 
   /// Greeter-style announce while Engaged (pairing outcome after the turn).
@@ -2054,6 +2105,7 @@ class AttentionCoordinator {
     _noteSpeakDuration(path: path, text: spoken);
     final audioUrl = audioServer.registerFile(path);
     handle(ResponseReady(spoken, audioUrl));
+    unawaited(_rememberExchange(userText: text, assistantText: spoken));
     return true;
   }
 
@@ -2074,7 +2126,7 @@ class AttentionCoordinator {
       'kind': intent.kind.name,
       'spoken': spoken,
     });
-    await _speakText(spoken, turnId);
+    await _speakText(spoken, turnId, rememberUserText: text);
     return true;
   }
 
@@ -2099,7 +2151,7 @@ class AttentionCoordinator {
       'from_bank': bankLine != null && bankLine.trim().isNotEmpty,
       'spoken': spoken.length > 80 ? '${spoken.substring(0, 80)}…' : spoken,
     });
-    await _speakText(spoken, turnId);
+    await _speakText(spoken, turnId, rememberUserText: text);
     return true;
   }
 

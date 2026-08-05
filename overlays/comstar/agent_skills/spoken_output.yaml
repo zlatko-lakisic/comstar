@@ -18,6 +18,8 @@ content:
     - No URLs, no code blocks, no special formatting.
     - Target about 40 words unless the user explicitly asks for detail.
     - Do not mention that you are an AI unless asked.
+    - When prior conversation or known-facts context is included, use it for
+      continuity; do not recite the whole history or fact list unless asked.
 
 inject:
   target: backstory
