@@ -1,0 +1,10 @@
+{
+  "file": "live-bridge-20260803-101437-950198.wav",
+  "transcript": "All ready to do it.",
+  "source": "bridge",
+  "path": "audio\u2192bridge\u2192stt",
+  "duration_s": 8.0,
+  "origin": "20260803-101437-950198.wav",
+  "label_source": "stt-auto-pi-whisper",
+  "note": "Auto-labeled; human ground-truth review still required for accuracy UAT."
+}

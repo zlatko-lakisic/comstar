@@ -14,7 +14,7 @@
  * Neither hook is required. A preset with no `.cs-rings` simply sits still.
  *
  * Add your own by appending to EMBLEMS; `avatar.render` in comstar.yaml takes
- * any key from this object.
+ * any key from this object. Raw SVG markup is not accepted at runtime.
  */
 
 const PALE = '#eaf6ff';
@@ -130,11 +130,11 @@ export const EMBLEMS = { starburst, reactor, sentinel, spectrum, instrument };
 
 export const EMBLEM_NAMES = Object.keys(EMBLEMS);
 
-/** Accepts a preset name or raw SVG markup. Falls back to the starburst. */
+/** Accepts a known preset name only. Raw SVG markup is rejected (XSS). */
 export function resolveEmblem(nameOrMarkup) {
   if (!nameOrMarkup) return EMBLEMS.starburst;
-  if (EMBLEMS[nameOrMarkup]) return EMBLEMS[nameOrMarkup];
-  if (nameOrMarkup.includes('<')) return nameOrMarkup;
-  console.warn(`[avatar] unknown emblem "${nameOrMarkup}", using starburst`);
+  const key = String(nameOrMarkup).trim();
+  if (EMBLEMS[key]) return EMBLEMS[key];
+  console.warn(`[avatar] unknown emblem "${key}", using starburst`);
   return EMBLEMS.starburst;
 }

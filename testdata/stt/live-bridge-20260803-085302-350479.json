@@ -1,0 +1,10 @@
+{
+  "file": "live-bridge-20260803-085302-350479.wav",
+  "transcript": "Hey.",
+  "source": "bridge",
+  "path": "audio\u2192bridge\u2192stt",
+  "duration_s": 3.2,
+  "origin": "20260803-085302-350479.wav",
+  "label_source": "stt-auto-pi-whisper",
+  "note": "Auto-labeled; human ground-truth review still required for accuracy UAT."
+}

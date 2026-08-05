@@ -108,13 +108,32 @@
   const DEFAULT_TARGET = 'http://127.0.0.1:8776/kiosk/?bloom=3&fps=12';
   const BOOT = 'http://127.0.0.1:8776/kiosk/boot.txt';
   const params = new URLSearchParams(location.search);
-  const target = params.get('target') || DEFAULT_TARGET;
   const timeoutMs = Number(params.get('timeout_ms') || 90000);
   const statusEl = document.getElementById('status');
   const spinEl = document.getElementById('spin');
   const retryEl = document.getElementById('retry');
   let stopped = false;
   let started = performance.now();
+
+  /** Only allow loopback kiosk URLs — blocks open redirects / XSS via ?target=. */
+  function sanitizeTarget(raw) {
+    try {
+      const u = new URL(String(raw || ''), 'http://127.0.0.1');
+      if (u.protocol !== 'http:' && u.protocol !== 'https:') return DEFAULT_TARGET;
+      if (u.hostname !== '127.0.0.1' && u.hostname !== 'localhost') return DEFAULT_TARGET;
+      if (u.port !== '8776') return DEFAULT_TARGET;
+      if (!u.pathname.startsWith('/kiosk')) return DEFAULT_TARGET;
+      // Drop credentials / hash; keep query for bloom/fps.
+      u.username = '';
+      u.password = '';
+      u.hash = '';
+      return u.toString();
+    } catch (_) {
+      return DEFAULT_TARGET;
+    }
+  }
+
+  const target = sanitizeTarget(params.get('target') || DEFAULT_TARGET);
 
   function setStatus(msg, err) {
     statusEl.textContent = msg;

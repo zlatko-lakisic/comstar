@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
@@ -12,6 +13,7 @@ from urllib.parse import parse_qs, urlparse
 try:
     from ldap3 import ALL, Connection, Server
     from ldap3.core.exceptions import LDAPException
+    from ldap3.utils.conv import escape_filter_chars
 except ImportError:  # pragma: no cover
     print("ldap3 required: pip install -r directory_sidecar/requirements.txt", file=sys.stderr)
     raise
@@ -30,17 +32,29 @@ VOICE_ATTR = _env("COMSTAR_LDAP_VOICE_ATTR", "comstarVoiceId")
 HOST = _env("COMSTAR_DIR_HOST", "127.0.0.1")
 PORT = int(_env("COMSTAR_DIR_PORT", "8780") or "8780")
 
+_ATTR_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,63}$")
+_MODALITY_ID = re.compile(r"^[A-Za-z0-9._:@+=/-]{1,128}$")
+
 
 def _escape_filter(value: str) -> str:
-    """RFC 4515 filter escaping."""
-    out: list[str] = []
-    for ch in value:
-        code = ord(ch)
-        if ch in {"\\", "*", "(", ")"} or code == 0:
-            out.append(f"\\{code:02x}")
-        else:
-            out.append(ch)
-    return "".join(out)
+    """RFC 4515 filter escaping via ldap3 (CodeQL-recognized)."""
+    return escape_filter_chars(value)
+
+
+def _safe_attr(attr: str) -> str | None:
+    if not _ATTR_NAME.match(attr):
+        return None
+    # Only the configured face/voice attributes are allowed in filters.
+    if attr not in {FACE_ATTR, VOICE_ATTR, "uid"}:
+        return None
+    return attr
+
+
+def _safe_modality_id(value: str) -> str | None:
+    text = value.strip()
+    if not text or not _MODALITY_ID.match(text):
+        return None
+    return text
 
 
 def _first(attrs: dict[str, Any], *keys: str) -> str | None:
@@ -81,7 +95,9 @@ def resolve(attr: str, value: str) -> dict[str, Any] | None:
     """Return profile dict or None if not found. Raises on LDAP failure."""
     if not ldap_configured():
         raise RuntimeError("ldap_not_configured")
-    if not value.strip():
+    safe_attr = _safe_attr(attr)
+    safe_value = _safe_modality_id(value)
+    if not safe_attr or not safe_value:
         return None
 
     server = Server(LDAP_URL, get_info=ALL)
@@ -93,7 +109,8 @@ def resolve(attr: str, value: str) -> dict[str, Any] | None:
         raise_exceptions=True,
     )
     try:
-        filt = f"(&(objectClass=comstarPerson)({attr}={_escape_filter(value)}))"
+        escaped = _escape_filter(safe_value)
+        filt = f"(&(objectClass=comstarPerson)({safe_attr}={escaped}))"
         conn.search(
             BASE_DN,
             filt,
@@ -108,7 +125,7 @@ def resolve(attr: str, value: str) -> dict[str, Any] | None:
         )
         if not conn.entries:
             # Fallback: uid == modality id (pre-comstarPerson migration).
-            filt2 = f"(uid={_escape_filter(value)})"
+            filt2 = f"(uid={escaped})"
             conn.search(
                 BASE_DN,
                 filt2,

@@ -183,6 +183,23 @@ void main() {
       expect(_hasEffectType<OpenFollowUpWindow>(t.effects), isTrue);
       expect(_hasEffectType<EnableWake>(t.effects), isTrue);
     });
+
+    test('engaged + late ResponseReady creates a valid responding turn', () {
+      final m = _machine();
+      _apply(m, const PersonDetected(0.8));
+      _apply(m, const FaceRecognized('zlatko', 0.9));
+      _apply(m, const PlaybackEnded());
+
+      final t = m.handle(
+        const ResponseReady('late reply', 'http://127.0.0.1/late.wav'),
+      );
+
+      expect(t.to, isA<Responding>());
+      expect(m.context.turnId, isNotNull);
+      expect(t.effects.whereType<Speak>().single.turnId, m.context.turnId);
+      assertInvariants(t.context);
+    });
+
     test('noticed + FaceRecognized → engaged', () {
       final m = _machine();
       _apply(m, const PersonDetected(0.8));

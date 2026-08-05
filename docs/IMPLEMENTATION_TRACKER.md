@@ -18,32 +18,32 @@
 
 | Field | Value |
 |---|---|
-| Active milestone | **M4 / M7 / M8 hardware gates** (software path largely wired) |
-| Overall Phase 1 | ~75% |
-| Last updated | 2026-08-03 |
-| Board | `comstar-ai` Pi 4B 4GB @ `192.168.89.34` — SSH Host `comstar` (key auth) |
-| Vision backend | CodeProject.AI `10.0.10.16:32168` (GPU YOLO + Face) — `verify_cpai.sh` green |
-| AO Reach | `10.0.10.16:8765` v1.27.4 — greeter + voice_responder live PASS |
-| Speech | On-Pi `comstar-stt` (faster-whisper tiny) + `comstar-tts` (Piper/sherpa) |
-| Product code | bridge + audio + kiosk + STT/TTS under `/opt/comstar/src` systemd user units |
-| Packaging | `deploy/deploy.sh` creates config, installs units, waits for `:8778` |
-| Tests | Dart + Python unit tests green on Mac; live STT gate needs more bridge fixtures |
+| Active milestone | **M4 / M6–M9 hardware & UAT gates** (software path live) |
+| Overall Phase 1 | ~80% |
+| Last updated | 2026-08-05 |
+| Board | `comstar-ai` Pi 4B 4GB @ `192.168.89.34` — SSH Host `comstar` |
+| Vision backend | CodeProject.AI `10.0.10.16:32168` — face `zlatko` enrolled |
+| AO Reach | `10.0.10.16:8765` — greeter + voice live; **Ada speech sidecars** in use |
+| Speech | Prefer Reach `SpeechClient` → Ada `:8093`/`:8092`; Pi STT/TTS fallback units still active |
+| Memory | Phase 1 rolling + Phase 2 durable FTS on `comstar-memory` `:8792` |
+| Product code | bridge + audio + kiosk + memory under `/opt/comstar/src` systemd user units |
 
-### Remaining before Phase 1 exit
+### Remaining before Phase 1 exit (needs you / wall-clock)
 
-- Wake-word ONNX train + ROC (M4) — bypasses ready (`wake.force`, inject, `COMSTAR_FORCE_WAKE_SCORE`)
-- TalkingHead GLB lip-sync (M7) — HTMLAudio path VERIFIED; GLB still SPEC
-- Face enrollment with a person in frame (M8)
-- 24 h soak + failure matrix (M9)
+- Wake-word ONNX train + ROC (M4) — force-wake documented; no training data yet
+- Live STT **human** labels (M6) — 12 live fixtures pass circular auto-bench; GT review open
+- Walk-up greet-by-name UAT (M8) — face `zlatko` enrolled; stand in frame
+- 24 h soak (M9) — **started** `~/.local/share/comstar/soak/20260805-025615/` (AO probe fixed)
 
 ### Open blockers / gaps
 
 | ID | Item | Blocks | Owner note |
 |---|---|---|---|
-| B6 | No faces enrolled | M8 greet-by-name | Camera clear but empty room → `ENROLL_SKIPPED_NO_FACE` |
-| B8 | Wake ONNX not trained | M4 ROC exit | Runtime + refractory done; train script documents bypasses |
-| B9 | TalkingHead GLB missing | M7 lip-sync UAT | Audio path + state visuals shipping |
-| B11 | Live STT fixture set thin | M6 voice UAT gate | Need ≥10 labeled `source=bridge` captures; parecord goldens do not count |
+| B8 | Wake ONNX not trained | M4 ROC | Needs room recordings + openWakeWord AutoTrainer env |
+| B9 | TalkingHead GLB not wired | M7 lip-sync | Intentional SVG shipping; `assets/comstar.glb` present (gitignored) |
+| B11 | STT fixtures need human labels | M6 accuracy gate | Auto-bench PASS 12/12 vs Pi whisper; not human GT |
+| B12 | Terminal MCP hangs AO tools | M5 tunnel | Keep `COMSTAR_TERMINAL_MCP` off; in-bridge sleep/volume |
+| B13 | Vision MCP not registered on AO | M5 who_is_present | Code in `mcp/vision_mcp/`; needs Ada catalog + frame source |
 ---
 
 ## Milestone rollup
@@ -51,133 +51,22 @@
 | # | Name | Effort | Status | Progress | Gate |
 |---|---|---|---|---|---|
 | M0 | Ground truth | 6h | `done` | 100% | CPAI+AO+baselines+ADR |
-| M1 | Skeleton & config | 8h (+3h DEV_LOOP) | `done` | 100% | three processes + deploy |
+| M1 | Skeleton & config | 8h | `done` | 100% | three processes + deploy |
 | M2 | Vision client | 10h | `done` | 100% | offline tests + live CPAI |
-| M3 | Attention state machine | 12h (+4h console) | `done` | 100% | property + branch tests |
-| M4 | Audio pipeline | 14h | `in_progress` | ~70% | wake ROC + hardware UAT |
-| M5 | AO Reach session | 12h | `in_progress` | ~80% | greeter/voice live; MCP tunnel partial |
-| M6 | Voice round trip | 10h | `in_progress` | ~85% | On-Pi whisper STT + sherpa TTS; live fixture UAT open |
-| M7 | Avatar & kiosk | 14h | `in_progress` | ~50% | audio path + ADR; GLB open |
-| M8 | First contact | 10h | `in_progress` | ~40% | wiring done; enroll/walk-up open |
-| M9 | Hardening & soak | 16h | `not_started` | 0% | 24h soak + runbook polish |
+| M3 | Attention state machine | 12h | `done` | 100% | property + branch tests |
+| M4 | Audio pipeline | 14h | `in_progress` | ~75% | wake ROC + hardware UAT |
+| M5 | AO Reach session | 12h | `in_progress` | ~85% | greeter/voice/Google live; MCP tunnel partial |
+| M6 | Voice round trip | 10h | `in_progress` | ~90% | Ada speech live; fixture accuracy UAT open |
+| M7 | Avatar & kiosk | 14h | `in_progress` | ~70% | SVG emblem shipping; GLB optional |
+| M8 | First contact | 10h | `in_progress` | ~55% | face enrolled; walk-up UAT open |
+| M9 | Hardening & soak | 16h | `in_progress` | ~25% | soak started 2026-08-05; failure matrix scaffolded |
 
 ---
 
-## Preflight
+## Next concrete actions (human / hardware)
 
-- [x] Pi identified and documented (`docs/BASELINES.md`)
-- [x] OS fully upgraded
-- [x] Ethernet preferred default route
-- [x] USB camera + mic + HDMI
-- [x] CodeProject.AI GPU modules
-- [x] Face-miss shape (`userid: "unknown"`)
-- [x] SSH key + `~/.ssh/config` Host `comstar`
-- [ ] `ai-server.lan` → `10.0.10.16` on Mac and Pi (optional; IP used everywhere)
-- [x] Dart / Node / jq on Pi
-- [x] linger enabled
-- [x] AO overlay + tunnel
-- [x] STT via on-Pi `scripts/stt_server_whisper.py` (`comstar-stt` :8090) — fallback
-- [x] TTS via on-Pi `scripts/tts_server.py` (`comstar-tts` :8091) — fallback
-- [x] Prefer Reach `SpeechClient` (AO ≥ 1.28 / Reach ≥ 0.2); env URL fallback
-
----
-
-## M0 — Ground truth — `done`
-
-| ID | Task | Status |
-|---|---|---|
-| M0.1 | `scripts/verify_cpai.sh` + fixtures | `done` |
-| M0.2 | GPU baselines (idle p50/p95) | `done` (loaded contention optional) |
-| M0.3 | `spike/reach_hello.dart` | `done` |
-| M0.4 | TalkingHead / avatar API → CONTRACTS §9 | `done` (audio path VERIFIED) |
-| M0.5 | Pi baseline | `done` |
-| M0.6 | Audio routing ADR | `done` |
-
----
-
-## M1–M3 — `done`
-
-Scaffold, config, WS, vision client, attention machine, deploy/doctor — shipped and tested.
-
----
-
-## M4 — Audio pipeline — `in_progress`
-
-- [x] Capture + 3 s ring
-- [x] Stream pre-roll + `maxMs` hard stop
-- [x] Wake refractory 2 s + force/inject bypasses
-- [x] VAD (energy with hysteresis; Silero optional)
-- [ ] Train `hey_comstar.onnx` + ROC table
-- [ ] Hardware UAT (3 m / TV)
-
----
-
-## M5 — AO session — `in_progress`
-
-- [x] Session manager + greeter/voice overlays
-- [x] Guest MCP excludes `home_assistant`
-- [x] Live greeter/voice against `10.0.10.16`
-- [x] Terminal MCP server stub (`mcp/terminal_mcp/server.py`)
-- [x] Google Workspace via off-the-shelf MCP + Reach tunnel (`client.google_workspace`)
-- [ ] Wire terminal tunnel bootstrap (`COMSTAR_TERMINAL_MCP=1`) when AO path is proven
-- [ ] Vision MCP hosted registration
-
----
-
-## M6 — Voice round trip — `in_progress`
-
-- [x] STT client + local server
-- [x] TTS Piper/FakeTts + fallback WAVs
-- [x] Coordinator wiring + `speak.ended` watchdog
-- [x] Follow-up window (listen without wake)
-- [x] `scripts/latency_report.py`
-- [x] Prefer Reach `SpeechClient` when AO advertises `hello.speech` (ADR 0003)
-- [x] Env URL fallback (`COMSTAR_STT_URL` / `COMSTAR_TTS_URL`) for Mac/dev
-- [x] Pi-local STT/TTS units retained as optional fallback
-- [ ] ≥10 labeled live-bridge STT fixtures + `--require-live 10` (re-bench vs Ada)
-- [ ] 20 consecutive spoken UAT
-- [ ] Disable always-on Pi `comstar-stt`/`comstar-tts` once Ada speech proven in prod
-
----
-
-## M7 — Avatar & kiosk — `in_progress`
-
-- [x] Kiosk shell + Chromium unit (`/opt/comstar/src`)
-- [x] HTMLAudioElement speak path + state visuals
-- [x] ADR 0002 render path (local)
-- [ ] GLB TalkingHead lip-sync
-- [ ] Pi fps measurement in BASELINES
-
----
-
-## M8 — First contact — `in_progress`
-
-- [x] Full software wiring on Pi (bridge+audio+kiosk active)
-- [x] Greeter half-duplex + cache
-- [x] `enroll_face.sh`
-- [ ] Enroll real user (needs face in frame) — `zlatko` enrolled on CPAI; re-verify walk-up
-- [ ] Walk-up UAT-8
-
----
-
-## M9 — Hardening — `not_started`
-
-Failure matrix, soak, privacy audit.
-
----
-
-## Definition of done (Phase 1)
-
-> Walk into the room, be greeted by name within two seconds, ask a question in plain speech without touching anything, and get a spoken, lip-synced answer in under fifteen seconds — reliably, for a week, with the outside network unplugged.
-
-**Software path is deployable and live-tested against AO + CPAI.** Hardware UATs (enroll, wake ROC, GLB lip-sync, soak) remain.
-
----
-
-## Next concrete actions
-
-1. Collect ≥10 labeled live-bridge STT fixtures; run `bench_stt --require-live 10`
-2. Fast-speech UAT after VAD hysteresis (`COMSTAR_VAD_SILENCE_MS=1200`)
-3. Train or obtain `models/hey_comstar.onnx` (or run with `COMSTAR_FORCE_WAKE_SCORE=0.99`)
-4. Drop a GLB at `assets/comstar.glb` and wire TalkingHead
-5. Run M9 soak
+1. Record “hey comstar” + negatives → train `models/hey_comstar.onnx` + ROC
+2. Human-label `testdata/stt/live-bridge-*.json` transcripts; re-run `bench_stt --require-live 10`
+3. Stand in frame → walk-up greet-by-name UAT-8
+4. Let soak finish 24h → read `~/.local/share/comstar/soak/*/summary.json`
+5. Decide: keep SVG emblem (current) vs wire TalkingHead + branded GLB

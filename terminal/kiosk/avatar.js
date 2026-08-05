@@ -87,6 +87,19 @@ export class ComstarAvatar {
 
   // ------------------------------------------------------------------ DOM
 
+  /** Mount a trusted preset SVG fragment without assigning raw HTML strings. */
+  _mountEmblem(parent) {
+    const markup = String(this.emblem || '');
+    const wrap = `<svg xmlns="http://www.w3.org/2000/svg">${markup}</svg>`;
+    const doc = new DOMParser().parseFromString(wrap, 'image/svg+xml');
+    if (doc.querySelector('parsererror')) return;
+    const root = doc.documentElement;
+    const owner = parent.ownerDocument || document;
+    while (root.firstChild) {
+      parent.appendChild(owner.importNode(root.firstChild, true));
+    }
+  }
+
   _build() {
     this.container.innerHTML = '';
     // Match the GitHub Pages hero: deep navy with a soft cyan wash that
@@ -137,22 +150,51 @@ export class ComstarAvatar {
       maxHeight: '100%',
       zIndex: '1',
     });
-    svg.innerHTML = `
-      <title>COMSTAR</title>
-      <defs>
-        <filter id="${uid}-bloom" x="-60%" y="-60%" width="220%" height="220%"
-                color-interpolation-filters="sRGB">
-          <feGaussianBlur stdDeviation="${this.bloom}"/>
-        </filter>
-      </defs>
-      <g class="cs-shift" transform="translate(256,256)">
-        <g class="cs-halo">${this.emblem}</g>
-        <g class="cs-core">${this.emblem}</g>
-        <circle class="cs-meter" r="226" fill="none" stroke="#7fc4ff"
-                stroke-width="6" stroke-linecap="round"
-                stroke-dasharray="0 ${METER_CIRCUM}"
-                transform="rotate(-90)" opacity="0"/>
-      </g>`;
+    const title = document.createElementNS(ns, 'title');
+    title.textContent = 'COMSTAR';
+    svg.appendChild(title);
+
+    const defs = document.createElementNS(ns, 'defs');
+    const filter = document.createElementNS(ns, 'filter');
+    filter.setAttribute('id', `${uid}-bloom`);
+    filter.setAttribute('x', '-60%');
+    filter.setAttribute('y', '-60%');
+    filter.setAttribute('width', '220%');
+    filter.setAttribute('height', '220%');
+    filter.setAttribute('color-interpolation-filters', 'sRGB');
+    const blur = document.createElementNS(ns, 'feGaussianBlur');
+    blur.setAttribute('stdDeviation', String(this.bloom));
+    filter.appendChild(blur);
+    defs.appendChild(filter);
+    svg.appendChild(defs);
+
+    const shift = document.createElementNS(ns, 'g');
+    shift.setAttribute('class', 'cs-shift');
+    shift.setAttribute('transform', 'translate(256,256)');
+
+    const halo = document.createElementNS(ns, 'g');
+    halo.setAttribute('class', 'cs-halo');
+    this._mountEmblem(halo);
+
+    const core = document.createElementNS(ns, 'g');
+    core.setAttribute('class', 'cs-core');
+    this._mountEmblem(core);
+
+    const meter = document.createElementNS(ns, 'circle');
+    meter.setAttribute('class', 'cs-meter');
+    meter.setAttribute('r', '226');
+    meter.setAttribute('fill', 'none');
+    meter.setAttribute('stroke', '#7fc4ff');
+    meter.setAttribute('stroke-width', '6');
+    meter.setAttribute('stroke-linecap', 'round');
+    meter.setAttribute('stroke-dasharray', `0 ${METER_CIRCUM}`);
+    meter.setAttribute('transform', 'rotate(-90)');
+    meter.setAttribute('opacity', '0');
+
+    shift.appendChild(halo);
+    shift.appendChild(core);
+    shift.appendChild(meter);
+    svg.appendChild(shift);
     this.container.appendChild(svg);
     this.svg = svg;
     this._fitSquare();
@@ -164,10 +206,10 @@ export class ComstarAvatar {
       window.addEventListener('resize', this._onResize);
     }
 
-    this.shift = svg.querySelector('.cs-shift');
-    this.halo = svg.querySelector('.cs-halo');
-    this.core = svg.querySelector('.cs-core');
-    this.meter = svg.querySelector('.cs-meter');
+    this.shift = shift;
+    this.halo = halo;
+    this.core = core;
+    this.meter = meter;
 
     // Halo is a blurred twin of the core. feGaussianBlur is the expensive
     // part on VideoCore — keep stdDeviation low, or bloom=0 to skip entirely.

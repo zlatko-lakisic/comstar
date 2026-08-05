@@ -269,18 +269,36 @@ determinism — it is not a product accuracy test.
 
 ---
 
-## 4. Train wake word (placeholder)
+## 4. Train wake word (M4.2) + runtime bypass
 
-Full training is M4.2. Until the openWakeWord pipeline is provisioned:
+**Shipping path today:** no `hey_comstar.onnx` yet. Audio uses energy-gated
+**force-wake** (`COMSTAR_FORCE_WAKE_SCORE`, default RMS ~0.08) plus sleep-mode
+STT verify (`maxMs` 7500). That is enough for hallway bring-up; it is **not**
+the M4 ROC gate.
+
+### Train ONNX (when room data exists)
+
+1. Record ≥50 positive “hey comstar” clips across the room + TV/ads negatives.
+2. Provision openWakeWord AutoTrainer (Piper voices + negative corpus + IRs).
+3. Run:
 
 ```bash
 python scripts/train_wakeword.py --phrase "hey comstar" \
-  --out terminal/audio/models/hey_comstar.onnx
+  --out models/hey_comstar.onnx
 ```
 
-Without `openwakeword[train]`, the script prints setup instructions and exits.
-The audio process uses a stub wake detector that never fires until a real ONNX
-model is deployed to `models/hey_comstar.onnx` (or the path in config).
+Until AutoTrainer is assembled, the script exits `2` and prints bypasses.
+Deploy the ONNX next to the audio process (`models/hey_comstar.onnx` or the
+path in config), then produce the ROC table (`make wake-sweep`) and commit it
+under `docs/` / BASELINES.
+
+### Runtime bypasses (no ONNX)
+
+| Mechanism | How |
+|---|---|
+| Force-wake energy | `COMSTAR_FORCE_WAKE_SCORE` on `comstar-audio` (refractory ~5s) |
+| Dev inject | `POST /admin/inject` `WakeWord` with `{"score":0.99}` |
+| Sleep verify | After candidate wake while sleeping, STT must look like wake/engage |
 
 ---
 

@@ -51,6 +51,24 @@ def safe_userid(raw: str) -> str | None:
     return cleaned
 
 
+def safe_fact_id(raw: str) -> str | None:
+    cleaned = re.sub(r"[^a-z0-9_-]", "_", raw.strip().lower())
+    if not cleaned or not SAFE.match(cleaned):
+        return None
+    return cleaned
+
+
+def memory_path(userid: str) -> Path:
+    """Resolve ``<store>/<userid>.json`` and reject path escape attempts."""
+    root = store_dir().resolve()
+    candidate = (root / f"{userid}.json").resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError as exc:  # pragma: no cover - defensive
+        raise ValueError("path_escape") from exc
+    return candidate
+
+
 def connect() -> sqlite3.Connection:
     root = store_dir()
     root.mkdir(parents=True, exist_ok=True)
@@ -268,7 +286,11 @@ class Handler(BaseHTTPRequestHandler):
         if not uid:
             self._send(400, {"ok": False, "error": "bad_userid"})
             return
-        fpath = store_dir() / f"{uid}.json"
+        try:
+            fpath = memory_path(uid)
+        except ValueError:
+            self._send(400, {"ok": False, "error": "bad_userid"})
+            return
         if not fpath.is_file():
             self._send(200, {"userid": uid, "turns": []})
             return
@@ -320,7 +342,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, {"ok": False, "error": "not_found"})
             return
         uid = safe_userid(m.group(1))
-        fid = m.group(2)
+        fid = safe_fact_id(m.group(2))
         if not uid or not fid:
             self._send(400, {"ok": False, "error": "bad_id"})
             return
@@ -351,9 +373,13 @@ class Handler(BaseHTTPRequestHandler):
             self._send(400, {"ok": False, "error": "expected_object"})
             return
         payload["userid"] = uid
-        root = store_dir()
+        try:
+            fpath = memory_path(uid)
+        except ValueError:
+            self._send(400, {"ok": False, "error": "bad_userid"})
+            return
+        root = fpath.parent
         root.mkdir(parents=True, exist_ok=True)
-        fpath = root / f"{uid}.json"
         fd, tmp_name = tempfile.mkstemp(dir=str(root), suffix=".tmp")
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as fh:

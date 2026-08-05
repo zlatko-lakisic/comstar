@@ -300,6 +300,7 @@ class AttentionMachine {
       case ResponseReady(:final text, :final audioUrl):
         // Late AO / fallback reply after timeout already left Responding.
         if (context.playing) break;
+        context.turnId ??= _uuid.v4();
         context.playing = context.halfDuplex;
         if (context.halfDuplex) {
           context.wakeEnabled = false;
@@ -310,7 +311,7 @@ class AttentionMachine {
           Speak(
             text: text,
             audioUrl: audioUrl,
-            turnId: context.turnId ?? 'late-reply',
+            turnId: context.turnId!,
           ),
         );
       case Tick():

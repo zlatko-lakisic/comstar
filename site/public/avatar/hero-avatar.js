@@ -110,40 +110,84 @@ export function mountHero(container, opts = {}) {
   container.classList.add('cs-hero');
   if (size === 'thumb') container.classList.add('cs-hero--thumb');
   if (animate) container.classList.add('cs-hero--interactive');
-  container.innerHTML = `
-    <div class="cs-hero__glow"></div>
-    <svg class="cs-hero__svg" viewBox="0 0 512 512" role="img"
-         aria-label="The COMSTAR emblem cycling through its attention states:
-                     dim while idle, brightening when someone enters, locking
-                     on recognition, showing a level meter while listening,
-                     then pulsing while it speaks.">
-      <defs>
-        <filter id="${uid}-bloom" x="-60%" y="-60%" width="220%" height="220%"
-                color-interpolation-filters="sRGB">
-          <feGaussianBlur stdDeviation="${bloom}"/>
-        </filter>
-      </defs>
-      <g transform="translate(256,256)">
-        <g class="cs-hero__halo">${emblem}</g>
-        <g class="cs-hero__core">${emblem}</g>
-        <circle class="cs-hero__meter" r="232" fill="none" stroke="#7fc4ff"
-                stroke-width="6" stroke-linecap="round"
-                stroke-dasharray="0 ${METER_CIRCUM}"
-                transform="rotate(-90)" opacity="0"/>
-      </g>
-    </svg>
-    ${showCaption ? `
-    <div class="cs-hero__status">
-      <span class="cs-hero__dot"></span>
-      <span class="cs-hero__caption" aria-live="polite"></span>
-    </div>` : ''}
-  `;
+  container.replaceChildren();
 
-  const core = container.querySelector('.cs-hero__core');
-  const halo = container.querySelector('.cs-hero__halo');
-  const meter = container.querySelector('.cs-hero__meter');
-  const caption = container.querySelector('.cs-hero__caption');
-  const dot = container.querySelector('.cs-hero__dot');
+  const glow = document.createElement('div');
+  glow.className = 'cs-hero__glow';
+  container.appendChild(glow);
+
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('class', 'cs-hero__svg');
+  svg.setAttribute('viewBox', '0 0 512 512');
+  svg.setAttribute('role', 'img');
+  svg.setAttribute(
+    'aria-label',
+    'The COMSTAR emblem cycling through its attention states: dim while idle, brightening when someone enters, locking on recognition, showing a level meter while listening, then pulsing while it speaks.',
+  );
+
+  const defs = document.createElementNS(SVG_NS, 'defs');
+  const filter = document.createElementNS(SVG_NS, 'filter');
+  filter.setAttribute('id', `${uid}-bloom`);
+  filter.setAttribute('x', '-60%');
+  filter.setAttribute('y', '-60%');
+  filter.setAttribute('width', '220%');
+  filter.setAttribute('height', '220%');
+  filter.setAttribute('color-interpolation-filters', 'sRGB');
+  const blur = document.createElementNS(SVG_NS, 'feGaussianBlur');
+  blur.setAttribute('stdDeviation', String(bloom));
+  filter.appendChild(blur);
+  defs.appendChild(filter);
+  svg.appendChild(defs);
+
+  const shift = document.createElementNS(SVG_NS, 'g');
+  shift.setAttribute('transform', 'translate(256,256)');
+  const halo = document.createElementNS(SVG_NS, 'g');
+  halo.setAttribute('class', 'cs-hero__halo');
+  const core = document.createElementNS(SVG_NS, 'g');
+  core.setAttribute('class', 'cs-hero__core');
+  const meter = document.createElementNS(SVG_NS, 'circle');
+  meter.setAttribute('class', 'cs-hero__meter');
+  meter.setAttribute('r', '232');
+  meter.setAttribute('fill', 'none');
+  meter.setAttribute('stroke', '#7fc4ff');
+  meter.setAttribute('stroke-width', '6');
+  meter.setAttribute('stroke-linecap', 'round');
+  meter.setAttribute('stroke-dasharray', `0 ${METER_CIRCUM}`);
+  meter.setAttribute('transform', 'rotate(-90)');
+  meter.setAttribute('opacity', '0');
+
+  function mountEmblem(parent, markup) {
+    const wrap = `<svg xmlns="http://www.w3.org/2000/svg">${markup}</svg>`;
+    const doc = new DOMParser().parseFromString(wrap, 'image/svg+xml');
+    if (doc.querySelector('parsererror')) return;
+    const root = doc.documentElement;
+    while (root.firstChild) {
+      parent.appendChild(document.importNode(root.firstChild, true));
+    }
+  }
+  mountEmblem(halo, emblem);
+  mountEmblem(core, emblem);
+
+  shift.appendChild(halo);
+  shift.appendChild(core);
+  shift.appendChild(meter);
+  svg.appendChild(shift);
+  container.appendChild(svg);
+
+  let caption = null;
+  let dot = null;
+  if (showCaption) {
+    const status = document.createElement('div');
+    status.className = 'cs-hero__status';
+    dot = document.createElement('span');
+    dot.className = 'cs-hero__dot';
+    caption = document.createElement('span');
+    caption.className = 'cs-hero__caption';
+    caption.setAttribute('aria-live', 'polite');
+    status.appendChild(dot);
+    status.appendChild(caption);
+    container.appendChild(status);
+  }
 
   if (bloom > 0) halo.setAttribute('filter', `url(#${uid}-bloom)`);
 

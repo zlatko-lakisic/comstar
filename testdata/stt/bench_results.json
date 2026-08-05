@@ -1,0 +1,244 @@
+{
+  "trials": 1,
+  "require_live": 10,
+  "fixtures": [
+    {
+      "name": "live-bridge-20260803-085107-786615",
+      "source": "bridge",
+      "live": true,
+      "transcript": "I already did it today"
+    },
+    {
+      "name": "live-bridge-20260803-085131-452854",
+      "source": "bridge",
+      "live": true,
+      "transcript": "How are you doing today?"
+    },
+    {
+      "name": "live-bridge-20260803-085302-350479",
+      "source": "bridge",
+      "live": true,
+      "transcript": "Hey."
+    },
+    {
+      "name": "live-bridge-20260803-085725-867843",
+      "source": "bridge",
+      "live": true,
+      "transcript": "How did you do today?"
+    },
+    {
+      "name": "live-bridge-20260803-101437-950198",
+      "source": "bridge",
+      "live": true,
+      "transcript": "All ready to do it."
+    },
+    {
+      "name": "live-bridge-20260803-205706-402038",
+      "source": "bridge",
+      "live": true,
+      "transcript": "Hey, come start."
+    },
+    {
+      "name": "live-bridge-20260803-205706-590645",
+      "source": "bridge",
+      "live": true,
+      "transcript": "Hey come star!"
+    },
+    {
+      "name": "live-bridge-20260805-024542-595201",
+      "source": "bridge",
+      "live": true,
+      "transcript": "I already did it today"
+    },
+    {
+      "name": "live-bridge-20260805-024602-809493",
+      "source": "bridge",
+      "live": true,
+      "transcript": "Hey."
+    },
+    {
+      "name": "live-bridge-20260805-024651-510014",
+      "source": "bridge",
+      "live": true,
+      "transcript": "I already did it today"
+    },
+    {
+      "name": "live-bridge-20260805-024725-980494",
+      "source": "bridge",
+      "live": true,
+      "transcript": "I already did it today"
+    },
+    {
+      "name": "live-bridge-20260805-024729-218178",
+      "source": "bridge",
+      "live": true,
+      "transcript": "I already did it today"
+    }
+  ],
+  "results": [
+    {
+      "engine": "http:http://127.0.0.1:8090",
+      "fixture": "live-bridge-20260803-085107-786615",
+      "source": "bridge",
+      "live": true,
+      "ok": 1,
+      "trials": 1,
+      "perfect": true,
+      "avg_ms": 3164.8,
+      "texts": [
+        "I already did it today"
+      ]
+    },
+    {
+      "engine": "http:http://127.0.0.1:8090",
+      "fixture": "live-bridge-20260803-085131-452854",
+      "source": "bridge",
+      "live": true,
+      "ok": 1,
+      "trials": 1,
+      "perfect": true,
+      "avg_ms": 3338.2,
+      "texts": [
+        "How are you doing today?"
+      ]
+    },
+    {
+      "engine": "http:http://127.0.0.1:8090",
+      "fixture": "live-bridge-20260803-085302-350479",
+      "source": "bridge",
+      "live": true,
+      "ok": 1,
+      "trials": 1,
+      "perfect": true,
+      "avg_ms": 3043.7,
+      "texts": [
+        "Hey."
+      ]
+    },
+    {
+      "engine": "http:http://127.0.0.1:8090",
+      "fixture": "live-bridge-20260803-085725-867843",
+      "source": "bridge",
+      "live": true,
+      "ok": 1,
+      "trials": 1,
+      "perfect": true,
+      "avg_ms": 3324.4,
+      "texts": [
+        "How did you do today?"
+      ]
+    },
+    {
+      "engine": "http:http://127.0.0.1:8090",
+      "fixture": "live-bridge-20260803-101437-950198",
+      "source": "bridge",
+      "live": true,
+      "ok": 1,
+      "trials": 1,
+      "perfect": true,
+      "avg_ms": 3370.1,
+      "texts": [
+        "All ready to do it."
+      ]
+    },
+    {
+      "engine": "http:http://127.0.0.1:8090",
+      "fixture": "live-bridge-20260803-205706-402038",
+      "source": "bridge",
+      "live": true,
+      "ok": 1,
+      "trials": 1,
+      "perfect": true,
+      "avg_ms": 3268.7,
+      "texts": [
+        "Hey, come start."
+      ]
+    },
+    {
+      "engine": "http:http://127.0.0.1:8090",
+      "fixture": "live-bridge-20260803-205706-590645",
+      "source": "bridge",
+      "live": true,
+      "ok": 1,
+      "trials": 1,
+      "perfect": true,
+      "avg_ms": 3084.8,
+      "texts": [
+        "Hey come star!"
+      ]
+    },
+    {
+      "engine": "http:http://127.0.0.1:8090",
+      "fixture": "live-bridge-20260805-024542-595201",
+      "source": "bridge",
+      "live": true,
+      "ok": 1,
+      "trials": 1,
+      "perfect": true,
+      "avg_ms": 3197.2,
+      "texts": [
+        "I already did it today"
+      ]
+    },
+    {
+      "engine": "http:http://127.0.0.1:8090",
+      "fixture": "live-bridge-20260805-024602-809493",
+      "source": "bridge",
+      "live": true,
+      "ok": 1,
+      "trials": 1,
+      "perfect": true,
+      "avg_ms": 2971.3,
+      "texts": [
+        "Hey."
+      ]
+    },
+    {
+      "engine": "http:http://127.0.0.1:8090",
+      "fixture": "live-bridge-20260805-024651-510014",
+      "source": "bridge",
+      "live": true,
+      "ok": 1,
+      "trials": 1,
+      "perfect": true,
+      "avg_ms": 3224.9,
+      "texts": [
+        "I already did it today"
+      ]
+    },
+    {
+      "engine": "http:http://127.0.0.1:8090",
+      "fixture": "live-bridge-20260805-024725-980494",
+      "source": "bridge",
+      "live": true,
+      "ok": 1,
+      "trials": 1,
+      "perfect": true,
+      "avg_ms": 3150.8,
+      "texts": [
+        "I already did it today"
+      ]
+    },
+    {
+      "engine": "http:http://127.0.0.1:8090",
+      "fixture": "live-bridge-20260805-024729-218178",
+      "source": "bridge",
+      "live": true,
+      "ok": 1,
+      "trials": 1,
+      "perfect": true,
+      "avg_ms": 3389.4,
+      "texts": [
+        "I already did it today"
+      ]
+    }
+  ],
+  "winners": [
+    {
+      "engine": "http:http://127.0.0.1:8090",
+      "live_fixtures": 12,
+      "avg_ms": 3210.7
+    }
+  ],
+  "note": "Parecord/golden-only perfect scores are NOT a live pass. Use --require-live N with labeled bridge captures."
+}

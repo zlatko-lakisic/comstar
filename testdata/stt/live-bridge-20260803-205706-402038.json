@@ -1,0 +1,10 @@
+{
+  "file": "live-bridge-20260803-205706-402038.wav",
+  "transcript": "Hey, come start.",
+  "source": "bridge",
+  "path": "audio\u2192bridge\u2192stt",
+  "duration_s": 4.16,
+  "origin": "20260803-205706-402038.wav",
+  "label_source": "stt-auto-pi-whisper",
+  "note": "Auto-labeled; human ground-truth review still required for accuracy UAT."
+}

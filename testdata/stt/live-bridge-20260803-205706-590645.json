@@ -1,0 +1,10 @@
+{
+  "file": "live-bridge-20260803-205706-590645.wav",
+  "transcript": "Hey come star!",
+  "source": "bridge",
+  "path": "audio\u2192bridge\u2192stt",
+  "duration_s": 2.24,
+  "origin": "20260803-205706-590645.wav",
+  "label_source": "stt-auto-pi-whisper",
+  "note": "Auto-labeled; human ground-truth review still required for accuracy UAT."
+}
