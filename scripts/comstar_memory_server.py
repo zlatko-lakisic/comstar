@@ -15,6 +15,9 @@ Env:
   COMSTAR_MEMORY_DIR   store root (default ~/.local/share/comstar/conversation)
   COMSTAR_MEMORY_HOST  bind host (default 127.0.0.1; use 0.0.0.0 for LAN)
   COMSTAR_MEMORY_PORT  port (default 8792)
+
+All per-user data lives in a fixed SQLite file under the store root — userid is
+never interpolated into filesystem paths (avoids path-injection).
 """
 
 from __future__ import annotations
@@ -23,7 +26,6 @@ import json
 import os
 import re
 import sqlite3
-import tempfile
 import time
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -31,17 +33,19 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 SAFE = re.compile(r"^[a-z0-9_-]+$")
+DB_NAME = "comstar_memory.sqlite3"
 
 
 def store_dir() -> Path:
     override = os.environ.get("COMSTAR_MEMORY_DIR", "").strip()
     if override:
-        return Path(override)
-    return Path.home() / ".local" / "share" / "comstar" / "conversation"
+        return Path(os.path.realpath(override))
+    return (Path.home() / ".local" / "share" / "comstar" / "conversation").resolve()
 
 
 def db_path() -> Path:
-    return store_dir() / "durable_facts.sqlite3"
+    # Fixed filename only — never derived from request input.
+    return Path(os.path.join(str(store_dir()), DB_NAME))
 
 
 def safe_userid(raw: str) -> str | None:
@@ -56,17 +60,6 @@ def safe_fact_id(raw: str) -> str | None:
     if not cleaned or not SAFE.match(cleaned):
         return None
     return cleaned
-
-
-def memory_path(userid: str) -> Path:
-    """Resolve ``<store>/<userid>.json`` and reject path escape attempts."""
-    root = store_dir().resolve()
-    candidate = (root / f"{userid}.json").resolve()
-    try:
-        candidate.relative_to(root)
-    except ValueError as exc:  # pragma: no cover - defensive
-        raise ValueError("path_escape") from exc
-    return candidate
 
 
 def connect() -> sqlite3.Connection:
@@ -105,9 +98,139 @@ def connect() -> sqlite3.Connection:
             VALUES('delete', old.rowid, old.text, old.kind);
           INSERT INTO facts_fts(rowid, text, kind) VALUES (new.rowid, new.text, new.kind);
         END;
+        CREATE TABLE IF NOT EXISTS rolling_memory (
+          userid TEXT PRIMARY KEY,
+          payload TEXT NOT NULL,
+          updated_ms INTEGER NOT NULL
+        );
         """
     )
+    # One-time import from legacy durable_facts.sqlite3 if present and empty facts.
+    _maybe_migrate_legacy_db(conn)
+    _maybe_migrate_legacy_json(conn)
     return conn
+
+
+def _maybe_migrate_legacy_db(conn: sqlite3.Connection) -> None:
+    legacy = Path(os.path.join(str(store_dir()), "durable_facts.sqlite3"))
+    if not legacy.is_file():
+        return
+    try:
+        have = conn.execute("SELECT COUNT(*) AS n FROM facts").fetchone()["n"]
+        if have:
+            return
+        legacy_conn = sqlite3.connect(str(legacy), timeout=5)
+        legacy_conn.row_factory = sqlite3.Row
+        try:
+            rows = legacy_conn.execute("SELECT * FROM facts").fetchall()
+        except sqlite3.Error:
+            return
+        finally:
+            legacy_conn.close()
+        for r in rows:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO facts(id, userid, kind, text, source, created_ms, updated_ms)
+                VALUES(?,?,?,?,?,?,?)
+                """,
+                (
+                    r["id"],
+                    r["userid"],
+                    r["kind"],
+                    r["text"],
+                    r["source"],
+                    r["created_ms"],
+                    r["updated_ms"],
+                ),
+            )
+        conn.commit()
+    except sqlite3.Error:
+        return
+
+
+def _maybe_migrate_legacy_json(conn: sqlite3.Connection) -> None:
+    """Import legacy per-user ``*.json`` rolling transcripts into SQLite once."""
+    root = store_dir()
+    try:
+        names = os.listdir(root)
+    except OSError:
+        return
+    for name in names:
+        if not name.endswith(".json"):
+            continue
+        # Basename only — reject anything that is not a plain file name.
+        base = os.path.basename(name)
+        if base != name or not SAFE.match(base[:-5]):
+            continue
+        userid = base[:-5]
+        exists = conn.execute(
+            "SELECT 1 FROM rolling_memory WHERE userid = ?",
+            (userid,),
+        ).fetchone()
+        if exists:
+            continue
+        path = os.path.join(str(root), base)
+        try:
+            with open(path, encoding="utf-8") as fh:
+                payload = json.load(fh)
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        payload["userid"] = userid
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO rolling_memory(userid, payload, updated_ms)
+            VALUES(?,?,?)
+            """,
+            (userid, json.dumps(payload, ensure_ascii=False), int(time.time() * 1000)),
+        )
+    conn.commit()
+
+
+def get_rolling(userid: str) -> dict:
+    conn = connect()
+    try:
+        row = conn.execute(
+            "SELECT payload FROM rolling_memory WHERE userid = ?",
+            (userid,),
+        ).fetchone()
+        if not row:
+            return {"userid": userid, "turns": []}
+        data = json.loads(row["payload"])
+        if not isinstance(data, dict):
+            return {"userid": userid, "turns": []}
+        data["userid"] = userid
+        if not isinstance(data.get("turns"), list):
+            data["turns"] = []
+        return data
+    finally:
+        conn.close()
+
+
+def put_rolling(userid: str, payload: dict) -> dict:
+    payload = dict(payload)
+    payload["userid"] = userid
+    turns = payload.get("turns")
+    if not isinstance(turns, list):
+        turns = []
+        payload["turns"] = turns
+    conn = connect()
+    try:
+        conn.execute(
+            """
+            INSERT INTO rolling_memory(userid, payload, updated_ms)
+            VALUES(?,?,?)
+            ON CONFLICT(userid) DO UPDATE SET
+              payload=excluded.payload,
+              updated_ms=excluded.updated_ms
+            """,
+            (userid, json.dumps(payload, ensure_ascii=False), int(time.time() * 1000)),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return {"ok": True, "userid": userid, "turns": len(turns)}
 
 
 def fact_row(r: sqlite3.Row) -> dict:
@@ -127,7 +250,6 @@ def search_facts(userid: str, query: str, limit: int) -> list[dict]:
     try:
         q = (query or "").strip()
         if q:
-            # Quote tokens for FTS; fall back to LIKE if FTS errors.
             tokens = re.findall(r"[A-Za-z0-9_]+", q)
             if tokens:
                 match = " ".join(f'"{t}"' for t in tokens[:12])
@@ -176,7 +298,6 @@ def upsert_fact(userid: str, payload: dict) -> dict:
     source = str(payload.get("source") or "").strip()[:120] or None
     fid = str(payload.get("id") or "").strip()
     if not fid:
-        # Stable-ish id from kind+normalized text for dedupe.
         norm = re.sub(r"\s+", " ", text.lower())
         fid = f"{kind}-{abs(hash(norm)) & 0xFFFFFFFF:08x}"
     if not SAFE.match(fid.replace("-", "_")) and not re.match(r"^[a-z0-9_-]+$", fid):
@@ -201,7 +322,6 @@ def upsert_fact(userid: str, payload: dict) -> dict:
             """,
             (fid, userid, kind, text, source, created, now),
         )
-        # Cap per user
         rows = conn.execute(
             "SELECT id FROM facts WHERE userid = ? ORDER BY updated_ms DESC",
             (userid,),
@@ -287,15 +407,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(400, {"ok": False, "error": "bad_userid"})
             return
         try:
-            fpath = memory_path(uid)
-        except ValueError:
-            self._send(400, {"ok": False, "error": "bad_userid"})
-            return
-        if not fpath.is_file():
-            self._send(200, {"userid": uid, "turns": []})
-            return
-        try:
-            data = json.loads(fpath.read_text(encoding="utf-8"))
+            data = get_rolling(uid)
         except Exception as exc:  # noqa: BLE001
             self._send(500, {"ok": False, "error": str(exc)})
             return
@@ -372,29 +484,12 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(payload, dict):
             self._send(400, {"ok": False, "error": "expected_object"})
             return
-        payload["userid"] = uid
         try:
-            fpath = memory_path(uid)
-        except ValueError:
-            self._send(400, {"ok": False, "error": "bad_userid"})
-            return
-        root = fpath.parent
-        root.mkdir(parents=True, exist_ok=True)
-        fd, tmp_name = tempfile.mkstemp(dir=str(root), suffix=".tmp")
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                json.dump(payload, fh, indent=2, ensure_ascii=False)
-                fh.write("\n")
-            os.chmod(tmp_name, 0o600)
-            os.replace(tmp_name, fpath)
+            result = put_rolling(uid, payload)
         except Exception as exc:  # noqa: BLE001
-            try:
-                os.unlink(tmp_name)
-            except OSError:
-                pass
             self._send(500, {"ok": False, "error": str(exc)})
             return
-        self._send(200, {"ok": True, "userid": uid, "turns": len(payload.get("turns") or [])})
+        self._send(200, result)
 
 
 def main() -> None:
@@ -402,10 +497,9 @@ def main() -> None:
     port = int(os.environ.get("COMSTAR_MEMORY_PORT", "8792"))
     root = store_dir()
     root.mkdir(parents=True, exist_ok=True)
-    # Prime schema
     connect().close()
     server = ThreadingHTTPServer((host, port), Handler)
-    print(f"comstar-memory listening on {host}:{port} store={root} facts=on", flush=True)
+    print(f"comstar-memory listening on {host}:{port} store={root} db={DB_NAME}", flush=True)
     server.serve_forever()
 
 
