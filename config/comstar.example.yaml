@@ -59,6 +59,12 @@ memory:
   max_facts_inject: 8                          # 1–32
   max_facts_chars: 1200                        # 200–4000
 
+# House-wide presence via HA person.* (ADR 0006). Does not drive attention FSM.
+# IPA group / comstarHaPerson overlay is P2.3+; yaml remains the override.
+presence:
+  ha_person_by_uid:
+    zlatko: person.zlatko_lakisic
+
 # FreeIPA directory resolve (ADR 0005). When enabled=false, faceId == session uid.
 directory:
   enabled: false

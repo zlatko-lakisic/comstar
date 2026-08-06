@@ -48,10 +48,16 @@ final class SetThinking extends Effect {
 }
 
 final class Speak extends Effect {
-  const Speak({required this.text, required this.audioUrl, required this.turnId});
+  const Speak({
+    required this.text,
+    required this.audioUrl,
+    required this.turnId,
+    this.mood = 'neutral',
+  });
   final String text;
   final String audioUrl;
   final String turnId;
+  final String mood;
 }
 
 final class SpeakFallback extends Effect {
@@ -84,6 +90,16 @@ final class PromoteListening extends Effect {
 final class RunGreeter extends Effect {
   const RunGreeter(this.userid);
   final String userid;
+}
+
+final class EmitPresence extends Effect {
+  const EmitPresence(this.people, {this.primaryUserid});
+  final List<Map<String, dynamic>> people;
+  final String? primaryUserid;
+}
+
+final class CancelSpeak extends Effect {
+  const CancelSpeak();
 }
 
 final class EmitState extends Effect {

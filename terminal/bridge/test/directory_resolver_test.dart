@@ -29,12 +29,14 @@ void main() {
     late FakeClock clock;
     var resolveHits = 0;
     String? lastFaceId;
+    String? lastVoiceId;
     int statusCode = 200;
     Map<String, dynamic>? body;
 
     setUp(() async {
       resolveHits = 0;
       lastFaceId = null;
+      lastVoiceId = null;
       statusCode = 200;
       body = {
         'uid': 'zlatko',
@@ -50,6 +52,7 @@ void main() {
         if (req.uri.path == '/v1/resolve') {
           resolveHits++;
           lastFaceId = req.uri.queryParameters['face_id'];
+          lastVoiceId = req.uri.queryParameters['voice_id'];
           req.response.statusCode = statusCode;
           req.response.headers.contentType = ContentType.json;
           req.response.write(jsonEncode(body ?? {}));
@@ -141,6 +144,26 @@ void main() {
       final profile = (result as DirectoryResolved).profile;
       expect(profile.uid, 'alice');
       expect(profile.faceId, 'cpai-alice-1');
+    });
+
+    test('resolveByVoiceId uses voice_id query', () async {
+      body = {
+        'uid': 'zlatko',
+        'displayName': 'Zlatko',
+        'voiceId': 'voice-z',
+        'haPerson': 'person.zlatko_lakisic',
+      };
+      final resolver = DirectoryResolver(
+        config: _dir(sidecarUrl: base.toString()),
+        clock: clock,
+      );
+      final result = await resolver.resolveByVoiceId('voice-z');
+      expect(lastVoiceId, 'voice-z');
+      expect(lastFaceId, isNull);
+      final profile = (result as DirectoryResolved).profile;
+      expect(profile.uid, 'zlatko');
+      expect(profile.voiceId, 'voice-z');
+      expect(profile.haPerson, 'person.zlatko_lakisic');
     });
   });
 }

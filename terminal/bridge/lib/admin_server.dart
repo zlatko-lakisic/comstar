@@ -4,13 +4,16 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
-import 'package:comstar_bridge/admin_ops.dart';
+import 'package:comstar_bridge/attention/clock.dart';
 import 'package:comstar_bridge/attention/coordinator.dart';
 import 'package:comstar_bridge/attention/events.dart';
 import 'package:comstar_bridge/config.dart';
+import 'package:comstar_bridge/directory/directory_resolver.dart';
 import 'package:comstar_bridge/google/desktop_upgrade.dart';
 import 'package:comstar_bridge/host_metrics.dart';
+import 'package:comstar_bridge/house_presence.dart';
 import 'package:comstar_bridge/log.dart';
+import 'package:comstar_bridge/admin_ops.dart';
 
 /// Always-on admin + shared public HTTP on :8781.
 ///
@@ -131,6 +134,16 @@ class AdminServer {
           ..statusCode = HttpStatus.movedTemporarily
           ..headers.set(HttpHeaders.locationHeader, '/admin/$q');
         await request.response.close();
+        return;
+      }
+
+      // House presence snapshot (CONTRACTS §7b) — no admin token; LAN trust.
+      if (request.method == 'GET' && path == '/v1/presence/home') {
+        final svc = HousePresenceService(
+          config: config.presence,
+          clock: SystemClock(),
+        );
+        await _writeJson(request, 200, await svc.snapshot());
         return;
       }
 
@@ -394,6 +407,49 @@ class AdminServer {
       await _writeJson(request, 400, {'ok': false, 'error': 'missing_event'});
       return;
     }
+
+    // Voice speaker-ID stub (P2.3) — resolve via directory then FaceRecognized.
+    if (eventName == 'VoiceRecognized') {
+      final voiceId = body['voice_id']?.toString() ?? body['voiceId']?.toString();
+      if (voiceId == null || voiceId.isEmpty) {
+        await _writeJson(request, 400, {
+          'ok': false,
+          'error': 'missing_voice_id',
+        });
+        return;
+      }
+      final conf = (body['confidence'] as num?)?.toDouble() ?? 0.9;
+      final result = await coordinator.directory.resolveByVoiceId(voiceId);
+      switch (result) {
+        case DirectoryResolved(:final profile):
+          coordinator.handle(
+            FaceRecognized(
+              profile.uid,
+              conf,
+              displayName: profile.displayName,
+            ),
+          );
+          await _writeJson(request, 200, {
+            'ok': true,
+            'event': eventName,
+            'uid': profile.uid,
+          });
+        case DirectoryMiss():
+          coordinator.handle(const FaceUnknown());
+          await _writeJson(request, 200, {
+            'ok': true,
+            'event': eventName,
+            'resolved': false,
+          });
+        case DirectoryError(:final message):
+          await _writeJson(request, 503, {
+            'ok': false,
+            'error': message,
+          });
+      }
+      return;
+    }
+
     final event = parseInjectEvent(eventName, body);
     if (event == null) {
       await _writeJson(request, 400, {

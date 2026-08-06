@@ -418,6 +418,31 @@ make logs            # merged journal tail (when configured)
 | Pairing QR never shows | Kiosk outdated / `pairing.qr` dropped | Redeploy `terminal/kiosk/`; confirm bridge logs `google_pairing_start` |
 | Linked but “no internet/search” | Tools MCP not registered, or ask is web search | Status: “Workspace tools …”; voice Google is Calendar/`drive.file` (not Google Search). Check bridge `mcp_overlay_ready` vs `mcp_overlay_bootstrap` |
 
+## 9b. Full duplex + AEC (Phase 2 / ADR 0007)
+
+Default remains `audio.duplex: half`. To enable barge-in:
+
+1. Set `audio.duplex: full` in `comstar.yaml` (requires healthy AEC).
+2. On the Pi, identify the playback **monitor** source:
+
+```bash
+pactl list short sources | grep -i monitor
+# example: alsa_output.platform-….hdmi.monitor
+```
+
+3. Export on `comstar-audio`:
+
+```bash
+# ~/.config/systemd/user/comstar-audio.service.d/aec.conf
+[Service]
+Environment=COMSTAR_AEC=1
+Environment=COMSTAR_AEC_REF_SOURCE=alsa_output.platform-….hdmi.monitor
+```
+
+4. Restart audio + bridge. Logs should show `aec_status` with `available: true`.
+   If `aec_unavailable`, keep `duplex: half` — do not claim full duplex in hallway UAT.
+5. Optional SpeexDSP: `pip install speexdsp` in the audio venv (`terminal/audio`).
+
 ## 10. Google Workspace (mail / calendar / Drive)
 
 Comstar does **not** ship a custom Gmail MCP. It pairs once (voice + QR), stores a

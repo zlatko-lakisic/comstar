@@ -69,4 +69,19 @@ void main() {
       HomeDataIntentKind.networkSummary,
     );
   });
+
+  test('detects who is home / presence questions', () {
+    expect(
+      parseHomeDataIntent("Who's home?")?.kind,
+      HomeDataIntentKind.presenceHome,
+    );
+    expect(
+      parseHomeDataIntent('Is anyone home?')?.kind,
+      HomeDataIntentKind.presenceHome,
+    );
+    expect(
+      parseHomeDataIntent('who is in the house')?.kind,
+      HomeDataIntentKind.presenceHome,
+    );
+  });
 }

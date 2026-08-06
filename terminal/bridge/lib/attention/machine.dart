@@ -1,8 +1,10 @@
 import 'package:comstar_bridge/attention/clock.dart';
 import 'package:comstar_bridge/attention/effects.dart';
 import 'package:comstar_bridge/attention/events.dart';
+import 'package:comstar_bridge/attention/presence.dart';
 import 'package:comstar_bridge/attention/states.dart';
 import 'package:comstar_bridge/config.dart';
+import 'package:comstar_bridge/sentiment.dart';
 import 'package:uuid/uuid.dart';
 
 /// Mutable context tracked by the attention machine.
@@ -30,7 +32,10 @@ class MachineContext {
     this.respondingStartedAtMs = 0,
     this.engagedEnteredAtMs = 0,
     this.sttPending = false,
-  });
+    this.lastGreeterUserid,
+    this.lastGreeterAtMs,
+    Map<String, PresenceEntry>? presence,
+  }) : presence = presence ?? {};
 
   final ComstarConfig config;
   final Clock clock;
@@ -58,8 +63,13 @@ class MachineContext {
   int respondingStartedAtMs;
   int engagedEnteredAtMs;
   bool sttPending;
+  String? lastGreeterUserid;
+  int? lastGreeterAtMs;
+  final Map<String, PresenceEntry> presence;
 
   bool get halfDuplex => config.audio.duplex == 'half';
+
+  bool get fullDuplex => config.audio.duplex == 'full';
 
   bool get identityExpired =>
       identityExpiresAtMs == null || clock.nowMs >= identityExpiresAtMs!;
@@ -68,6 +78,8 @@ class MachineContext {
   bool get followUpArmed =>
       followUpMicArmedAtMs != null &&
       clock.nowMs - followUpMicArmedAtMs! >= 2000;
+
+  int get presenceTtlMs => config.vision.identityTtlSeconds * 1000;
 
   MachineContext copyForTransition() => MachineContext(
         config: config,
@@ -92,6 +104,9 @@ class MachineContext {
         respondingStartedAtMs: respondingStartedAtMs,
         engagedEnteredAtMs: engagedEnteredAtMs,
         sttPending: sttPending,
+        lastGreeterUserid: lastGreeterUserid,
+        lastGreeterAtMs: lastGreeterAtMs,
+        presence: Map<String, PresenceEntry>.from(presence),
       );
 }
 
@@ -255,13 +270,25 @@ class AttentionMachine {
       case PersonAbsent():
         context.personPresent = false;
         context.absentFrames++;
-      case FaceRecognized(:final userid, :final confidence, :final displayName):
+      case FaceRecognized(:final userid, :final confidence, :final displayName, :final faceId):
         if (confidence >= context.config.vision.faceConfidence) {
-          _cacheIdentity(userid, displayName: displayName);
+          _onPresenceFace(
+            effects,
+            userid: userid,
+            confidence: confidence,
+            displayName: displayName,
+            faceId: faceId,
+            guest: false,
+          );
         }
       case WakeWord():
-        // Ignore mic triggers while we are still playing (HDMI echo of TTS).
-        if (context.playing) {
+        // Half-duplex: ignore mic triggers while TTS plays (HDMI echo).
+        // Full duplex: allow barge-in (ADR 0007).
+        if (context.playing && context.halfDuplex) {
+          break;
+        }
+        if (context.playing && context.fullDuplex) {
+          _bargeInToListening(effects);
           break;
         }
         // Mic already armed while face-engaged — wait for VAD SpeechStart.
@@ -272,7 +299,11 @@ class AttentionMachine {
         _enterListening(effects);
       case SpeechStart():
         // Face-engaged = addressable. Real speech (not greeter) starts a turn.
-        if (context.playing) {
+        if (context.playing && context.halfDuplex) {
+          break;
+        }
+        if (context.playing && context.fullDuplex) {
+          _bargeInToListening(effects);
           break;
         }
         if (context.followUpListening) {
@@ -301,7 +332,7 @@ class AttentionMachine {
         // Late AO / fallback reply after timeout already left Responding.
         if (context.playing) break;
         context.turnId ??= _uuid.v4();
-        context.playing = context.halfDuplex;
+        context.playing = true;
         if (context.halfDuplex) {
           context.wakeEnabled = false;
           effects.add(const EnableWake(false));
@@ -312,6 +343,7 @@ class AttentionMachine {
             text: text,
             audioUrl: audioUrl,
             turnId: context.turnId!,
+            mood: resolveSpeakMood(text),
           ),
         );
       case Tick():
@@ -388,7 +420,7 @@ class AttentionMachine {
     switch (event) {
       case ResponseReady(:final text, :final audioUrl):
         context.directAgentInFlight = false;
-        context.playing = context.halfDuplex;
+        context.playing = true;
         if (context.halfDuplex) {
           context.wakeEnabled = false;
           effects.add(const EnableWake(false));
@@ -398,8 +430,14 @@ class AttentionMachine {
             text: text,
             audioUrl: audioUrl,
             turnId: context.turnId!,
+            mood: resolveSpeakMood(text),
           ),
         );
+      case WakeWord():
+      case SpeechStart():
+        if (context.fullDuplex && context.playing) {
+          _bargeInToListening(effects);
+        }
       case PlaybackEnded():
         context.playing = false;
         context.followUpOpen = true;
@@ -458,6 +496,7 @@ class AttentionMachine {
             text: text,
             audioUrl: audioUrl,
             turnId: context.turnId ?? 'sleep-ack',
+            mood: resolveSpeakMood(text),
           ),
         );
       case PlaybackEnded():
@@ -556,6 +595,15 @@ class AttentionMachine {
       guest ? null : userid,
       displayName: guest ? null : displayName,
     );
+    if (!guest) {
+      context.presence[userid] = PresenceEntry(
+        userid: userid,
+        confidence: 1.0,
+        seenAtMs: context.clock.nowMs,
+        displayName: displayName,
+        guest: false,
+      );
+    }
     context.sessionOpen = true;
     // Block wake/VAD until greeter TTS finishes (HDMI echo otherwise
     // pulls us into Listening and swallows speak.ended).
@@ -568,9 +616,116 @@ class AttentionMachine {
     }
     effects.add(OpenSession(userid: userid, guest: guest));
     if (!guest) {
+      context.lastGreeterUserid = userid;
+      context.lastGreeterAtMs = context.clock.nowMs;
       effects.add(RunGreeter(userid));
     }
     effects.add(SetVisionFps(context.config.vision.engagedFps));
+    _emitPresence(effects);
+  }
+
+  void _onPresenceFace(
+    List<Effect> effects, {
+    required String userid,
+    required double confidence,
+    String? displayName,
+    String? faceId,
+    required bool guest,
+  }) {
+    final now = context.clock.nowMs;
+    context.presence[userid] = PresenceEntry(
+      userid: userid,
+      confidence: confidence,
+      seenAtMs: now,
+      displayName: displayName,
+      faceId: faceId,
+      guest: guest,
+    );
+    final people = prunePresence(
+      context.presence,
+      nowMs: now,
+      ttlMs: context.presenceTtlMs,
+    );
+    final prev = context.cachedUserid;
+    final primary = selectPrimaryUserid(
+      context.presence,
+      nowMs: now,
+      ttlMs: context.presenceTtlMs,
+    );
+    _emitPresence(effects, people: people, primary: primary);
+
+    if (primary == null) return;
+
+    final primaryEntry = context.presence[primary];
+    final primaryGuest = primaryEntry?.guest ?? guest;
+
+    if (prev == null || prev == primary) {
+      _cacheIdentity(
+        primaryGuest ? null : primary,
+        displayName: primaryEntry?.displayName ?? displayName,
+      );
+      return;
+    }
+
+    // Primary switched to a different addressable user.
+    if (primaryGuest) {
+      _cacheIdentity(null);
+      return;
+    }
+
+    effects.add(const CloseSession());
+    context.sessionOpen = true;
+    effects.add(OpenSession(userid: primary, guest: false));
+    _cacheIdentity(primary, displayName: primaryEntry?.displayName);
+
+    const greeterCooldownMs = 30000;
+    final lastAt = context.lastGreeterAtMs ?? 0;
+    final sameRecent = context.lastGreeterUserid == primary &&
+        now - lastAt < greeterCooldownMs;
+    if (!sameRecent) {
+      context.playing = true;
+      if (context.halfDuplex) {
+        context.wakeEnabled = false;
+        effects.add(const EnableWake(false));
+      }
+      context.lastGreeterUserid = primary;
+      context.lastGreeterAtMs = now;
+      effects.add(RunGreeter(primary));
+    }
+  }
+
+  void _emitPresence(
+    List<Effect> effects, {
+    List<PresenceEntry>? people,
+    String? primary,
+  }) {
+    final list = people ??
+        prunePresence(
+          context.presence,
+          nowMs: context.clock.nowMs,
+          ttlMs: context.presenceTtlMs,
+        );
+    final p = primary ??
+        selectPrimaryUserid(
+          context.presence,
+          nowMs: context.clock.nowMs,
+          ttlMs: context.presenceTtlMs,
+        );
+    effects.add(
+      EmitPresence(
+        list.map((e) => e.toJson()).toList(),
+        primaryUserid: p,
+      ),
+    );
+  }
+
+  void _bargeInToListening(List<Effect> effects) {
+    effects.add(const CancelSpeak());
+    context.playing = false;
+    context.directAgentInFlight = false;
+    context.followUpOpen = false;
+    context.followUpListening = false;
+    _enterListening(effects);
   }
 
   void _enterListening(
@@ -663,6 +818,7 @@ class AttentionMachine {
     context.followUpOpen = false;
     context.directAgentInFlight = false;
     context.absentFrames = 0;
+    context.presence.clear();
     if (closeSession && context.sessionOpen) {
       context.sessionOpen = false;
       context.cachedUserid = null;

@@ -1,0 +1,22 @@
+# COMSTAR LDAP MCP — AO catalog metadata (hosted on Ada / AI server).
+# Session open must not depend on this MCP (ADR 0005).
+id: ldap_directory
+description: FreeIPA COMSTAR person lookup via directory sidecar
+capabilities: >
+  lookup_user by uid; list_comstar_users for enrolled comstarPerson entries.
+  Biometric face/voice resolve stays on the Pi bridge sidecar path.
+good_for: directory, ldap, freeipa, who is, user lookup, household roster
+planner_hint: Use for person directory questions; never for session identity.
+user_goal_keywords:
+  - directory
+  - ldap
+  - freeipa
+  - userid
+  - who is enrolled
+  - household
+
+transport: streamable_http
+alias: ldap_directory
+# Point AO at the ldap_mcp HTTP endpoint (default :8794 on Ada).
+url_env: COMSTAR_LDAP_MCP_URL
+guest_allowed: false

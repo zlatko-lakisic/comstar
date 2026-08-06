@@ -8,6 +8,7 @@ import signal
 from typing import Any
 
 from agc import agc_from_env
+from aec import aec_requested, build_aec, reference_device
 from bridge_client import BridgeClient
 from capture import AudioCapture
 from devices import describe_input_device, mic_source_spec, resolve_sounddevice_input
@@ -66,8 +67,27 @@ async def _main() -> None:
 
     try:
         agc = agc_from_env()
+        aec = build_aec()
+        if aec_requested():
+            log_info(
+                "aec_status",
+                "AEC init for full duplex",
+                data={
+                    "available": bool(aec and aec.available),
+                    "ref_source": reference_device(),
+                },
+            )
+            if aec is None or not aec.available:
+                log_warn(
+                    "aec_unavailable",
+                    "COMSTAR_AEC set but backend failed — keep audio.duplex: half",
+                )
         capture = AudioCapture(device=mic_device, on_level=lambda _rms: None, agc=agc)
         capture.start()
+        # Attach AEC to capture when both mic+ref are wired (reference stream
+        # is configured via COMSTAR_AEC_REF_SOURCE; see RUNBOOK).
+        if aec is not None and aec.available:
+            capture.aec = aec  # type: ignore[attr-defined]
         vad = VadEngine(silence_ms=vad_silence_ms)
         wake = WakeWordEngine(
             wakeword_model,

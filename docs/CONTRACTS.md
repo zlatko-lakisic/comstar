@@ -365,6 +365,16 @@ RAG-lite — not AO `memory` MCP (still unavailable on this Ada host).
 
 ## 5. MCP tools exposed by COMSTAR
 
+### Hosted, server-side (`mcp/ldap_mcp/`)
+
+Wraps FreeIPA directory sidecar for the planner (P2.3). Does **not** open
+sessions (ADR 0005). Overlay should set `guest_allowed: false`.
+
+| tool | args | returns |
+|---|---|---|
+| `lookup_user` | `{uid}` | `{found, user?}` |
+| `list_comstar_users` | `{limit?}` | `{users, count}` |
+
 ### Hosted, server-side (`mcp/vision_mcp/`)
 
 Wraps CodeProject.AI. Runs on the AI server, registered as a plain HTTP MCP — **not**
@@ -479,6 +489,48 @@ See `config/comstar.example.yaml` for the annotated version. Validation rules:
 | `directory.require` | bool — fail closed when true |
 | `directory.cache_ttl_seconds` | 60 ≤ x ≤ 3600 |
 | `directory.timeout_ms` | 200 ≤ x ≤ 10000 |
+| `presence.ha_person_by_uid` | map of COMSTAR uid → HA `person.*` entity_id (optional) |
+| `audio.duplex` | enum: `half` \| `full` (`full` requires AEC — ADR 0007) |
+
+---
+
+## 7b. House presence snapshot (Phase 2)
+
+**Transport:** bridge Admin HTTP (`:8781`), unauthenticated read like `/health`
+(LAN trust model same as heal probes; do not expose beyond the Pi LAN).
+
+```
+GET /v1/presence/home
+```
+
+Response:
+
+```json
+{
+  "ts": 1722892800000,
+  "people": [
+    {
+      "uid": "zlatko",
+      "displayName": "Zlatko",
+      "ha_entity": "person.zlatko_lakisic",
+      "state": "home"
+    }
+  ]
+}
+```
+
+| field | meaning |
+|---|---|
+| `ts` | epoch ms when the snapshot was built |
+| `uid` | COMSTAR / IPA uid from `presence.ha_person_by_uid` |
+| `displayName` | HA friendly_name when present, else uid |
+| `ha_entity` | configured entity_id |
+| `state` | HA person state (`home`, `not_home`, zone name, or `unknown` on error) |
+
+**Non-goal:** this API does **not** drive the attention FSM or open AO sessions
+(ADR 0006). Local camera identity remains the terminal identity terminator.
+
+Optional voice path: bridge-local `HomeDataIntent` → spoken summary without AO.
 
 ---
 
@@ -502,6 +554,8 @@ speech (except wake word) are ignored until `WakeWord` exits to `listening`.
 | `PersonAbsent` | vision poll, N consecutive frames with no person |
 | `FaceRecognized(userid, confidence, displayName?)` | vision poll + directory resolve (`userid` = IPA uid) |
 | `FaceUnknown` | vision poll, or directory miss when `require: true` |
+| `PresenceSet(people, primaryUserid?)` | multi-face presence (Phase 2); singular `FaceRecognized` kept for compat |
+| `PresencePrimaryChanged(from, to)` | primary addressable userid switched |
 | `WakeWord(score)` | audio proc |
 | `SpeechStart` / `SpeechEnd(durationMs)` | audio proc |
 | `TranscriptReady(text)` | bridge STT call |
@@ -510,6 +564,18 @@ speech (except wake word) are ignored until `WakeWord` exits to `listening`.
 | `Tick` | injected clock, 10 Hz |
 | `Error(scope)` | any |
 | `EnterSleep` | terminal MCP `sleep_enter` / control HTTP |
+
+### Terminal presence set (Phase 2)
+
+While engaged, vision may keep recognizing at a reduced rate. The machine tracks
+`Map<userid, PresenceEntry>` with per-person TTL.
+
+| policy | rule |
+|---|---|
+| Primary | highest face confidence among non-expired entries (gaze bias later) |
+| Guest co-presence | guests may appear in the set; memory/turns bind only to addressable (non-guest) primary |
+| Primary change | close/open AO session + greeter debounce; never merge guest↔known memory |
+| Compat | `FaceRecognized` still updates the primary cache when only one face is tracked |
 
 ### Transition table
 
@@ -541,7 +607,8 @@ speech (except wake word) are ignored until `WakeWord` exits to `listening`.
 1. An AO session exists **iff** state ∈ {engaged, listening, responding}
    (session may remain open while `sleeping` until TTL/absent teardown on wake path).
 2. Wake word is armed **iff** state ∉ {listening} and not (half-duplex and playing),
-   **or** state is `sleeping` (always armed).
+   **or** state is `sleeping` (always armed). When `audio.duplex == full`, wake may
+   stay armed during `playing` (barge-in); AEC required (ADR 0007).
 3. At most one in-flight `directAgent` call at any time.
 4. `turn_id` is non-null **iff** state ∈ {listening, responding}.
 5. Identity cache TTL is refreshed only by a positive `FaceRecognized`, never by
@@ -549,12 +616,26 @@ speech (except wake word) are ignored until `WakeWord` exits to `listening`.
 6. No transition takes longer than 50 ms of wall clock inside the state machine
    itself — all I/O is dispatched, never awaited, inside a transition.
 7. In `sleeping`, vision and VAD events are no-ops; only `WakeWord` exits.
+8. Memory attribution uses the **primary addressable** userid only; guest co-presence
+   must not write into a known user's store.
+
+### Full duplex barge-in (Phase 2)
+
+When `audio.duplex == full` and AEC is healthy:
+
+| from | event | to | side effects |
+|---|---|---|---|
+| responding (playing) | WakeWord / SpeechStart | listening | `speak.cancel`, cancel in-flight turn, `listen.start` |
+
+Default remains `half` until soak proves false-barge rate. If AEC init fails,
+force `half` and log `aec_unavailable`.
 
 ---
 
 ## 9. Kiosk avatar (TalkingHead)
 
 **Status:** VERIFIED (audio path) 2026-08-02 — GLB lip-sync still SPEC.
+**Phase 2 mood:** SPEC — `speak.mood` / sentiment → SVG emblem gesture.
 
 ### Phase 1 audio path (shipping)
 
@@ -568,6 +649,18 @@ Kiosk `terminal/kiosk/avatar.js` plays `speak.audioUrl` with `HTMLAudioElement`.
 
 `#avatar` is a full-bleed mount. Without a GLB, the HUD + ambient gradient render;
 spoken conversation still works (ADR 0001 kiosk sink).
+
+### Mood / sentiment (Phase 2)
+
+| channel | values | meaning |
+|---|---|---|
+| `speak.mood` | `neutral` \| `happy` \| `concerned` \| `thinking` \| `celebratory` | Reply affect for emblem params |
+| `config.mood` | same enum | Initial / idle mood on kiosk connect |
+| `avatar.options` | may include `mood` | Live mood without a speak |
+
+Bridge derives mood from a LAN-local heuristic (or AO-side tag) on reply text —
+never phone-home sentiment APIs. SVG emblem maps mood → spin / bloom / meter
+presets; TalkingHead GLB remains optional (`avatar.render`).
 
 ### TalkingHead GLB path (next)
 

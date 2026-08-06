@@ -3,6 +3,7 @@ enum HomeDataIntentKind {
   torrentsDownloading,
   irrigationSummary,
   networkSummary,
+  presenceHome,
 }
 
 class HomeDataIntent {
@@ -22,6 +23,21 @@ HomeDataIntent? parseHomeDataIntent(String text) {
       .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
   if (t.isEmpty) return null;
+
+  // Who's home / anyone home — before network (no IP conflict).
+  // Apostrophes are stripped above, so "who's" → "who s".
+  if (RegExp(
+        r'\bwho\s+s\s+(home|here)\b|'
+        r'\bwho\s+is\s+(home|here)\b|'
+        r'\bwho\s+are\s+(home|here)\b|'
+        r'\banyone\s+(home|here)\b|'
+        r'\bwho\s+s\s+at\s+home\b|'
+        r'\bwho\s+is\s+at\s+home\b|'
+        r'\bhouse\s+presence\b|'
+        r'\bwho\s+is\s+in\s+the\s+house\b',
+      ).hasMatch(t)) {
+    return HomeDataIntent(HomeDataIntentKind.presenceHome, query: t);
+  }
 
   // Network before torrents — "download speed" must not match torrent heuristics.
   if (RegExp(

@@ -14,6 +14,12 @@ export const STATE_PARAMS = {
   engaged:    { spin: 0,  op: 1.00, sc: 1.00, sway: 0.12 },
   listening:  { spin: 8,  op: 1.00, sc: 1.00, sway: 0.12 },
   responding: { spin: 14, op: 1.00, sc: 1.00, sway: 0.12 },
+  // Reply mood overlays (Phase 2 — speak.mood / config.mood).
+  neutral:      { spin: 10, op: 1.00, sc: 1.00, sway: 0.12 },
+  happy:        { spin: 22, op: 1.00, sc: 1.06, sway: 0.18 },
+  concerned:    { spin: 4,  op: 0.88, sc: 0.96, sway: 0.08 },
+  thinking:     { spin: 12, op: 0.95, sc: 1.00, sway: 0.22 },
+  celebratory:  { spin: 36, op: 1.00, sc: 1.10, sway: 0.28 },
   // Dashboard-only instruments (ops console).
   degraded:   { spin: 6,  op: 0.70, sc: 0.94, sway: 0.18, amber: true },
   unreachable:{ spin: 0,  op: 0.28, sc: 0.88, sway: 0,    frozen: true, ring: true },

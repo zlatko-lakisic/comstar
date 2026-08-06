@@ -10,9 +10,17 @@ import 'package:http/http.dart' as http;
 /// - `COMSTAR_HA_AGENT_URL` / `COMSTAR_HA_AGENT_KEY`
 /// - `HA_AGENT_URL` / `HA_AGENT_KEY`
 class HaAgentClient {
-  HaAgentClient({http.Client? httpClient}) : _http = httpClient ?? http.Client();
+  HaAgentClient({
+    http.Client? httpClient,
+    this.baseUrlOverride,
+    this.apiKeyOverride,
+  }) : _http = httpClient ?? http.Client();
 
   final http.Client _http;
+
+  /// Test / inject overrides (env still preferred when null).
+  final String? baseUrlOverride;
+  final String? apiKeyOverride;
 
   static String? get configuredUrl {
     final u = Platform.environment['COMSTAR_HA_AGENT_URL']?.trim() ??
@@ -28,12 +36,18 @@ class HaAgentClient {
     return k.isEmpty ? null : k;
   }
 
+  String? get _url =>
+      baseUrlOverride?.replaceAll(RegExp(r'/+$'), '') ?? configuredUrl;
+  String? get _key => apiKeyOverride ?? configuredKey;
+
   static bool get isConfigured =>
       configuredUrl != null && configuredKey != null;
 
+  bool get isReady => _url != null && _key != null;
+
   Future<Map<String, dynamic>?> entityState(String entityId) async {
-    final base = configuredUrl;
-    final key = configuredKey;
+    final base = _url;
+    final key = _key;
     if (base == null || key == null) return null;
     final uri = Uri.parse('$base/api/entities/state/$entityId');
     try {

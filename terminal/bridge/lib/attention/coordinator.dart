@@ -25,7 +25,9 @@ import 'package:comstar_bridge/google_data_intent.dart';
 import 'package:comstar_bridge/google/workspace_client.dart';
 import 'package:comstar_bridge/ha_agent_client.dart';
 import 'package:comstar_bridge/home_data_intent.dart';
+import 'package:comstar_bridge/house_presence.dart';
 import 'package:comstar_bridge/http_audio_server.dart';
+import 'package:comstar_bridge/sentiment.dart';
 import 'package:comstar_bridge/local_ws.dart';
 import 'package:comstar_bridge/log.dart';
 import 'package:comstar_bridge/phrase_bank.dart';
@@ -214,7 +216,8 @@ class AttentionCoordinator {
   }
 
   void _syncAudioWakeGate() {
-    final enabled = machine.context.wakeEnabled && !machine.context.playing;
+    final halfMute = machine.context.halfDuplex && machine.context.playing;
+    final enabled = machine.context.wakeEnabled && !halfMute;
     _sendAudio(
       Envelope.create(type: 'wake.enable', data: {'enabled': enabled}),
     );
@@ -222,6 +225,7 @@ class AttentionCoordinator {
       'enabled': enabled,
       'state': machine.state.name,
       'playing': machine.context.playing,
+      'duplex': config.audio.duplex,
     });
   }
 
@@ -256,6 +260,11 @@ class AttentionCoordinator {
     switch (effect) {
       case SetVisionFps(:final fps):
         _visionPoller?.setTargetFps(fps);
+        final id = _visionPoller?.identity;
+        if (id != null) {
+          id.continuousRecognize =
+              fps >= config.vision.engagedFps - 0.001;
+        }
       case OpenSession(:final userid, :final guest):
         _sessionOpenFuture = session.open(userid: userid, guest: guest);
         unawaited(_sessionOpenFuture);
@@ -304,7 +313,7 @@ class AttentionCoordinator {
         if (active) {
           _broadcastPhase('thinking', detail: 'Talking to AO…');
         }
-      case Speak(:final text, :final audioUrl, :final turnId):
+      case Speak(:final text, :final audioUrl, :final turnId, :final mood):
         machine.context.playing = true;
         // Half-duplex: never capture while TTS is on the speaker.
         // Abort sleep-wake STT so listen.stop does not finalize empty PCM.
@@ -320,9 +329,11 @@ class AttentionCoordinator {
         machine.context.followUpListening = false;
         machine.context.followUpOpen = false;
         _sendAudio(Envelope.create(type: 'listen.stop'));
-        _sendAudio(
-          Envelope.create(type: 'wake.enable', data: {'enabled': false}),
-        );
+        if (machine.context.halfDuplex) {
+          _sendAudio(
+            Envelope.create(type: 'wake.enable', data: {'enabled': false}),
+          );
+        }
         _broadcastKiosk(
           Envelope.create(type: 'listening', data: {'active': false}),
         );
@@ -338,11 +349,13 @@ class AttentionCoordinator {
         } else {
           _broadcastPhase('speaking', detail: text);
         }
+        final speakMood = resolveSpeakMood(text, explicit: mood);
         if (text.trim().isNotEmpty) {
           logInfo('speak', 'Sending reply to kiosk', data: {
             'turn_id': turnId,
             'chars': text.length,
             'audioUrl': audioUrl,
+            'mood': speakMood,
             'duration_ms': _lastSpeakDurationMs,
             if (sleepAck) 'sleep_ack': true,
           });
@@ -354,12 +367,25 @@ class AttentionCoordinator {
             data: {
               'text': text,
               'audioUrl': audioUrl,
+              'mood': speakMood,
               if (sleepAck) 'keepSleeping': true,
               ..._kioskSpeakAudioFlags(),
             },
           ),
         );
         unawaited(_maybePlayLocal(audioUrl));
+      case CancelSpeak():
+        _cancelSpeakWatchdog();
+        machine.context.playing = false;
+        _broadcastKiosk(Envelope.create(type: 'speak.cancel', data: {}));
+        _sendAudio(Envelope.create(type: 'listen.stop'));
+        logInfo('barge_in', 'Cancelled speak for full-duplex barge-in');
+      case EmitPresence(:final people, :final primaryUserid):
+        logInfo('presence_set', 'Terminal presence updated', data: {
+          'count': people.length,
+          'primary': primaryUserid,
+          'people': people,
+        });
       case SpeakFallback(:final line, :final turnId):
         unawaited(_speakFallback(line, turnId));
       case PlayErrorTone():
@@ -1477,6 +1503,11 @@ class AttentionCoordinator {
       case HomeDataIntentKind.networkSummary:
         spoken = await HaAgentClient()
             .networkSpokenSummary(query: intent.query);
+      case HomeDataIntentKind.presenceHome:
+        spoken = await HousePresenceService(
+          config: config.presence,
+          clock: clock,
+        ).spokenSummary();
     }
     if (spoken == null || spoken.trim().isEmpty) {
       logWarn('home_data_intent', 'HA agent returned empty', data: {

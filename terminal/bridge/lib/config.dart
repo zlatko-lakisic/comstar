@@ -22,6 +22,7 @@ class ComstarConfig {
     this.admin = const AdminConfig(),
     this.phrases = const PhrasesConfig(),
     this.memory = const MemoryConfig(),
+    this.presence = const PresenceConfig(),
     required this.sourcePath,
   });
 
@@ -35,6 +36,7 @@ class ComstarConfig {
   final AdminConfig admin;
   final PhrasesConfig phrases;
   final MemoryConfig memory;
+  final PresenceConfig presence;
   final String sourcePath;
 
   static const _topLevelKeys = {
@@ -48,6 +50,7 @@ class ComstarConfig {
     'admin',
     'phrases',
     'memory',
+    'presence',
   };
 
   static const _orchestrationKeys = {
@@ -127,6 +130,10 @@ class ComstarConfig {
     'max_facts_chars',
   };
 
+  static const _presenceKeys = {
+    'ha_person_by_uid',
+  };
+
   static ComstarConfig loadFile(String path) {
     final file = File(path);
     if (!file.existsSync()) {
@@ -178,10 +185,19 @@ class ComstarConfig {
                 ? Map<String, dynamic>.from(memoryRaw)
                 : (throw ConfigError('Section memory must be a mapping')),
           );
+    final presenceRaw = root['presence'];
+    final presence = presenceRaw == null
+        ? const PresenceConfig()
+        : _parsePresence(
+            presenceRaw is Map
+                ? Map<String, dynamic>.from(presenceRaw)
+                : (throw ConfigError('Section presence must be a mapping')),
+          );
 
     _validateRanges(vision, audio, orchestration, avatar, attention, directory);
     _validatePhrases(phrases);
     _validateMemory(memory);
+    _validatePresence(presence);
 
     return ComstarConfig(
       orchestration: orchestration,
@@ -194,6 +210,7 @@ class ComstarConfig {
       admin: admin,
       phrases: phrases,
       memory: memory,
+      presence: presence,
       sourcePath: sourcePath,
     );
   }
@@ -391,6 +408,37 @@ class ComstarConfig {
     _rangeInt('memory.max_facts_chars', memory.maxFactsChars, 200, 4000);
   }
 
+  static PresenceConfig _parsePresence(Map<String, dynamic> map) {
+    _assertKnownKeys(map.keys, _presenceKeys, 'presence');
+    final raw = map['ha_person_by_uid'];
+    final byUid = <String, String>{};
+    if (raw != null) {
+      if (raw is! Map) {
+        throw ConfigError('presence.ha_person_by_uid must be a mapping');
+      }
+      for (final entry in raw.entries) {
+        final uid = entry.key.toString().trim();
+        final entity = entry.value.toString().trim();
+        if (uid.isEmpty || entity.isEmpty) {
+          throw ConfigError(
+            'presence.ha_person_by_uid entries must be non-empty uid → entity',
+          );
+        }
+        if (!entity.startsWith('person.')) {
+          throw ConfigError(
+            'presence.ha_person_by_uid.$uid must be a person.* entity_id',
+          );
+        }
+        byUid[uid] = entity;
+      }
+    }
+    return PresenceConfig(haPersonByUid: byUid);
+  }
+
+  static void _validatePresence(PresenceConfig presence) {
+    // Entity shape checked in _parsePresence.
+  }
+
   static void _validateRanges(
     VisionConfig vision,
     AudioConfig audio,
@@ -430,6 +478,13 @@ class ComstarConfig {
     if (!renderModes.contains(avatar.render)) {
       throw ConfigError(
         'avatar.render must be one of: ${renderModes.join(', ')}',
+      );
+    }
+
+    const duplexModes = {'half', 'full'};
+    if (!duplexModes.contains(audio.duplex)) {
+      throw ConfigError(
+        'audio.duplex must be one of: ${duplexModes.join(', ')}',
       );
     }
 
@@ -738,4 +793,15 @@ class MemoryConfig {
   final bool durable;
   final int maxFactsInject;
   final int maxFactsChars;
+}
+
+/// House-wide presence via HA person entities (ADR 0006). Yaml map first;
+/// IPA group / `comstarHaPerson` attribute overlay lands in P2.3+.
+class PresenceConfig {
+  const PresenceConfig({
+    this.haPersonByUid = const {},
+  });
+
+  /// COMSTAR / IPA uid → Assist-exposed HA `person.*` entity_id.
+  final Map<String, String> haPersonByUid;
 }

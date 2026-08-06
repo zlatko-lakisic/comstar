@@ -1,4 +1,10 @@
 /// Attention machine inputs per CONTRACTS §8.
+library;
+
+import 'package:comstar_bridge/attention/presence.dart';
+
+export 'package:comstar_bridge/attention/presence.dart' show PresenceEntry;
+
 sealed class AttentionEvent {
   const AttentionEvent();
 }
@@ -33,6 +39,19 @@ final class FaceRecognized extends AttentionEvent {
 
 final class FaceUnknown extends AttentionEvent {
   const FaceUnknown();
+}
+
+/// Multi-face presence update (Phase 2). Singular [FaceRecognized] remains for compat.
+final class PresenceSet extends AttentionEvent {
+  const PresenceSet(this.people, {this.primaryUserid});
+  final List<PresenceEntry> people;
+  final String? primaryUserid;
+}
+
+final class PresencePrimaryChanged extends AttentionEvent {
+  const PresencePrimaryChanged({required this.from, required this.to});
+  final String? from;
+  final String to;
 }
 
 final class WakeWord extends AttentionEvent {

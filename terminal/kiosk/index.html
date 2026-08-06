@@ -396,6 +396,7 @@ const bridge = new BridgeClient(bridgeUrl, {
       scale: d.scale ?? d.emblemScale,
       emblem: d.emblem,
     });
+    if (d.mood) avatar.setState(d.mood);
     console.info('[avatar] options', applied);
     if (demo && statusEl) {
       const s = avatar.stats();
@@ -425,6 +426,9 @@ const bridge = new BridgeClient(bridgeUrl, {
     if (d.keepSleeping || avatar.state === 'sleeping') {
       avatar.setState('sleeping');
       setPhase('sleeping', d.text || 'Sleeping…');
+    } else if (d.mood && typeof d.mood === 'string') {
+      avatar.setState(d.mood);
+      setPhase('speaking', d.text || '');
     } else {
       avatar.setState('responding');
       setPhase('speaking', d.text || '');

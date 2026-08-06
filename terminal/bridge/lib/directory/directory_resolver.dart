@@ -15,6 +15,7 @@ class PersonProfile {
     this.dn,
     this.faceId,
     this.voiceId,
+    this.haPerson,
   });
 
   final String uid;
@@ -23,6 +24,9 @@ class PersonProfile {
   final String? dn;
   final String? faceId;
   final String? voiceId;
+
+  /// Optional FreeIPA `comstarHaPerson` → HA `person.*` (P2.3 IPA→HA map).
+  final String? haPerson;
 
   factory PersonProfile.fromJson(Map<String, dynamic> json) {
     final uid = json['uid']?.toString().trim() ?? '';
@@ -45,6 +49,7 @@ class PersonProfile {
       dn: json['dn']?.toString(),
       faceId: json['faceId']?.toString(),
       voiceId: json['voiceId']?.toString(),
+      haPerson: json['haPerson']?.toString() ?? json['ha_person']?.toString(),
     );
   }
 }
@@ -96,14 +101,38 @@ class DirectoryResolver {
       );
     }
 
-    final cached = _cache[key];
+    return _resolveModality(cacheKey: 'f:$key', queryParam: 'face_id', value: key);
+  }
+
+  /// Resolve FreeIPA person by enrolled speaker id (`comstarVoiceId`).
+  Future<DirectoryResolveResult> resolveByVoiceId(String voiceId) async {
+    final key = voiceId.trim();
+    if (key.isEmpty || key == 'unknown') {
+      return const DirectoryMiss();
+    }
+
+    if (!config.enabled) {
+      return DirectoryResolved(
+        PersonProfile(uid: key, displayName: key, voiceId: key),
+      );
+    }
+
+    return _resolveModality(cacheKey: 'v:$key', queryParam: 'voice_id', value: key);
+  }
+
+  Future<DirectoryResolveResult> _resolveModality({
+    required String cacheKey,
+    required String queryParam,
+    required String value,
+  }) async {
+    final cached = _cache[cacheKey];
     if (cached != null && clock.nowMs < cached.expiresAtMs) {
       return DirectoryResolved(cached.profile);
     }
 
     final base = config.sidecarUrl.replaceAll(RegExp(r'/$'), '');
     final uri = Uri.parse('$base/v1/resolve').replace(
-      queryParameters: {'face_id': key},
+      queryParameters: {queryParam: value},
     );
 
     try {
@@ -118,7 +147,7 @@ class DirectoryResolver {
       }
       if (resp.statusCode >= 500) {
         logWarn('directory_error', 'sidecar ${resp.statusCode}', data: {
-          'face_id': key,
+          queryParam: value,
           'body': body.length > 200 ? body.substring(0, 200) : body,
         });
         return DirectoryError('sidecar_${resp.statusCode}');
@@ -133,16 +162,16 @@ class DirectoryResolver {
       final profile = PersonProfile.fromJson(
         Map<String, dynamic>.from(decoded),
       );
-      _cache[key] = _CacheEntry(
+      _cache[cacheKey] = _CacheEntry(
         profile: profile,
         expiresAtMs: clock.nowMs + config.cacheTtlSeconds * 1000,
       );
       return DirectoryResolved(profile);
     } on TimeoutException {
-      logWarn('directory_timeout', 'resolve timed out', data: {'face_id': key});
+      logWarn('directory_timeout', 'resolve timed out', data: {queryParam: value});
       return const DirectoryError('timeout');
     } catch (e) {
-      logWarn('directory_error', e.toString(), data: {'face_id': key});
+      logWarn('directory_error', e.toString(), data: {queryParam: value});
       return DirectoryError(e.toString());
     }
   }

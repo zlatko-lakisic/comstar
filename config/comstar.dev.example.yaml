@@ -39,6 +39,10 @@ attention:
   timezone: America/New_York
 
 # Directory optional in Mac bring-up; require:false = fail-open to faceId.
+presence:
+  ha_person_by_uid:
+    zlatko: person.zlatko_lakisic
+
 directory:
   enabled: false
   sidecar_url: ""

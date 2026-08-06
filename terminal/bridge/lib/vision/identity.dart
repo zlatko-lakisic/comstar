@@ -16,6 +16,9 @@ class IdentityResolver {
   String? _pendingUserid;
   int _voteCount = 0;
 
+  /// When true, keep calling CPAI recognize while a person is present (multi-user).
+  bool continuousRecognize = false;
+
   String? get resolvedUserid => isResolved ? _resolvedUserid : null;
 
   bool get isResolved =>
@@ -28,7 +31,7 @@ class IdentityResolver {
       _expiresAtMs == null ||
       clock.nowMs >= _expiresAtMs!;
 
-  bool get needsRecognition => !isResolved;
+  bool get needsRecognition => continuousRecognize || !isResolved;
 
   /// Positive recognition refreshes TTL; person detection alone does not.
   IdentityVoteResult recordMatch(String userid, double confidence) {
@@ -37,11 +40,16 @@ class IdentityResolver {
       return const IdentityVoteUnknown();
     }
 
-    // Below threshold: ignore this frame but keep vote progress. Previously
-    // we wiped votes and emitted Unknown, which blocked engagement when CPAI
-    // hovered just under face_confidence (e.g. 0.48 vs 0.55).
     if (confidence < config.faceConfidence) {
       return const IdentityVotePending();
+    }
+
+    // Multi-user / engaged: emit every confident match and refresh TTL.
+    if (continuousRecognize && isResolved) {
+      if (_resolvedUserid == userid) {
+        _expiresAtMs = clock.nowMs + config.identityTtlSeconds * 1000;
+      }
+      return IdentityVoteRecognized(userid, confidence);
     }
 
     if (_pendingUserid == userid) {

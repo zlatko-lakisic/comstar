@@ -90,9 +90,12 @@ class EffectRunner {
       case SetThinking(:final active):
         onSetThinking?.call(active);
         logDebug('effect', 'SetThinking', data: {'active': active});
-      case Speak(:final text, :final audioUrl, :final turnId):
+      case Speak(:final text, :final audioUrl, :final turnId, :final mood):
         onSpeak?.call(text, audioUrl, turnId);
-        logDebug('effect', 'Speak', data: {'turn_id': turnId});
+        logDebug('effect', 'Speak', data: {
+          'turn_id': turnId,
+          'mood': mood,
+        });
       case SpeakFallback(:final line, :final turnId):
         onSpeakFallback?.call(line, turnId);
         logDebug('effect', 'SpeakFallback', data: {'turn_id': turnId});
@@ -111,6 +114,13 @@ class EffectRunner {
       case RunGreeter(:final userid):
         onRunGreeter?.call(userid);
         logDebug('effect', 'RunGreeter', data: {'userid': userid});
+      case EmitPresence(:final people, :final primaryUserid):
+        logDebug('effect', 'EmitPresence', data: {
+          'count': people.length,
+          'primary': primaryUserid,
+        });
+      case CancelSpeak():
+        logDebug('effect', 'CancelSpeak');
       case EmitState(:final stateName, :final userid, :final displayName):
         onEmitState?.call(stateName, userid, displayName);
         logDebug('effect', 'EmitState', data: {'state': stateName});

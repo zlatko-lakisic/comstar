@@ -149,6 +149,23 @@ class VisionPoller {
       return;
     }
 
+    // Multi-user: emit every known face above threshold. Single-user path
+    // still uses the best match for vote locking.
+    final known = matches
+        .where((m) => m.isKnown && m.confidence >= config.faceConfidence)
+        .toList()
+      ..sort((a, b) => b.confidence.compareTo(a.confidence));
+
+    if (identity.continuousRecognize && known.isNotEmpty) {
+      for (final m in known) {
+        final vote = identity.recordMatch(m.userid, m.confidence);
+        if (vote is IdentityVoteRecognized) {
+          _emit(VisionFaceRecognized(vote.userid, vote.confidence));
+        }
+      }
+      return;
+    }
+
     final best = matches.reduce(
       (a, b) => a.confidence >= b.confidence ? a : b,
     );
