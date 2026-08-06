@@ -1,4 +1,4 @@
-.PHONY: doctor bridge-dev kiosk-dev audio-sync deploy logs test stt-dev verify-cpai ao-hello site-dev site-build admin console pi-session plymouth
+.PHONY: doctor bridge-dev kiosk-dev audio-sync deploy logs test stt-dev verify-cpai ao-hello site-dev site-build admin console pi-session plymouth soak
 
 ROOT := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 REMOTE ?= comstar
@@ -50,6 +50,15 @@ verify-cpai:
 
 ao-hello:
 	@cd spike && dart run reach_hello.dart
+
+# Detached 24h soak on the Pi (M9). Override hours: COMSTAR_SOAK_HOURS=1 make soak
+soak:
+	@ssh "$(REMOTE)" 'export XDG_RUNTIME_DIR=/run/user/$$(id -u); \
+	  mkdir -p $$HOME/.local/share/comstar/soak; \
+	  nohup $(REMOTE_DIR)/scripts/comstar_soak.sh \
+	    > $$HOME/.local/share/comstar/soak-nohup.log 2>&1 & \
+	  echo "soak pid $$!"; pgrep -af comstar_soak | head -3; \
+	  echo "log: $$HOME/.local/share/comstar/soak-nohup.log"'
 
 site-dev: ## product page at :4321
 	cd site && npm run dev

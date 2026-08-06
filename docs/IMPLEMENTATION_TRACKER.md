@@ -23,7 +23,7 @@
 | Active milestone | **Phase 2 Presence** — P2.0–P2.5 implemented 2026-08-05 |
 | Overall Phase 1 | ~80% (walk-up UAT done; wake/STT-labels/soak deferred) |
 | Overall Phase 2 | software path complete; hallway UAT / Ada MCP register open |
-| Last updated | 2026-08-05 |
+| Last updated | 2026-08-06 |
 | Board | `comstar-ai` Pi 4B 4GB @ `192.168.89.34` — SSH Host `comstar` |
 | Vision backend | CodeProject.AI `10.0.10.16:32168` — face `zlatko` enrolled |
 | AO Reach | `10.0.10.16:8765` — greeter + voice live; **Ada speech sidecars** in use |
@@ -36,7 +36,7 @@
 - Wake-word ONNX train + ROC (M4) — force-wake documented; no training data yet
 - Live STT **human** labels (M6) — 12 live fixtures pass circular auto-bench; GT review open
 - ~~Walk-up greet-by-name UAT (M8)~~ — **passed 2026-08-05** (operator sign-off)
-- 24 h soak (M9) — running `~/.local/share/comstar/soak/20260805-025615/` (started ~02:56)
+- 24 h soak (M9) — partial `20260805-025615` (~21.6h, salvaged `summary.json`); fresh soak restarted 2026-08-06
 
 ### Open blockers / gaps
 
@@ -46,8 +46,8 @@
 | B9 | TalkingHead GLB not wired | M7 lip-sync | Intentional SVG shipping; `assets/comstar.glb` present (gitignored) |
 | B11 | STT fixtures need human labels | M6 accuracy gate | Auto-bench PASS 12/12 vs Pi whisper; not human GT |
 | B12 | Terminal MCP hangs AO tools | M5 tunnel | Keep `COMSTAR_TERMINAL_MCP` off; in-bridge sleep/volume |
-| B13 | Vision MCP not registered on AO | M5 who_is_present | Code in `mcp/vision_mcp/`; needs Ada catalog + frame source |
-| B14 | LDAP MCP not registered on AO | P2.3 smoke | Code in `mcp/ldap_mcp/`; catalog YAML ready |
+| B13 | Vision MCP not registered on AO | M5 who_is_present | Code + AO-shaped YAML ready; needs Ada SSH, frame feed, catalog install — `docs/handoffs/ada-mcp-register.md` |
+| B14 | LDAP MCP not registered on AO | P2.3 smoke | Code + AO-shaped YAML ready; needs Ada SSH, FreeIPA bind, catalog install — same handoff |
 ---
 
 ## Milestone rollup (Phase 1)
@@ -71,9 +71,9 @@
 
 1. Human-label `testdata/stt/live-bridge-*.json` transcripts; re-run `bench_stt --require-live 10`
 2. Record “hey comstar” + negatives → train `models/hey_comstar.onnx` + ROC
-3. Let soak finish 24h → read `~/.local/share/comstar/soak/*/summary.json`
-4. Deploy Phase 2 bridge/kiosk/audio; curl `GET /v1/presence/home`; UAT two-face primary switch
-5. Register `ldap_mcp` + `vision_mcp` on Ada AO catalog
+3. Fresh soak running — read `summary.json` when complete; see salvaged `20260805-025615/summary.json`
+4. Hallway UAT: same-utterance wake, short replies, silent idle sleep, HDMI
+5. Register `ldap_mcp` + `vision_mcp` on Ada — blocked on Ada SSH + LDAP secrets + frame feed; handoff `docs/handoffs/ada-mcp-register.md`
 6. Optional: enable `COMSTAR_AEC=1` + monitor source for full duplex soak
 
 ---

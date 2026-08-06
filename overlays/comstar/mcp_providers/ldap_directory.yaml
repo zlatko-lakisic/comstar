@@ -1,5 +1,10 @@
-# COMSTAR LDAP MCP — AO catalog metadata (hosted on Ada / AI server).
+# COMSTAR LDAP MCP — AO catalog (hosted on Ada / AI server).
 # Session open must not depend on this MCP (ADR 0005).
+#
+# On Ada:
+#   1. Run directory_sidecar (:8780) + ldap_mcp (:8794)
+#   2. Set COMSTAR_LDAP_MCP_URL=http://127.0.0.1:8794/mcp in AO env
+#   3. Place this file under AO config/mcp_providers/ (or EXTRA path) and restart
 id: ldap_directory
 description: FreeIPA COMSTAR person lookup via directory sidecar
 capabilities: >
@@ -15,8 +20,8 @@ user_goal_keywords:
   - who is enrolled
   - household
 
-transport: streamable_http
-alias: ldap_directory
-# Point AO at the ldap_mcp HTTP endpoint (default :8794 on Ada).
-url_env: COMSTAR_LDAP_MCP_URL
 guest_allowed: false
+required_env:
+  - COMSTAR_LDAP_MCP_URL
+streamable_http:
+  url: "${COMSTAR_LDAP_MCP_URL}"

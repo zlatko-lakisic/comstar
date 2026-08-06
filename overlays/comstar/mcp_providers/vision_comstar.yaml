@@ -1,0 +1,23 @@
+# COMSTAR vision MCP — AO catalog (hosted on Ada / AI server).
+# Co-located with CodeProject.AI — not the Pi reverse tunnel (CONTRACTS §5).
+#
+# On Ada:
+#   1. Run vision_mcp (:8793) with COMSTAR_CPAI_URL + a frame source
+#      (COMSTAR_VISION_FRAME_URL or COMSTAR_VISION_FRAME)
+#   2. Set COMSTAR_VISION_MCP_URL=http://127.0.0.1:8793/mcp in AO env
+#   3. Place this file under AO config/mcp_providers/ and restart
+id: vision_comstar
+description: CodeProject.AI presence and scene tools for COMSTAR planner
+capabilities: >
+  who_is_present, describe_view, check_camera against CPAI.
+  Needs a JPEG frame feed; Pi face engage stays on the bridge vision poller.
+good_for: who is here, camera, scene, objects, presence at terminal
+planner_hint: >
+  Use for orchestrator-side "who is present" / scene questions. Do not use for
+  session identity (that is the Pi face → directory resolve path).
+
+guest_allowed: false
+required_env:
+  - COMSTAR_VISION_MCP_URL
+streamable_http:
+  url: "${COMSTAR_VISION_MCP_URL}"
