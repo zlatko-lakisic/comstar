@@ -34,8 +34,10 @@ class MachineContext {
     this.sttPending = false,
     this.lastGreeterUserid,
     this.lastGreeterAtMs,
+    int? lastActivityAtMs,
     Map<String, PresenceEntry>? presence,
-  }) : presence = presence ?? {};
+  })  : presence = presence ?? {},
+        lastActivityAtMs = lastActivityAtMs ?? clock.nowMs;
 
   final ComstarConfig config;
   final Clock clock;
@@ -65,6 +67,9 @@ class MachineContext {
   bool sttPending;
   String? lastGreeterUserid;
   int? lastGreeterAtMs;
+
+  /// Last user interaction (wake / speech / face engage / reply). Used for idle sleep.
+  int lastActivityAtMs;
   final Map<String, PresenceEntry> presence;
 
   bool get halfDuplex => config.audio.duplex == 'half';
@@ -106,6 +111,7 @@ class MachineContext {
         sttPending: sttPending,
         lastGreeterUserid: lastGreeterUserid,
         lastGreeterAtMs: lastGreeterAtMs,
+        lastActivityAtMs: lastActivityAtMs,
         presence: Map<String, PresenceEntry>.from(presence),
       );
 }
@@ -213,6 +219,9 @@ class AttentionMachine {
       case PersonAbsent():
         context.personPresent = false;
         context.absentFrames++;
+      case Tick():
+        if (_maybeIdleSleep(effects)) break;
+        break;
       case WakeWord():
         // Prefer face engagement before opening a guest listen session.
         // Energy/force wake must not race Ambient → guest Listening.
@@ -254,6 +263,8 @@ class AttentionMachine {
           case 'restricted' || 'ignore':
             break;
         }
+      case Tick():
+        if (_maybeIdleSleep(effects)) break;
       case WakeWord():
         // Same as Ambient — wait until Engaged (known face) before listening.
         break;
@@ -281,12 +292,13 @@ class AttentionMachine {
             guest: false,
           );
         }
-      case WakeWord():
+      case WakeWord(:final prompt):
         // Half-duplex: ignore mic triggers while TTS plays (HDMI echo).
         // Full duplex: allow barge-in (ADR 0007).
         if (context.playing && context.halfDuplex) {
           break;
         }
+        context.lastActivityAtMs = context.clock.nowMs;
         if (context.playing && context.fullDuplex) {
           _bargeInToListening(effects);
           break;
@@ -296,12 +308,18 @@ class AttentionMachine {
         if (context.followUpListening) {
           break;
         }
+        final residual = prompt?.trim() ?? '';
+        if (residual.isNotEmpty) {
+          _runResidualPrompt(effects, residual);
+          break;
+        }
         _enterListening(effects);
       case SpeechStart():
         // Face-engaged = addressable. Real speech (not greeter) starts a turn.
         if (context.playing && context.halfDuplex) {
           break;
         }
+        context.lastActivityAtMs = context.clock.nowMs;
         if (context.playing && context.fullDuplex) {
           _bargeInToListening(effects);
           break;
@@ -347,6 +365,7 @@ class AttentionMachine {
           ),
         );
       case Tick():
+        if (_maybeIdleSleep(effects)) break;
         if (context.identityExpired && !context.personPresent) {
           _returnAmbient(effects, closeSession: true);
         }
@@ -381,6 +400,7 @@ class AttentionMachine {
         effects.add(const OpenFollowUpWindow());
       case TranscriptReady(:final text):
         context.sttPending = false;
+        context.lastActivityAtMs = context.clock.nowMs;
         if (text.trim().isEmpty) {
           // Silence/miss — stay face-engaged and re-arm VAD (no greeter gate).
           _leaveListeningToEngaged(effects);
@@ -477,13 +497,21 @@ class AttentionMachine {
 
   void _handleSleeping(AttentionEvent event, List<Effect> effects) {
     switch (event) {
-      case WakeWord():
-        // Confirmed hey comstar — leave sleep and arm Listening for the prompt
-        // (verify already consumed the wake utterance).
+      case WakeWord(:final prompt):
+        // Confirmed hey comstar — leave sleep. If the same utterance had a
+        // residual prompt ("hey comstar what's up"), run it as the turn.
         effects.add(const ExitedSleep());
-        _wakeFromSleepToReady(effects);
+        context.lastActivityAtMs = context.clock.nowMs;
+        final residual = prompt?.trim() ?? '';
+        if (residual.isNotEmpty) {
+          _wakeFromSleepWithPrompt(effects, residual);
+        } else {
+          // Verify already consumed a wake-only utterance; arm Listening.
+          _wakeFromSleepToReady(effects);
+        }
       case ExitSleep():
         effects.add(const ExitedSleep());
+        context.lastActivityAtMs = context.clock.nowMs;
         _wakeFromSleepToReady(effects);
       case ResponseReady(:final text, :final audioUrl):
         // Sleep ack TTS ("going to sleep") — stay Sleeping; kiosk must not
@@ -508,6 +536,72 @@ class AttentionMachine {
         // Vision, VAD, follow-up — ignored while dormant.
         break;
     }
+  }
+
+  /// After sleep with a same-utterance command: skip empty follow-up listen and
+  /// run [prompt] through directAgent immediately.
+  void _wakeFromSleepWithPrompt(List<Effect> effects, String prompt) {
+    _runResidualPrompt(effects, prompt, fromSleep: true);
+  }
+
+  /// Run a residual wake prompt as a Responding turn (no fresh mic capture).
+  void _runResidualPrompt(
+    List<Effect> effects,
+    String prompt, {
+    bool fromSleep = false,
+  }) {
+    if (!context.sessionOpen) {
+      context.sessionOpen = true;
+      final uid = context.cachedUserid ?? 'guest';
+      effects.add(
+        OpenSession(
+          userid: uid,
+          guest: context.cachedUserid == null,
+        ),
+      );
+    }
+    context.state = const Responding();
+    context.turnId = _uuid.v4();
+    context.respondingStartedAtMs = context.clock.nowMs;
+    context.directAgentInFlight = true;
+    context.sttPending = false;
+    context.playing = false;
+    context.followUpOpen = false;
+    context.followUpListening = false;
+    context.followUpOpenedAtMs = null;
+    context.followUpMicArmedAtMs = null;
+    context.lastActivityAtMs = context.clock.nowMs;
+    context.wakeEnabled = true;
+    effects.add(const EnableWake(true));
+    effects.add(const StopListening());
+    if (fromSleep || context.engagedEnteredAtMs == 0) {
+      context.engagedEnteredAtMs = context.clock.nowMs;
+    }
+    effects.add(SetVisionFps(context.config.vision.engagedFps));
+    effects.add(const SetThinking(true));
+    effects.add(CallDirectAgent(prompt, context.turnId!));
+    effects.add(
+      LogAttention(
+        'wake_residual',
+        'Running same-utterance prompt after wake',
+      ),
+    );
+  }
+
+  /// Silent auto-sleep after [AttentionConfig.idleSleepSeconds] with no
+  /// interaction. Returns true when sleep was entered.
+  bool _maybeIdleSleep(List<Effect> effects) {
+    final secs = context.config.attention.idleSleepSeconds;
+    if (secs <= 0) return false;
+    if (context.playing || context.directAgentInFlight) return false;
+    if (context.clock.nowMs - context.lastActivityAtMs < secs * 1000) {
+      return false;
+    }
+    effects.add(
+      LogAttention('auto_sleep', 'Idle timeout — entering sleep silently'),
+    );
+    _enterSleep(effects);
+    return true;
   }
 
   /// After sleep: Engaged if a session is open, else Ambient.
@@ -591,6 +685,7 @@ class AttentionMachine {
   }) {
     context.state = const Engaged();
     context.engagedEnteredAtMs = context.clock.nowMs;
+    context.lastActivityAtMs = context.clock.nowMs;
     _cacheIdentity(
       guest ? null : userid,
       displayName: guest ? null : displayName,

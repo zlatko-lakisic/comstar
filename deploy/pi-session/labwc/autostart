@@ -42,7 +42,7 @@ systemctl --user start pipewire.socket pipewire.service 2>/dev/null || true
 systemctl --user start wireplumber.service 2>/dev/null || true
 systemctl --user start pipewire-pulse.socket pipewire-pulse.service 2>/dev/null || true
 
-# Named HDMI sink + mute ACP dual-open (see pipewire/99-comstar-hdmi.conf.example).
+# HDMI ACP sink renamed to comstar_hdmi (see wireplumber/51-comstar-hdmi.lua).
 if [[ -x "$HOME/.config/comstar/prefer-hdmi-audio.sh" ]]; then
   "$HOME/.config/comstar/prefer-hdmi-audio.sh" >/tmp/comstar-prefer-hdmi.log 2>&1 || true
 elif [[ -x "$ROOT/deploy/pi-session/prefer-hdmi-audio.sh" ]]; then

@@ -37,6 +37,7 @@ attention:
   face_attention_trigger: false
   stranger_mode: restricted
   timezone: America/New_York
+  idle_sleep_seconds: 600
 
 # Directory optional in Mac bring-up; require:false = fail-open to faceId.
 presence:

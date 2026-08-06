@@ -3,13 +3,15 @@
 /// With force-wake (no openWakeWord model), energy alone is too loose; require
 /// an STT transcript that clearly contains hey/hello comstar (with common
 /// Whisper mis-hearings of "comstar").
-bool isComstarWakePhrase(String text) {
+
+/// Normalize STT text for wake matching (lowercase, collapse space, fix mangling).
+String normalizeComstarWakeText(String text) {
   var t = text
       .toLowerCase()
       .replaceAll(RegExp(r'[^\w\s]'), ' ')
       .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
-  if (t.isEmpty) return false;
+  if (t.isEmpty) return t;
 
   // Normalize STT splits and near-miss spellings of "comstar".
   t = t
@@ -28,6 +30,20 @@ bool isComstarWakePhrase(String text) {
       .replaceAll(RegExp(r'\bcumstarr?\b'), 'comstar')
       .replaceAll(RegExp(r'\bkomstarr?\b'), 'comstar');
 
+  // Any token that looks like com*star* / com*ter (Whisper mangling).
+  t = t.replaceAllMapped(RegExp(r'\b[a-z]+\b'), (m) {
+    final w = m.group(0)!;
+    if (_tokenLooksLikeComstar(w)) return 'comstar';
+    return w;
+  });
+
+  return t;
+}
+
+bool isComstarWakePhrase(String text) {
+  final t = normalizeComstarWakeText(text);
+  if (t.isEmpty) return false;
+
   // "hey/hello … star" when Whisper drops "com" into "comes the star".
   if (RegExp(r'\b(hey|hello|hi)\b').hasMatch(t) &&
       RegExp(r'\b(comstar|star)\b').hasMatch(t) &&
@@ -40,13 +56,6 @@ bool isComstarWakePhrase(String text) {
     }
   }
 
-  // Any token that looks like com*star* / com*ter (Whisper mangling).
-  t = t.replaceAllMapped(RegExp(r'\b[a-z]+\b'), (m) {
-    final w = m.group(0)!;
-    if (_tokenLooksLikeComstar(w)) return 'comstar';
-    return w;
-  });
-
   if (RegExp(r'\b(hey|hello|hi)\s+comstar\b').hasMatch(t)) {
     return true;
   }
@@ -56,6 +65,36 @@ bool isComstarWakePhrase(String text) {
     return true;
   }
   return false;
+}
+
+/// Speech after the wake phrase in the same utterance.
+///
+/// Returns `''` when the transcript is wake-only (or not a wake phrase).
+/// Example: `"hey comstar what's up"` → `"whats up"`.
+String residualAfterWakePhrase(String text) {
+  if (!isComstarWakePhrase(text)) return '';
+  var t = normalizeComstarWakeText(text);
+
+  t = t.replaceFirst(RegExp(r'^(okay|ok)\s+'), '');
+  if (RegExp(r'^(hey|hello|hi)\s+comstar\b').hasMatch(t)) {
+    return t
+        .replaceFirst(RegExp(r'^(hey|hello|hi)\s+comstar\b[, ]*'), '')
+        .trim();
+  }
+  if (RegExp(r'^comstar\b').hasMatch(t)) {
+    return t.replaceFirst(RegExp(r'^comstar\b[, ]*'), '').trim();
+  }
+
+  // "hey … comstar … rest" with words between hey and comstar.
+  final m = RegExp(r'\b(hey|hello|hi)\b.*?\bcomstar\b[, ]*').firstMatch(t);
+  if (m != null) {
+    return t.substring(m.end).trim();
+  }
+  final c = RegExp(r'\bcomstar\b[, ]*').firstMatch(t);
+  if (c != null) {
+    return t.substring(c.end).trim();
+  }
+  return '';
 }
 
 bool _tokenLooksLikeComstar(String w) {

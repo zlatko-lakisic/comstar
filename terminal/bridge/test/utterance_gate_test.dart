@@ -33,6 +33,21 @@ void main() {
       expect(isActionableUtterance('How are you?'), isTrue);
     });
 
+    test('allows conversational replies to check-ins', () {
+      expect(isActionableUtterance('Yes'), isTrue);
+      expect(isActionableUtterance('Yeah'), isTrue);
+      expect(isActionableUtterance('No'), isTrue);
+      expect(isActionableUtterance('Sure'), isTrue);
+      expect(isActionableUtterance('Okay'), isTrue);
+      expect(isActionableUtterance("I'm fine"), isTrue);
+      expect(isActionableUtterance("I'm good"), isTrue);
+      expect(isActionableUtterance('Everything is fine'), isTrue);
+      expect(isActionableUtterance('All good'), isTrue);
+      expect(isActionableUtterance('Not really'), isTrue);
+      expect(isActionableUtterance('Yes everything is fine'), isTrue);
+      expect(isActionableUtterance('Got it'), isTrue);
+    });
+
     test('rejects fragments and ambient non-prompts', () {
       expect(isActionableUtterance("I'm"), isFalse);
       expect(isActionableUtterance('Hey!'), isFalse);

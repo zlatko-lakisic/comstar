@@ -55,8 +55,13 @@ final class PresencePrimaryChanged extends AttentionEvent {
 }
 
 final class WakeWord extends AttentionEvent {
-  const WakeWord(this.score);
+  const WakeWord(this.score, {this.prompt});
   final double score;
+
+  /// Remainder after the wake phrase in the same sleep-verify utterance.
+  /// When non-null and non-empty, the machine runs it as the turn promptly
+  /// instead of opening an empty follow-up listen.
+  final String? prompt;
 }
 
 final class SpeechStart extends AttentionEvent {

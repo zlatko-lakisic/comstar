@@ -38,6 +38,7 @@ attention:
   face_attention_trigger: true
   stranger_mode: restricted                    # restricted | greet | ignore
   timezone: America/New_York                   # optional spoken label; clock uses Pi system TZ
+  idle_sleep_seconds: 600                      # 0 disables; silent auto-sleep after idle
 
 # AO phrase banks — periodic short lines for engage / sleep / social.
 # Text only; TTS runs at speak time. Optional [[name]] slots filled with display name.

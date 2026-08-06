@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # COMSTAR PipeWire / Pulse audio health + heal.
-# Restores the known-good Pi path: comstar_hdmi sink, ACP HDMI/headphones off,
-# default mic unmuted. Called from scripts/comstar_health.sh or standalone:
+# Restores the known-good Pi path: comstar_hdmi (ACP HDMI-0 renamed), spare
+# HDMI + headphones off, default mic unmuted.
+# Called from scripts/comstar_health.sh or standalone:
 #   COMSTAR_HEALTH_HEAL=1 bash scripts/comstar_audio_health.sh
 set -euo pipefail
 
@@ -14,8 +15,6 @@ PREFER="${COMSTAR_PREFER_HDMI:-$HOME/.config/comstar/prefer-hdmi-audio.sh}"
 if [[ ! -x "$PREFER" && -x "$ROOT/deploy/pi-session/prefer-hdmi-audio.sh" ]]; then
   PREFER="$ROOT/deploy/pi-session/prefer-hdmi-audio.sh"
 fi
-PW_CONF="${COMSTAR_PIPEWIRE_HDMI_CONF:-$HOME/.config/pipewire/pipewire.conf.d/99-comstar-hdmi.conf}"
-PW_EXAMPLE="$ROOT/deploy/pi-session/pipewire/99-comstar-hdmi.conf.example"
 STATE_DIR="${XDG_RUNTIME_DIR:-/tmp}/comstar-health"
 mkdir -p "$STATE_DIR"
 LOG_TAG="comstar-audio-health"
@@ -79,28 +78,15 @@ restart_pw_stack() {
   ensure_pw_stack
 }
 
-ensure_hdmi_conf() {
-  if [[ -f "$PW_CONF" ]]; then
-    return 0
-  fi
-  if [[ -f "$PW_EXAMPLE" ]]; then
-    mkdir -p "$(dirname "$PW_CONF")"
-    cp "$PW_EXAMPLE" "$PW_CONF"
-    log "installed missing $PW_CONF from example"
-    return 0
-  fi
-  return 1
-}
-
 run_prefer_hdmi() {
   if [[ -x "$PREFER" ]]; then
     "$PREFER" >/tmp/comstar-prefer-hdmi.log 2>&1 || return 1
     return 0
   fi
-  # Inline minimal restore if prefer script missing.
+  # Inline minimal restore if prefer script missing (ACP primary ON).
   pactl set-card-profile alsa_card.platform-fe00b840.mailbox off 2>/dev/null || true
-  pactl set-card-profile alsa_card.platform-fef00700.hdmi off 2>/dev/null || true
   pactl set-card-profile alsa_card.platform-fef05700.hdmi off 2>/dev/null || true
+  pactl set-card-profile alsa_card.platform-fef00700.hdmi output:hdmi-stereo 2>/dev/null || true
   if pactl list short sinks 2>/dev/null | awk '{print $2}' | grep -qx "$SPEAKER"; then
     pactl set-default-sink "$SPEAKER"
     pactl set-sink-mute "$SPEAKER" 0 || true
@@ -129,7 +115,7 @@ heal_audio() {
     return 0
   fi
   log "healing audio: $reason"
-  ensure_hdmi_conf || true
+  # Never auto-install pipewire.conf.d HDMI adapters — a bad path exits PW 234.
   ensure_pw_stack
   if ! pactl_ok || ! pactl list short sinks 2>/dev/null | awk '{print $2}' | grep -qx "$SPEAKER"; then
     restart_pw_stack
@@ -161,8 +147,9 @@ sink_muted() {
   pactl get-sink-mute "$1" 2>/dev/null | grep -qi 'yes'
 }
 
-acp_hdmi_stolen() {
-  # Dual-open breaks comstar_hdmi — ACP HDMI / headphone profiles must stay off.
+acp_spare_stolen() {
+  # Dual-open breaks HDMI audio — headphones + spare HDMI (hdmi-1) must stay off.
+  # Primary vc4-hdmi-0 (fef00700) must stay ON; that is the comstar_hdmi ACP path.
   local name profile
   while IFS= read -r name; do
     [[ -z "$name" ]] && continue
@@ -174,7 +161,32 @@ acp_hdmi_stolen() {
       log "     card $name profile=$profile (want off)"
       return 0
     fi
-  done < <(pactl list cards short 2>/dev/null | awk '{print $2}' | grep -E 'platform-fef00[57]00\.hdmi|platform-fe00b840\.mailbox' || true)
+  done < <(pactl list cards short 2>/dev/null | awk '{print $2}' | grep -E 'platform-fef05700\.hdmi|platform-fe00b840\.mailbox' || true)
+  return 1
+}
+
+primary_hdmi_off() {
+  local name profile
+  name="$(pactl list cards 2>/dev/null | python3 -c '
+import sys
+for block in sys.stdin.read().split("Card #"):
+    if "alsa.card_name = \"vc4-hdmi-0\"" not in block:
+        continue
+    for line in block.splitlines():
+        line = line.strip()
+        if line.startswith("Name:"):
+            print(line.split(":", 1)[1].strip())
+            raise SystemExit
+' 2>/dev/null || true)"
+  [[ -n "$name" ]] || name=alsa_card.platform-fef00700.hdmi
+  profile="$(pactl list cards 2>/dev/null | awk -v n="$name" '
+    $1=="Name:" && $2==n {hit=1; next}
+    hit && $1=="Active" && $2=="Profile:" {print $3; exit}
+  ')"
+  if [[ -z "$profile" || "$profile" == "off" ]]; then
+    log "     card $name profile=${profile:-missing} (want hdmi-stereo)"
+    return 0
+  fi
   return 1
 }
 
@@ -258,22 +270,38 @@ if pactl_ok; then
     fi
   fi
 
-  if acp_hdmi_stolen; then
-    bad "ACP HDMI/headphones profile active (dual-open risk)"
+  if acp_spare_stolen; then
+    bad "headphones/spare HDMI profile active (dual-open risk)"
     if bump_miss audio_acp 1; then
-      # Soft prefer first; escalate only if still wrong next cycle via miss.
       if [[ "$HEAL" == "1" ]]; then
         if run_prefer_hdmi; then
-          healed "ACP profiles forced off"
+          healed "spare ACP profiles forced off"
         else
-          heal_audio "ACP profile steal"
+          heal_audio "ACP spare steal"
         fi
       fi
       clear_miss audio_acp
     fi
   else
-    ok "ACP HDMI/headphones off"
+    ok "headphones/spare HDMI off"
     clear_miss audio_acp
+  fi
+
+  if primary_hdmi_off; then
+    bad "primary HDMI profile off"
+    if bump_miss audio_primary_hdmi 1; then
+      if [[ "$HEAL" == "1" ]]; then
+        if run_prefer_hdmi; then
+          healed "primary HDMI profile restored"
+        else
+          heal_audio "primary HDMI off"
+        fi
+      fi
+      clear_miss audio_primary_hdmi
+    fi
+  else
+    ok "primary HDMI profile on"
+    clear_miss audio_primary_hdmi
   fi
 
   # --- mic / source ---

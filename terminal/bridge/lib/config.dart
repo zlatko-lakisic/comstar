@@ -93,6 +93,7 @@ class ComstarConfig {
     'face_attention_trigger',
     'stranger_mode',
     'timezone',
+    'idle_sleep_seconds',
   };
 
   static const _directoryKeys = {
@@ -323,6 +324,9 @@ class ComstarConfig {
           _requireBool(map, 'face_attention_trigger', 'attention'),
       strangerMode: _requireString(map, 'stranger_mode', 'attention'),
       timezone: _optionalString(map, 'timezone') ?? '',
+      idleSleepSeconds: map.containsKey('idle_sleep_seconds')
+          ? _requireInt(map, 'idle_sleep_seconds', 'attention')
+          : 600,
     );
   }
 
@@ -473,6 +477,12 @@ class ComstarConfig {
         'attention.stranger_mode must be one of: ${strangerModes.join(', ')}',
       );
     }
+    _rangeInt(
+      'attention.idle_sleep_seconds',
+      attention.idleSleepSeconds,
+      0,
+      86400,
+    );
 
     const renderModes = {'local', 'streamed'};
     if (!renderModes.contains(avatar.render)) {
@@ -703,6 +713,7 @@ class AttentionConfig {
     required this.faceAttentionTrigger,
     required this.strangerMode,
     this.timezone = '',
+    this.idleSleepSeconds = 600,
   });
 
   final bool faceAttentionTrigger;
@@ -711,6 +722,9 @@ class AttentionConfig {
   /// Optional IANA / human label for spoken TZ answers (e.g. America/New_York).
   /// Clock itself always uses the terminal's system [DateTime.now].
   final String timezone;
+
+  /// Seconds without interaction before silent auto-sleep. `0` disables.
+  final int idleSleepSeconds;
 }
 
 class DirectoryConfig {

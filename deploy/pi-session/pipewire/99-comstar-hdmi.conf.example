@@ -1,38 +1,46 @@
-# COMSTAR HDMI sink for PipeWire (vc4-hdmi-0).
+# OPTIONAL exclusive HDMI sink (NOT the default path).
+#
+# Preferred path: WirePlumber ACP sink renamed to comstar_hdmi via
+# deploy/pi-session/wireplumber/51-comstar-hdmi.lua + prefer-hdmi-audio.sh.
 #
 # A hard-failing context.object takes down all of PipeWire (status 234).
-# Only enable after:
-#   aplay -D default:CARD=vc4hdmi0 /usr/share/sounds/alsa/Front_Center.wav
+# Only enable after you have verified the path works, e.g.:
+#   CARD=$(awk -F'[][]' '/vc4hdmi0/{print $2; exit}' /proc/asound/cards)
+#   # then set api.alsa.path = "hdmi:${CARD}" and api.alsa.card = ${CARD}
 #
-# Install:
+# Install (manual):
 #   mkdir -p ~/.config/pipewire/pipewire.conf.d
-#   cp deploy/pi-session/pipewire/99-comstar-hdmi.conf.example \
-#      ~/.config/pipewire/pipewire.conf.d/99-comstar-hdmi.conf
+#   cp this file → ~/.config/pipewire/pipewire.conf.d/99-comstar-hdmi.conf
+#   # edit card index for THIS boot
 #   systemctl --user restart pipewire pipewire-pulse wireplumber
-#   deploy/pi-session/prefer-hdmi-audio.sh
 #
-# Bind by ALSA card *name*, not index. Headphones often steals card 0, so
-# api.alsa.path = "hdmi:0" breaks and PipeWire never comes up.
+# Bind by ALSA card *index* only after resolving vc4hdmi0 from /proc/asound/cards.
+# Headphones often steals card 0, so api.alsa.path = "hdmi:0" breaks.
+# Named paths like "hdmi:CARD=vc4hdmi0,DEV=0" fail spa.alsa ("Could not
+# determine card index") and kill PipeWire.
 #
 # Do NOT use:
-#   - hdmi:0 / hdmi:1 — index-based; wrong after card renumber
-#   - hw:/plughw: alone — vc4 HDMI is IEC958_SUBFRAME_LE only; adapter fails
-#   - iec958:CARD=vc4hdmi0 — not always present in ALSA PCM defs
+#   - hdmi:0 / hdmi:1 without checking /proc/asound/cards first
+#   - default:CARD=vc4hdmi0 / hdmi:CARD=… without api.alsa.card (PW exit 234)
+#   - hw:/plughw: alone — vc4 HDMI is IEC958_SUBFRAME_LE only
 #
-# Keep ACP HDMI profiles off via prefer-hdmi-audio.sh (dual-open breaks playback).
+# If this file is active, keep ACP HDMI profiles off via prefer-hdmi-audio.sh
+# (dual-open breaks playback). With the default ACP+rename path, primary
+# HDMI profile must stay ON.
 
-context.objects = [
-  { factory = adapter
-    args = {
-      factory.name = api.alsa.pcm.sink
-      node.name = "comstar_hdmi"
-      node.description = "COMSTAR HDMI"
-      media.class = "Audio/Sink"
-      api.alsa.path = "default:CARD=vc4hdmi0"
-      audio.rate = 48000
-      audio.channels = 2
-      session.suspend-timeout-seconds = 0
-      node.pause-on-idle = false
-    }
-  }
-]
+# context.objects = [
+#   { factory = adapter
+#     args = {
+#       factory.name = api.alsa.pcm.sink
+#       node.name = "comstar_hdmi"
+#       node.description = "COMSTAR HDMI"
+#       media.class = "Audio/Sink"
+#       api.alsa.path = "hdmi:1"
+#       api.alsa.card = 1
+#       audio.rate = 48000
+#       audio.channels = 2
+#       session.suspend-timeout-seconds = 0
+#       node.pause-on-idle = false
+#     }
+#   }
+# ]

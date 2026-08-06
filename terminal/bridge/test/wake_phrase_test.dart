@@ -9,6 +9,17 @@ void main() {
     expect(isComstarWakePhrase('okay hello comstar'), isTrue);
   });
 
+  test('strips residual prompt after wake phrase', () {
+    expect(residualAfterWakePhrase('hey comstar'), isEmpty);
+    expect(residualAfterWakePhrase('hey comstar whats up'), 'whats up');
+    expect(residualAfterWakePhrase('Hey Comestar, what are you up to?'),
+        'what are you up to');
+    expect(residualAfterWakePhrase('hello comstar what time is it'),
+        'what time is it');
+    expect(residualAfterWakePhrase('comstar volume up'), 'volume up');
+    expect(residualAfterWakePhrase('just hello'), isEmpty);
+  });
+
   test('rejects bare hello / hey / noise', () {
     expect(isComstarWakePhrase('hello'), isFalse);
     expect(isComstarWakePhrase('hey'), isFalse);

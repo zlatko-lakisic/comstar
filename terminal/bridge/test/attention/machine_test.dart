@@ -70,10 +70,12 @@ AttentionMachine _machine({
   ComstarConfig? config,
   bool faceAttentionTrigger = false,
   String strangerMode = 'restricted',
+  int? idleSleepSeconds,
 }) {
   final c = config ?? _loadConfig(strangerMode: strangerMode);
   final clk = clock ?? FakeClock();
-  final cfg = faceAttentionTrigger
+  final needRebuild = faceAttentionTrigger || idleSleepSeconds != null;
+  final cfg = needRebuild
       ? ComstarConfig.loadMap(
           {
             'orchestration': {
@@ -109,8 +111,11 @@ AttentionMachine _machine({
               'piper_voice': c.avatar.piperVoice,
             },
             'attention': {
-              'face_attention_trigger': true,
+              'face_attention_trigger':
+                  faceAttentionTrigger || c.attention.faceAttentionTrigger,
               'stranger_mode': strangerMode,
+              'idle_sleep_seconds':
+                  idleSleepSeconds ?? c.attention.idleSleepSeconds,
             },
             'directory': {
               'enabled': c.directory.enabled,
@@ -512,6 +517,41 @@ void main() {
       expect(followUp.settleMs, 0);
       expect(_hasEffectType<StartListening>(t.effects), isFalse);
       expect(_hasEffectType<EnableWake>(t.effects), isTrue);
+      assertInvariants(m.context);
+    });
+
+    test('WakeWord with residual prompt runs directAgent without follow-up', () {
+      final m = _machine();
+      _apply(m, const PersonDetected(0.85));
+      _apply(m, const FaceRecognized('zlatko', 0.9));
+      _apply(m, const EnterSleep());
+      expect(m.state, isA<Sleeping>());
+
+      final t = m.handle(const WakeWord(0.9, prompt: "what's up"));
+      expect(m.state, isA<Responding>());
+      expect(m.context.directAgentInFlight, isTrue);
+      expect(_hasEffectType<ExitedSleep>(t.effects), isTrue);
+      expect(_hasEffectType<OpenFollowUpWindow>(t.effects), isFalse);
+      expect(_hasEffectType<CallDirectAgent>(t.effects), isTrue);
+      final agent = t.effects.whereType<CallDirectAgent>().single;
+      expect(agent.text, "what's up");
+      expect(_hasEffectType<SetThinking>(t.effects), isTrue);
+      assertInvariants(m.context);
+    });
+
+    test('Tick idle_sleep_seconds enters sleep silently', () {
+      final m = _machine(idleSleepSeconds: 60);
+      _apply(m, const PersonDetected(0.85));
+      _apply(m, const FaceRecognized('zlatko', 0.9));
+      expect(m.state, isA<Engaged>());
+      m.context.playing = false;
+      m.context.wakeEnabled = true;
+      m.context.lastActivityAtMs = m.context.clock.nowMs - 61 * 1000;
+
+      final t = m.handle(const Tick());
+      expect(m.state, isA<Sleeping>());
+      expect(_hasEffectType<EnteredSleep>(t.effects), isTrue);
+      expect(_hasEffectType<Speak>(t.effects), isFalse);
       assertInvariants(m.context);
     });
 

@@ -48,9 +48,17 @@ if [[ -f "$REMOTE_DIR/deploy/systemd/comstar-health.timer" ]]; then
   echo "installed comstar-health.timer"
 fi
 chmod +x "$REMOTE_DIR/scripts/comstar_health.sh" 2>/dev/null || true
+chmod +x "$REMOTE_DIR/scripts/comstar_audio_health.sh" 2>/dev/null || true
 # Autologin fails closed if this loses +x (LightDM falls back to greeter).
 chmod +x "$REMOTE_DIR/deploy/pi-session/comstar-session.sh" 2>/dev/null || true
 chmod +x "$REMOTE_DIR/scripts/kiosk-launch.sh" 2>/dev/null || true
+chmod +x "$REMOTE_DIR/deploy/pi-session/prefer-hdmi-audio.sh" 2>/dev/null || true
+# Keep user-session HDMI helpers in sync with the tree.
+mkdir -p "$HOME/.config/comstar" "$HOME/.config/wireplumber/main.lua.d"
+cp "$REMOTE_DIR/deploy/pi-session/prefer-hdmi-audio.sh" "$HOME/.config/comstar/prefer-hdmi-audio.sh"
+chmod +x "$HOME/.config/comstar/prefer-hdmi-audio.sh"
+cp "$REMOTE_DIR/deploy/pi-session/wireplumber/51-comstar-hdmi.lua" \
+  "$HOME/.config/wireplumber/main.lua.d/51-comstar-hdmi.lua"
 systemctl --user daemon-reload
 systemctl --user enable comstar-bridge.service comstar-audio.service comstar-kiosk.service comstar-stt.service >/dev/null
 systemctl --user enable --now comstar-health.timer >/dev/null 2>&1 || true

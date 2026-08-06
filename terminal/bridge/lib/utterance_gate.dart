@@ -4,9 +4,9 @@ import 'package:comstar_bridge/social_intent.dart';
 
 /// Whether [text] looks like a real voice prompt worth sending to AO.
 ///
-/// Drops Whisper fragments, ambient bleed, and one-word noise while allowing
-/// short device commands (`go to sleep`), clock/social check-ins, and clear
-/// questions/imperatives.
+/// Drops Whisper fragments and ambient bleed while allowing short device
+/// commands, clock/social check-ins, conversational replies to COMSTAR
+/// questions, and clear questions/imperatives.
 bool isActionableUtterance(String text) {
   final raw = text.trim();
   if (raw.isEmpty) return false;
@@ -27,7 +27,10 @@ bool isActionableUtterance(String text) {
   final words = lower.split(' ').where((w) => w.isNotEmpty).toList();
   if (words.isEmpty) return false;
 
-  // Exact micro-fragments that slip past the junk list.
+  // Answers to COMSTAR check-ins ("is everything ok?", "how's it going?").
+  if (_isConversationalReply(lower, words)) return true;
+
+  // Exact micro-fragments that slip past the junk list (not valid replies).
   const fragments = {
     'i m',
     'im',
@@ -39,7 +42,6 @@ bool isActionableUtterance(String text) {
     'hey',
     'easy',
     'got this',
-    'got it',
     'i m sorry',
     'im sorry',
     'i am sorry',
@@ -48,12 +50,6 @@ bool isActionableUtterance(String text) {
     'who',
     'why',
     'how',
-    'really',
-    'right',
-    'sure',
-    'maybe',
-    'alright',
-    'all right',
   };
   if (fragments.contains(lower)) return false;
 
@@ -169,6 +165,91 @@ bool isActionableUtterance(String text) {
   }
 
   return words.length >= 4;
+}
+
+bool _isConversationalReply(String lower, List<String> words) {
+  const replies = {
+    'yes',
+    'yeah',
+    'yep',
+    'yup',
+    'no',
+    'nope',
+    'nah',
+    'sure',
+    'ok',
+    'okay',
+    'fine',
+    'good',
+    'great',
+    'alright',
+    'all right',
+    'maybe',
+    'really',
+    'right',
+    'thanks',
+    'thank you',
+    'got it',
+    'not really',
+    'not bad',
+    'all good',
+    'doing fine',
+    'doing good',
+    'doing okay',
+    'doing ok',
+    'im fine',
+    'i m fine',
+    'i am fine',
+    'im good',
+    'i m good',
+    'i am good',
+    'im ok',
+    'i m ok',
+    'i am ok',
+    'im okay',
+    'i m okay',
+    'i am okay',
+    'im alright',
+    'i m alright',
+    'i am alright',
+    'everything s fine',
+    'everything is fine',
+    'everything s ok',
+    'everything is ok',
+    'everything s okay',
+    'everything is okay',
+    'everything s good',
+    'everything is good',
+    'i m not fine',
+    'im not fine',
+    'i am not fine',
+    'i m not ok',
+    'im not ok',
+    'no thanks',
+    'yes please',
+    'no thank you',
+  };
+  if (replies.contains(lower)) return true;
+
+  // "yes everything is fine", "yeah i'm good", "no i'm not"
+  if (words.length >= 2 &&
+      const {'yes', 'yeah', 'yep', 'yup', 'no', 'nope', 'nah', 'sure', 'ok', 'okay'}
+          .contains(words.first)) {
+    return words.length <= 8;
+  }
+
+  // "i'm doing fine / okay / great"
+  final joined = words.join(' ');
+  if (RegExp(
+        r'^(i m|im|i am) (doing )?(fine|good|ok|okay|alright|great|well)\b',
+      ).hasMatch(joined) ||
+      RegExp(
+        r'^(i m|im|i am) not (fine|good|ok|okay|alright)\b',
+      ).hasMatch(joined)) {
+    return true;
+  }
+
+  return false;
 }
 
 /// If the transcript is the same phrase twice, keep one copy.

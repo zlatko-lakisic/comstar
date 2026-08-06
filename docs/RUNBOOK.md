@@ -30,8 +30,8 @@ Hardware baseline: `docs/BASELINES.md`. Dev workflow: `docs/DEV_LOOP.md`.
 bridge `GET http://127.0.0.1:8781/admin/health` (always-on; attention state + kiosk/audio WS).
 It also runs `scripts/comstar_audio_health.sh` for PipeWire speaker/mic:
 
-- default sink must be `COMSTAR_SPEAKER_SOURCE` (Pi: `comstar_hdmi`)
-- ACP HDMI / headphone profiles must stay `off` (dual-open breaks playback)
+- default sink must be `COMSTAR_SPEAKER_SOURCE` (Pi: `comstar_hdmi`, ACP HDMI-0 renamed)
+- primary HDMI (`vc4-hdmi-0`) profile must stay on; headphones + spare HDMI off (dual-open breaks playback)
 - default mic present, not a monitor, unmuted
 
 With `COMSTAR_HEALTH_HEAL=1`, after consecutive misses it restarts the PipeWire
@@ -298,7 +298,8 @@ under `docs/` / BASELINES.
 |---|---|
 | Force-wake energy | `COMSTAR_FORCE_WAKE_SCORE` on `comstar-audio` (refractory ~5s) |
 | Dev inject | `POST /admin/inject` `WakeWord` with `{"score":0.99}` |
-| Sleep verify | After candidate wake while sleeping, STT must look like wake/engage |
+| Sleep verify | After candidate wake while sleeping, STT must look like wake/engage. Same-utterance residual (`hey comstar what's up`) runs as the turn; wake-only still opens follow-up listen. |
+| Idle auto-sleep | `attention.idle_sleep_seconds` (default 600, `0` off) — silent sleep after no interaction; spoken “go to sleep” still gets a sleep-ack. |
 
 ---
 

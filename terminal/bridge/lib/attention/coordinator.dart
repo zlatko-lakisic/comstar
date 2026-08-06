@@ -850,10 +850,14 @@ class AttentionCoordinator {
       _sleepWakeVerifyInFlight = false;
       _sleepWakeRestartCount = 0;
       if (ok && machine.state is Sleeping) {
-        // Machine exits sleep and opens follow-up Listening with settleMs: 0.
-        handle(WakeWord(score));
-        // Defer greeting until mic is armed so we do not cancel follow-up gen.
-        unawaited(_speakSleepWakeLineWhenReady());
+        final residual = residualAfterWakePhrase(text).trim();
+        // Machine exits sleep. With a residual prompt, run it as the turn
+        // (no empty follow-up listen / sleep-wake greeting).
+        handle(WakeWord(score, prompt: residual.isEmpty ? null : residual));
+        if (residual.isEmpty) {
+          // Defer greeting until mic is armed so we do not cancel follow-up gen.
+          unawaited(_speakSleepWakeLineWhenReady());
+        }
       } else {
         _returnSleepHud();
       }
@@ -1191,7 +1195,7 @@ class AttentionCoordinator {
           'bytes': pcm.length,
           'text': cleaned.length > 80 ? '${cleaned.substring(0, 80)}…' : cleaned,
         });
-        _broadcastPhase('missed', detail: "Didn't catch a question — try again");
+        _broadcastPhase('missed', detail: "Didn't catch that — try again");
         handle(const TranscriptReady(''));
         return;
       }

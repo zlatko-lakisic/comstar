@@ -84,15 +84,18 @@ cp "$SRC/prefer-hdmi-audio.sh" "$HOME/.config/comstar/prefer-hdmi-audio.sh"
 chmod +x "$HOME/.config/comstar/prefer-hdmi-audio.sh"
 echo "installed $HOME/.config/comstar/prefer-hdmi-audio.sh"
 
-# Optional named HDMI sink — install only if missing (machine-specific; do not clobber).
+# WirePlumber: rename ACP HDMI-0 sink → comstar_hdmi (stable COMSTAR_SPEAKER_SOURCE).
+WP_DST="$HOME/.config/wireplumber/main.lua.d"
+mkdir -p "$WP_DST"
+cp "$SRC/wireplumber/51-comstar-hdmi.lua" "$WP_DST/51-comstar-hdmi.lua"
+echo "installed $WP_DST/51-comstar-hdmi.lua"
+
+# Never auto-install exclusive PipeWire HDMI adapters — a bad path exits PW 234.
+# Manual optional recipe: deploy/pi-session/pipewire/99-comstar-hdmi.conf.example
 PW_DST="$HOME/.config/pipewire/pipewire.conf.d"
 PW_CONF="$PW_DST/99-comstar-hdmi.conf"
-if [[ ! -f "$PW_CONF" && ! -f "${PW_CONF}.broken" && ! -f "${PW_CONF}.off" ]]; then
-  mkdir -p "$PW_DST"
-  cp "$SRC/pipewire/99-comstar-hdmi.conf.example" "$PW_CONF"
-  echo "installed $PW_CONF (verify aplay -D hdmi:0 before reboot)"
-else
-  echo "skip pipewire HDMI conf (already present or previously disabled)"
+if [[ -f "$PW_CONF" ]]; then
+  echo "note: $PW_CONF present (exclusive adapter). Prefer ACP+rename unless verified."
 fi
 
 if [[ "$(id -u)" -eq 0 ]]; then

@@ -483,6 +483,7 @@ See `config/comstar.example.yaml` for the annotated version. Validation rules:
 | `orchestration.timeout_seconds` | 5 ≤ x ≤ 60 |
 | `attention.stranger_mode` | enum: restricted \| greet \| ignore |
 | `attention.timezone` | optional spoken TZ label (IANA or human); clock uses Pi system time |
+| `attention.idle_sleep_seconds` | 0–86400; `0` disables; silent auto-sleep after idle (default 600) |
 | `avatar.render` | enum: local \| streamed |
 | `directory.enabled` | bool |
 | `directory.sidecar_url` | non-empty when `enabled` |
@@ -590,6 +591,7 @@ While engaged, vision may keep recognizing at a reduced rate. The machine tracks
 | engaged | WakeWord | — | listening | `listen.start`, disable wake (half-duplex) |
 | engaged | SpeechStart | follow-up window open OR (face_attention_trigger AND gaze) | listening | `listen.start` |
 | engaged | Tick | idle > identity_ttl AND absent | ambient | `SessionBridge.stop()` |
+| ambient / noticed / engaged | Tick | idle_sleep_seconds > 0 AND no interaction for that long | sleeping | silent `EnterSleep` (no sleep-ack TTS) |
 | listening | SpeechEnd | — | listening | finalize capture, call STT |
 | listening | Tick | elapsed > max_utterance_seconds | responding | force-close capture with what we have |
 | listening | TranscriptReady | text non-empty | responding | `thinking` on, call `directAgent` |
@@ -598,7 +600,8 @@ While engaged, vision may keep recognizing at a reduced rate. The machine tracks
 | responding | PlaybackEnded | — | engaged | open follow-up window, re-enable wake |
 | responding | Tick | elapsed > orchestration timeout | engaged | speak fallback line, re-enable wake |
 | any (not sleeping) | EnterSleep | — | sleeping | stop listen, cancel follow-up, wake armed, ignore vision |
-| sleeping | WakeWord | score ≥ threshold | listening | `listen.start` (keep session if open) |
+| sleeping | WakeWord | score ≥ threshold, wake-only utterance | listening (or engaged+follow-up) | `listen.start` (keep session if open) |
+| sleeping | WakeWord | score ≥ threshold, same utterance has residual prompt | responding | run residual via `directAgent` (no sleep-wake greeting) |
 | sleeping | PersonDetected / Face* / Speech* | — | sleeping | ignored |
 | any | Error(fatal) | — | ambient | tear down session, log, re-arm |
 
