@@ -87,17 +87,56 @@ export class ComstarAvatar {
 
   // ------------------------------------------------------------------ DOM
 
-  /** Mount a trusted preset SVG fragment without assigning raw HTML strings. */
+  /** Mount emblem geometry with createElementNS only — no DOMParser/innerHTML.
+   *  Pi Chromium deadlocks parsing the preset SVG markup strings during ctor. */
   _mountEmblem(parent) {
-    const markup = String(this.emblem || '');
-    const wrap = `<svg xmlns="http://www.w3.org/2000/svg">${markup}</svg>`;
-    const doc = new DOMParser().parseFromString(wrap, 'image/svg+xml');
-    if (doc.querySelector('parsererror')) return;
-    const root = doc.documentElement;
-    const owner = parent.ownerDocument || document;
-    while (root.firstChild) {
-      parent.appendChild(owner.importNode(root.firstChild, true));
+    const ns = 'http://www.w3.org/2000/svg';
+    const el = (tag, attrs = {}) => {
+      const node = document.createElementNS(ns, tag);
+      for (const [k, v] of Object.entries(attrs)) {
+        if (v != null) node.setAttribute(k, String(v));
+      }
+      return node;
+    };
+    const pale = '#eaf6ff';
+    const blue = '#a8d8ff';
+    const cyan = '#7fc4ff';
+    const dark = '#0d2136';
+
+    const rings = el('g', { class: 'cs-rings' });
+    rings.appendChild(el('circle', {
+      r: '196', fill: 'none', stroke: '#cfeaff', 'stroke-width': '7',
+      'stroke-dasharray': '330 105',
+    }));
+    for (const [r, dash] of [['172', '72 370'], ['155', '72 335'], ['138', '72 300']]) {
+      rings.appendChild(el('circle', {
+        r, fill: 'none', stroke: blue, 'stroke-width': '5', 'stroke-dasharray': dash,
+      }));
     }
+    parent.appendChild(rings);
+
+    const star = el('g', { class: 'cs-star' });
+    star.appendChild(el('path', {
+      fill: pale,
+      d: 'M0 -246 L19 -60 L77 -123 L35 -28 L169 -53 L46 0 L169 53 L35 28 L77 123 L19 60 L0 246 L-19 60 L-77 123 L-35 28 L-169 53 L-46 0 L-169 -53 L-35 -28 L-77 -123 L-19 -60 Z',
+    }));
+    star.appendChild(el('path', {
+      fill: dark,
+      d: 'M0 -109 L16 -35 L67 -60 L25 -14 L95 0 L25 14 L67 60 L16 35 L0 109 L-16 35 L-67 60 L-25 14 L-95 0 L-25 -14 L-67 -60 L-16 -35 Z',
+    }));
+    star.appendChild(el('path', {
+      fill: 'none', stroke: cyan, 'stroke-width': '4',
+      d: 'M0 -46 L39 35 L-39 35 Z',
+    }));
+    const marks = el('g', { stroke: cyan, 'stroke-width': '2.5' });
+    marks.appendChild(el('path', {
+      d: 'M-18 22 L-18 4 M0 22 L0 -2 M18 22 L18 8 M-18 14 L0 8 M0 8 L18 14',
+    }));
+    for (const [cx, cy] of [[-18, 2], [0, -4], [18, 6]]) {
+      marks.appendChild(el('circle', { cx, cy, r: '3', fill: cyan, stroke: 'none' }));
+    }
+    star.appendChild(marks);
+    parent.appendChild(star);
   }
 
   _build() {
@@ -155,18 +194,21 @@ export class ComstarAvatar {
     svg.appendChild(title);
 
     const defs = document.createElementNS(ns, 'defs');
-    const filter = document.createElementNS(ns, 'filter');
-    filter.setAttribute('id', `${uid}-bloom`);
-    filter.setAttribute('x', '-60%');
-    filter.setAttribute('y', '-60%');
-    filter.setAttribute('width', '220%');
-    filter.setAttribute('height', '220%');
-    filter.setAttribute('color-interpolation-filters', 'sRGB');
-    const blur = document.createElementNS(ns, 'feGaussianBlur');
-    blur.setAttribute('stdDeviation', String(this.bloom));
-    filter.appendChild(blur);
-    defs.appendChild(filter);
-    svg.appendChild(defs);
+    const useBloom = this.bloom > 0;
+    if (useBloom) {
+      const filter = document.createElementNS(ns, 'filter');
+      filter.setAttribute('id', `${uid}-bloom`);
+      filter.setAttribute('x', '-60%');
+      filter.setAttribute('y', '-60%');
+      filter.setAttribute('width', '220%');
+      filter.setAttribute('height', '220%');
+      filter.setAttribute('color-interpolation-filters', 'sRGB');
+      const blur = document.createElementNS(ns, 'feGaussianBlur');
+      blur.setAttribute('stdDeviation', String(this.bloom));
+      filter.appendChild(blur);
+      defs.appendChild(filter);
+      svg.appendChild(defs);
+    }
 
     const shift = document.createElementNS(ns, 'g');
     shift.setAttribute('class', 'cs-shift');
@@ -174,7 +216,7 @@ export class ComstarAvatar {
 
     const halo = document.createElementNS(ns, 'g');
     halo.setAttribute('class', 'cs-halo');
-    this._mountEmblem(halo);
+    if (useBloom) this._mountEmblem(halo);
 
     const core = document.createElementNS(ns, 'g');
     core.setAttribute('class', 'cs-core');
@@ -198,12 +240,20 @@ export class ComstarAvatar {
     this.container.appendChild(svg);
     this.svg = svg;
     this._fitSquare();
-    if (typeof ResizeObserver !== 'undefined') {
-      this._ro = new ResizeObserver(() => this._fitSquare());
-      this._ro.observe(this.container);
-    } else if (typeof window !== 'undefined') {
-      this._onResize = () => this._fitSquare();
-      window.addEventListener('resize', this._onResize);
+    // Defer ResizeObserver — observing in the same turn as the first layout
+    // has deadlocked Pi Chromium (ctor never returns → blank emblem).
+    if (typeof window !== 'undefined') {
+      window.setTimeout(() => {
+        if (this._ro || !this.container) return;
+        if (typeof ResizeObserver !== 'undefined') {
+          this._ro = new ResizeObserver(() => this._fitSquare());
+          this._ro.observe(this.container);
+        } else {
+          this._onResize = () => this._fitSquare();
+          window.addEventListener('resize', this._onResize);
+        }
+        this._fitSquare();
+      }, 0);
     }
 
     this.shift = shift;
@@ -236,8 +286,16 @@ export class ComstarAvatar {
     if (!this.svg || !this.container) return;
     const w = this.container.clientWidth || 0;
     const h = this.container.clientHeight || 0;
-    if (w < 1 || h < 1) return;
-    const s = Math.min(w, h);
+    // Fall back to viewport when the stage has not laid out yet (0×0).
+    const vw = (typeof window !== 'undefined' && window.innerWidth) || 600;
+    const vh = (typeof window !== 'undefined' && window.innerHeight) || 1024;
+    const aw = w >= 1 ? w : vw;
+    const ah = h >= 1 ? h : Math.max(1, vh - 92);
+    const s = Math.min(aw, ah);
+    if (s < 1) return;
+    // Avoid ResizeObserver feedback loops on Pi Chromium.
+    if (this._fitPx === s) return;
+    this._fitPx = s;
     this.svg.style.width = `${s}px`;
     this.svg.style.height = `${s}px`;
     if (this.glow) {

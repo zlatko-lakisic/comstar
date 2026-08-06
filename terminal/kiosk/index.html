@@ -26,6 +26,41 @@
       radial-gradient(ellipse 80% 55% at 50% 48%, rgba(61, 220, 255, 0.08), transparent 72%),
       #060d16;
   }
+  /* CSS stand-in so a failed/slow SVG mount is never a pure black panel. */
+  #stage:not(.has-avatar)::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: min(55vmin, 280px);
+    height: min(55vmin, 280px);
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    border: 3px solid rgba(61, 220, 255, 0.55);
+    box-shadow:
+      0 0 40px rgba(61, 220, 255, 0.25),
+      inset 0 0 30px rgba(61, 220, 255, 0.12);
+    animation: stagePulse 2.4s ease-in-out infinite;
+    pointer-events: none;
+  }
+  #stage:not(.has-avatar)::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 12px;
+    height: 12px;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background: #F0A202;
+    box-shadow: 0 0 16px rgba(240, 162, 2, 0.7);
+    pointer-events: none;
+    z-index: 2;
+  }
+  @keyframes stagePulse {
+    0%, 100% { opacity: 0.55; transform: translate(-50%, -50%) scale(0.96); }
+    50% { opacity: 1; transform: translate(-50%, -50%) scale(1.04); }
+  }
   #status {
     position: absolute;
     left: 0;
@@ -272,7 +307,6 @@
 <div id="fault"></div>
 
 <script type="module">
-import { ComstarAvatar } from './avatar.js';
 import { BridgeClient } from './bridge_client.js';
 
 const params = new URLSearchParams(location.search);
@@ -351,45 +385,37 @@ const healthChart =
     : null;
 
 let speakStart = 0;
+/** @type {import('./avatar.js').ComstarAvatar | null} */
+let avatar = null;
+/** @type {BridgeClient} */
+let bridge;
 
-const avatar = new ComstarAvatar(document.getElementById('stage'), {
-  // Preset: starburst | reactor | sentinel | spectrum | instrument
-  emblem: params.get('emblem') || 'starburst',
-  // Pi: modest SVG bloom + capped fps. Override: ?bloom=0&fps=12 or COMSTAR_KIOSK_URL.
-  emblemScale: parseFloat(params.get('scale') || '0.62'),
-  bloom: parseFloat(params.get('bloom') || '3'),
-  maxFps: parseFloat(params.get('fps') || '12'),
-  onEvent(type, data) {
-    if (type === 'speak.started') {
-      bridge.span('avatar_start', performance.now() - speakStart);
-      bridge.send('speak.started', {});
-      return;
-    }
-    if (type === 'speak.ended') {
-      bridge.send('speak.ended', {});
-      return;
-    }
-    if (type === 'error') {
-      bridge.send('error', data);
-    }
-  },
-});
+function sendReady() {
+  if (!bridge?.ws || bridge.ws.readyState !== WebSocket.OPEN) return;
+  const s = avatar ? avatar.stats() : { webglVendor: null, fps: 0 };
+  bridge.send('ready', {
+    avatarLoaded: !!avatar,
+    webglVendor: s.webglVendor,
+    fps: s.fps,
+  });
+}
 
-const bridge = new BridgeClient(bridgeUrl, {
+// Open the bridge WebSocket *before* mounting the SVG avatar. On Pi Chromium /
+// VideoCore, constructing the emblem first can starve the event loop so the
+// WS handshake never completes (kiosk_connected stays false, blank panel).
+// Use `let` + deferred ready: loopback WS may fire `open` synchronously during
+// `new BridgeClient()`, when a `const bridge =` binding is still in TDZ.
+bridge = new BridgeClient(bridgeUrl, {
   onOpen() {
-    const s = avatar.stats();
-    bridge.send('ready', {
-      avatarLoaded: true,
-      webglVendor: s.webglVendor,
-      fps: s.fps,
-    });
+    setTimeout(sendReady, 0);
   },
 
   config(d) {
-    if (d.mood) avatar.setState(d.mood);
+    if (d.mood && avatar) avatar.setState(d.mood);
   },
 
   'avatar.options'(d) {
+    if (!avatar) return;
     const applied = avatar.setOptions({
       bloom: d.bloom,
       fps: d.fps ?? d.maxFps,
@@ -408,6 +434,7 @@ const bridge = new BridgeClient(bridgeUrl, {
   },
 
   state(d) {
+    if (!avatar) return;
     avatar.setState(d.state);
     if (d.gaze) avatar.setGaze(d.gaze.x, d.gaze.y || 0);
     // Fallback if a phase envelope was missed: keep HUD in sync with state.
@@ -421,6 +448,7 @@ const bridge = new BridgeClient(bridgeUrl, {
   },
 
   speak(d) {
+    if (!avatar) return;
     speakStart = performance.now();
     // Sleep acknowledgment stays dim; do not flash "responding" brightness.
     if (d.keepSleeping || avatar.state === 'sleeping') {
@@ -438,12 +466,14 @@ const bridge = new BridgeClient(bridgeUrl, {
   },
 
   'speak.cancel'() {
+    if (!avatar) return;
     avatar.cancelSpeak();
     if (avatar.state === 'sleeping') setPhase('sleeping', 'Sleeping…');
     else setPhase('idle');
   },
 
   listening(d) {
+    if (!avatar) return;
     if (d.active) {
       avatar.setState('listening');
       if (phaseEl.dataset.phase !== 'heard' && phaseEl.dataset.phase !== 'thinking') {
@@ -457,6 +487,7 @@ const bridge = new BridgeClient(bridgeUrl, {
   },
 
   thinking(d) {
+    if (!avatar) return;
     avatar.setThinking(!!d.active);
     if (d.active) setPhase('thinking', 'Talking to AO…');
   },
@@ -487,6 +518,7 @@ const bridge = new BridgeClient(bridgeUrl, {
   },
 
   phase(d) {
+    if (!avatar) return;
     const phase = d.phase || 'idle';
     const detail = d.detail || '';
     setPhase(phase, detail);
@@ -515,8 +547,48 @@ const bridge = new BridgeClient(bridgeUrl, {
   },
 });
 
+// Yield so the WS handshake can finish before SVG work (VideoCore hangs if
+// we mount the emblem in the same turn as open).
+await new Promise((r) => setTimeout(r, 0));
+
+try {
+  const { ComstarAvatar } = await import('./avatar.js');
+  avatar = new ComstarAvatar(document.getElementById('stage'), {
+    // Preset: starburst | reactor | sentinel | spectrum | instrument
+    emblem: params.get('emblem') || 'starburst',
+    // Pi: modest SVG bloom + capped fps. Override: ?bloom=0&fps=12 or COMSTAR_KIOSK_URL.
+    emblemScale: parseFloat(params.get('scale') || '0.62'),
+    bloom: parseFloat(params.get('bloom') || '3'),
+    maxFps: parseFloat(params.get('fps') || '12'),
+    onEvent(type, data) {
+      if (type === 'speak.started') {
+        bridge.span('avatar_start', performance.now() - speakStart);
+        bridge.send('speak.started', {});
+        return;
+      }
+      if (type === 'speak.ended') {
+        bridge.send('speak.ended', {});
+        return;
+      }
+      if (type === 'error') {
+        bridge.send('error', data);
+      }
+    },
+  });
+  document.getElementById('stage')?.classList.add('has-avatar');
+  sendReady();
+} catch (err) {
+  console.error('[avatar] mount failed', err);
+  fault('Avatar failed to load');
+  bridge.send('error', {
+    code: 'avatar_mount_failed',
+    message: String(err && err.message ? err.message : err),
+  });
+}
+
 if (demo) {
   setInterval(() => {
+    if (!avatar) return;
     const s = avatar.stats();
     statusEl.textContent =
       `state ${avatar.state}  fps ${s.fps}  ` +

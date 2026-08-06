@@ -14,7 +14,16 @@ export XCURSOR_SIZE="${XCURSOR_SIZE:-24}"
 # Modest bloom for presence; fps still capped for VideoCore (override via COMSTAR_KIOSK_URL).
 URL="${COMSTAR_KIOSK_URL:-http://127.0.0.1:8776/kiosk/?bloom=3&fps=12}"
 PROFILE="${COMSTAR_KIOSK_PROFILE:-$HOME/.config/comstar-kiosk-chromium}"
-CHROME="${COMSTAR_CHROMIUM:-/usr/bin/chromium}"
+CHROME="${COMSTAR_CHROMIUM:-}"
+if [[ -z "$CHROME" ]]; then
+  # Prefer the real binary: /usr/bin/chromium wraps Pi flags (--load-extension,
+  # --use-angle=gles, …) that have interfered with kiosk bring-up.
+  if [[ -x /usr/lib/chromium/chromium ]]; then
+    CHROME=/usr/lib/chromium/chromium
+  else
+    CHROME=/usr/bin/chromium
+  fi
+fi
 SPLASH_PORT="${COMSTAR_KIOSK_SPLASH_PORT:-8769}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -62,17 +71,34 @@ ensure_splash_server() {
 
 ensure_splash_server || true
 
-TARGET_Q=$(URL="$URL" python3 -c 'import urllib.parse,os; print(urllib.parse.quote(os.environ["URL"], safe=":/?=&"))')
-if curl -fsS -m 0.4 "http://127.0.0.1:${SPLASH_PORT}/splash.html" >/dev/null 2>&1; then
-  START_URL="http://127.0.0.1:${SPLASH_PORT}/splash.html?target=${TARGET_Q}"
-elif curl -fsS -m 0.4 "http://127.0.0.1:8776/kiosk/splash.html" >/dev/null 2>&1; then
-  START_URL="http://127.0.0.1:8776/kiosk/splash.html?target=${TARGET_Q}"
-else
-  # Last resort: open kiosk URL directly (may blank until bridge is up).
+# Prefer same-origin kiosk when the bridge is already up. Splash on :8769 fetching
+# :8776 is cross-origin; recent Chromium Private Network Access often blocks it,
+# leaving the panel on "Waiting for bridge…" forever with no avatar.
+if curl -fsS -m 0.6 "http://127.0.0.1:8776/kiosk/boot.txt" >/dev/null 2>&1; then
   START_URL="$URL"
+  echo "Kiosk start direct (bridge ready)"
+else
+  # Encode ? and & inside target so bloom/fps stay on the kiosk URL, not splash.
+  TARGET_Q=$(URL="$URL" python3 -c 'import urllib.parse,os; print(urllib.parse.quote(os.environ["URL"], safe=":/"))')
+  if curl -fsS -m 0.4 "http://127.0.0.1:${SPLASH_PORT}/splash.html" >/dev/null 2>&1; then
+    START_URL="http://127.0.0.1:${SPLASH_PORT}/splash.html?target=${TARGET_Q}"
+  elif curl -fsS -m 0.4 "http://127.0.0.1:8776/kiosk/splash.html" >/dev/null 2>&1; then
+    START_URL="http://127.0.0.1:8776/kiosk/splash.html?target=${TARGET_Q}"
+  else
+    # Last resort: open kiosk URL directly (may blank until bridge is up).
+    START_URL="$URL"
+  fi
 fi
 
 mkdir -p "$PROFILE"
+# Drop stale Chromium locks / orphaned renderers from a previous crash so we
+# don't get a blank kiosk window fighting for the Wayland seat.
+rm -f "$PROFILE/SingletonLock" "$PROFILE/SingletonCookie" "$PROFILE/SingletonSocket" 2>/dev/null || true
+if command -v pkill >/dev/null 2>&1; then
+  pkill -f -- "--user-data-dir=${PROFILE}" >/dev/null 2>&1 || true
+  sleep 0.3
+fi
+
 # Portrait panel after transform 90: logical viewport is mode height × width.
 # Chromium/Ozone often restores a landscape window into the portrait work area;
 # the compositor then stretches that buffer and the avatar becomes a tall ellipse.

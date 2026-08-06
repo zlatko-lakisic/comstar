@@ -48,6 +48,9 @@ if [[ -f "$REMOTE_DIR/deploy/systemd/comstar-health.timer" ]]; then
   echo "installed comstar-health.timer"
 fi
 chmod +x "$REMOTE_DIR/scripts/comstar_health.sh" 2>/dev/null || true
+# Autologin fails closed if this loses +x (LightDM falls back to greeter).
+chmod +x "$REMOTE_DIR/deploy/pi-session/comstar-session.sh" 2>/dev/null || true
+chmod +x "$REMOTE_DIR/scripts/kiosk-launch.sh" 2>/dev/null || true
 systemctl --user daemon-reload
 systemctl --user enable comstar-bridge.service comstar-audio.service comstar-kiosk.service comstar-stt.service >/dev/null
 systemctl --user enable --now comstar-health.timer >/dev/null 2>&1 || true

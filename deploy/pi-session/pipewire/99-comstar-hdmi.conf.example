@@ -1,7 +1,8 @@
-# COMSTAR HDMI sink for PipeWire (vc4hdmi0 = ALSA card 0 on this Pi).
+# COMSTAR HDMI sink for PipeWire (vc4-hdmi-0).
 #
 # A hard-failing context.object takes down all of PipeWire (status 234).
-# Only enable after `aplay -D hdmi:0 /path/to.wav` works.
+# Only enable after:
+#   aplay -D default:CARD=vc4hdmi0 /usr/share/sounds/alsa/Front_Center.wav
 #
 # Install:
 #   mkdir -p ~/.config/pipewire/pipewire.conf.d
@@ -10,8 +11,11 @@
 #   systemctl --user restart pipewire pipewire-pulse wireplumber
 #   deploy/pi-session/prefer-hdmi-audio.sh
 #
+# Bind by ALSA card *name*, not index. Headphones often steals card 0, so
+# api.alsa.path = "hdmi:0" breaks and PipeWire never comes up.
+#
 # Do NOT use:
-#   - hdmi:1 / card 1 — often bcm2835 Headphones after card renumber
+#   - hdmi:0 / hdmi:1 — index-based; wrong after card renumber
 #   - hw:/plughw: alone — vc4 HDMI is IEC958_SUBFRAME_LE only; adapter fails
 #   - iec958:CARD=vc4hdmi0 — not always present in ALSA PCM defs
 #
@@ -24,9 +28,7 @@ context.objects = [
       node.name = "comstar_hdmi"
       node.description = "COMSTAR HDMI"
       media.class = "Audio/Sink"
-      api.alsa.path = "hdmi:0"
-      api.alsa.card = 0
-      audio.format = "S16LE"
+      api.alsa.path = "default:CARD=vc4hdmi0"
       audio.rate = 48000
       audio.channels = 2
       session.suspend-timeout-seconds = 0

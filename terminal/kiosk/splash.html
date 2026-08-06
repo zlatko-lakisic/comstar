@@ -146,19 +146,21 @@
   }
 
   async function probe() {
-    // Prefer boot beacon (tiny). Fall back to HEAD/GET of the kiosk target origin path.
-    try {
-      const r = await fetch(BOOT, { cache: 'no-store', mode: 'cors' });
-      if (r.ok) {
-        const t = (await r.text()).trim();
-        if (t === 'ok' || t.length > 0) return true;
+    // no-cors: opaque success means the bridge answered; network errors reject.
+    // Avoids CORS / PNA failures that leave splash stuck on "Waiting…".
+    async function ping(url) {
+      try {
+        await fetch(url, { cache: 'no-store', mode: 'no-cors', method: 'GET' });
+        return true;
+      } catch (_) {
+        return false;
       }
-    } catch (_) { /* bridge not up */ }
+    }
+    if (await ping(BOOT)) return true;
     try {
       const u = new URL(target);
       const base = u.origin + u.pathname.replace(/\/?$/, '/');
-      const r = await fetch(base, { cache: 'no-store', mode: 'cors' });
-      return r.ok;
+      return await ping(base);
     } catch (_) {
       return false;
     }
