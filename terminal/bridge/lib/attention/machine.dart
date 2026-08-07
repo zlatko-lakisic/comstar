@@ -34,6 +34,7 @@ class MachineContext {
     this.sttPending = false,
     this.lastGreeterUserid,
     this.lastGreeterAtMs,
+    this.announcedThisEngage = false,
     int? lastActivityAtMs,
     Map<String, PresenceEntry>? presence,
   })  : presence = presence ?? {},
@@ -67,6 +68,9 @@ class MachineContext {
   bool sttPending;
   String? lastGreeterUserid;
   int? lastGreeterAtMs;
+
+  /// Invariant 8: at most one announcement utterance per Engaged entry.
+  bool announcedThisEngage;
 
   /// Last user interaction (wake / speech / face engage / reply). Used for idle sleep.
   int lastActivityAtMs;
@@ -111,6 +115,7 @@ class MachineContext {
         sttPending: sttPending,
         lastGreeterUserid: lastGreeterUserid,
         lastGreeterAtMs: lastGreeterAtMs,
+        announcedThisEngage: announcedThisEngage,
         lastActivityAtMs: lastActivityAtMs,
         presence: Map<String, PresenceEntry>.from(presence),
       );
@@ -372,6 +377,31 @@ class AttentionMachine {
             mood: resolveSpeakMood(text),
           ),
         );
+      case AnnouncementReady(:final text, :final audioUrl):
+        // Invariant 7/8: only from Engaged when gate already passed.
+        if (context.playing) break;
+        if (context.announcedThisEngage) break;
+        context.announcedThisEngage = true;
+        context.turnId ??= _uuid.v4();
+        context.playing = true;
+        if (context.halfDuplex) {
+          context.wakeEnabled = false;
+          effects.add(const EnableWake(false));
+        }
+        context.state = const Responding();
+        effects.add(
+          Speak(
+            text: text,
+            audioUrl: audioUrl.isEmpty ? 'announce://${context.turnId}' : audioUrl,
+            turnId: context.turnId!,
+            mood: resolveSpeakMood(text),
+          ),
+        );
+        effects.add(LogAttention(
+          'announce_speak',
+          'Delivering announcement',
+          data: {'text': text},
+        ));
       case Tick():
         if (_maybeIdleSleep(effects)) break;
         if (context.identityExpired && !context.personPresent) {
@@ -723,6 +753,7 @@ class AttentionMachine {
     context.state = const Engaged();
     context.engagedEnteredAtMs = context.clock.nowMs;
     context.lastActivityAtMs = context.clock.nowMs;
+    context.announcedThisEngage = false;
     _cacheIdentity(
       guest ? null : userid,
       displayName: guest ? null : displayName,
@@ -950,6 +981,7 @@ class AttentionMachine {
     context.followUpOpen = false;
     context.directAgentInFlight = false;
     context.absentFrames = 0;
+    context.announcedThisEngage = false;
     context.presence.clear();
     if (closeSession && context.sessionOpen) {
       context.sessionOpen = false;

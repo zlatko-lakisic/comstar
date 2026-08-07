@@ -1,0 +1,13 @@
+# HA entity transitions → announcement enqueue (M10.2.2). Polls HA agent.
+
+rules: []
+# Example:
+# - id: trash_day
+#   entity_id: binary_sensor.trash_day
+#   from: "off"
+#   to: "on"
+#   recipient: zlatko.lakisic
+#   intent: "Remind them it is trash day in one short sentence."
+#   ttl_minutes: 180
+#   priority: normal
+#   dedupe_key: "ha:trash_day:{date}"

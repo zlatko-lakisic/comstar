@@ -3,6 +3,8 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:comstar_bridge/announce/gate.dart';
+import 'package:comstar_bridge/announce/service.dart';
 import 'package:comstar_bridge/attention/clock.dart';
 import 'package:comstar_bridge/attention/effects.dart';
 import 'package:comstar_bridge/attention/events.dart';
@@ -106,6 +108,7 @@ class AttentionCoordinator {
   final DirectoryResolver directory;
   final ConversationMemory conversationMemory;
   final Clock clock;
+  AnnounceService? announce;
 
   /// Snapshot for local health checks / auto-heal (inject `/health`).
   Map<String, Object?> healthStatus() => {
@@ -122,6 +125,7 @@ class AttentionCoordinator {
         'kiosk_connected': ws.hasRole('kiosk'),
         'audio_connected': ws.hasRole('audio'),
         'sleeping': machine.state is Sleeping,
+        'announce': announce != null,
         'phrase_bank': {
           for (final c in PhraseCategory.all) c: phraseBank.count(c),
           'updated_at': phraseBank.updatedAt?.toUtc().toIso8601String(),
@@ -184,9 +188,17 @@ class AttentionCoordinator {
   Timer? _sleepWakeTimer;
   var _sleepWakeRestartCount = 0;
   var _sleepWakeRestarting = false;
+  var _announceTickCounter = 0;
 
   Future<void> start({vision.VisionPoller? visionPoller}) async {
     await audioServer.start();
+    if (config.announce.enabled) {
+      announce = AnnounceService(
+        config: config,
+        machine: machine,
+        onEvent: handle,
+      )..start();
+    }
     _tickTimer = Timer.periodic(
       const Duration(milliseconds: 100),
       (_) => handle(const Tick()),
@@ -208,6 +220,8 @@ class AttentionCoordinator {
     _followUpTimer?.cancel();
     _followUpTimer = null;
     _cancelSleepWakeVerify(stopListen: true);
+    await announce?.stop();
+    announce = null;
     await _visionSub?.cancel();
     _visionSub = null;
     await _visionPoller?.stop();
@@ -271,6 +285,16 @@ class AttentionCoordinator {
     for (final effect in transition.effects) {
       runner.dispatch(effect);
       _handleEffect(effect);
+    }
+    if (event is Tick) {
+      _announceTickCounter++;
+      // ~1 Hz gate evaluation while engaged and idle.
+      if (_announceTickCounter % 10 == 0 &&
+          machine.state is Engaged &&
+          !machine.context.playing &&
+          !machine.context.announcedThisEngage) {
+        unawaited(announce?.evaluateAndMaybeDeliver());
+      }
     }
   }
 
@@ -337,6 +361,10 @@ class AttentionCoordinator {
           _broadcastPhase('thinking', detail: 'Talking to AO…');
         }
       case Speak(:final text, :final audioUrl, :final turnId, :final mood):
+        if (audioUrl.startsWith('announce://')) {
+          unawaited(_speakAnnouncementText(text, turnId, mood));
+          break;
+        }
         machine.context.playing = true;
         // Half-duplex: never capture while TTS is on the speaker.
         // Abort sleep-wake STT so listen.stop does not finalize empty PCM.
@@ -2858,6 +2886,52 @@ class AttentionCoordinator {
     return true;
   }
 
+  /// TTS + kiosk speak for gate-delivered announcements (M10.4).
+  Future<void> _speakAnnouncementText(
+    String text,
+    String turnId,
+    String mood,
+  ) async {
+    try {
+      machine.context.playing = true;
+      _followUpGen++;
+      _followUpTimer?.cancel();
+      _followUpTimer = null;
+      machine.context.followUpListening = false;
+      machine.context.followUpOpen = false;
+      _sendAudio(Envelope.create(type: 'listen.stop'));
+      if (machine.context.halfDuplex) {
+        _sendAudio(
+          Envelope.create(type: 'wake.enable', data: {'enabled': false}),
+        );
+      }
+      final path = await tts.synthesizeToFile(text);
+      _noteSpeakDuration(path: path, text: text);
+      final audioUrl = audioServer.registerFile(path);
+      _beginSpeakWatchdog();
+      final speakMood = resolveSpeakMood(text, explicit: mood);
+      _broadcastPhase('speaking', detail: text);
+      _broadcastKiosk(
+        Envelope.create(
+          type: 'speak',
+          turnId: turnId,
+          data: {
+            'text': text,
+            'audioUrl': audioUrl,
+            'mood': speakMood,
+            ..._kioskSpeakAudioFlags(),
+          },
+        ),
+      );
+      unawaited(_maybePlayLocal(audioUrl));
+      _rememberSpoken(text);
+    } catch (e) {
+      logWarn('announce_speak_failed', e.toString());
+      machine.context.playing = false;
+      handle(const PlaybackEnded());
+    }
+  }
+
   Future<void> _runGreeterAfterSession(String userid) async {
     final pending = _sessionOpenFuture;
     if (pending != null) {
@@ -2891,6 +2965,24 @@ class AttentionCoordinator {
           phraseBank.save();
         }
         greeting = PhraseBank.fillName(greeting, name);
+      }
+
+      // M10.5 — fold due announcements into the same greeter utterance.
+      final fold = announce?.peekForGreeter(userid) ?? const [];
+      if (fold.isNotEmpty) {
+        final extra = coalesceAnnouncementText(fold);
+        if (extra.isNotEmpty) {
+          greeting = greeting.trimRight();
+          if (!greeting.endsWith('.') && !greeting.endsWith('!')) {
+            greeting = '$greeting.';
+          }
+          greeting = '$greeting $extra';
+          announce?.markGreeterFoldDelivered(fold, greeting);
+          logInfo('announce_greeter_fold', 'Folded announcements into greeter', data: {
+            'count': fold.length,
+            'userid': userid,
+          });
+        }
       }
 
       // Half-duplex: mute wake while greeting plays.

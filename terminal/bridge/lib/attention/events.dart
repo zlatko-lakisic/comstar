@@ -115,3 +115,22 @@ final class EnterSleep extends AttentionEvent {
 final class ExitSleep extends AttentionEvent {
   const ExitSleep();
 }
+
+/// Gate-approved announcement ready to speak (M10.4). [audioUrl] may be empty
+/// until the coordinator synthesizes TTS.
+final class AnnouncementReady extends AttentionEvent {
+  const AnnouncementReady({
+    required this.id,
+    required this.text,
+    this.audioUrl = '',
+    this.announcementIds = const [],
+  });
+
+  /// Coalesced utterance id (or first announcement id).
+  final String id;
+  final String text;
+  final String audioUrl;
+
+  /// Underlying queue row ids marked delivered after playback starts.
+  final List<String> announcementIds;
+}

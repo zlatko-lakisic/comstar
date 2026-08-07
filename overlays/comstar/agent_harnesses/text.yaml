@@ -1,0 +1,15 @@
+# Platform-style smoke profile for COMSTAR text channel.
+id: text
+smoke:
+  topic: Text channel smoke
+  description: >
+    In a short markdown-friendly reply, greet the resident and offer help.
+  expected_output: Written chat reply; markdown OK.
+assertions:
+  - type: min_chars
+    value: 20
+capability:
+  rubric: >
+    Score whether the reply is useful as chat text (markdown/links allowed)
+    and distinct from voice_responder spoken constraints.
+  min_score: 0.5

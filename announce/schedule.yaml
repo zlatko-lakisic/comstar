@@ -1,0 +1,12 @@
+# COMSTAR proactive announcement schedule (M10.2.1).
+# Sources only enqueue — the delivery gate speaks (ADR 0009).
+
+entries: []
+# Example:
+# - id: morning_brief
+#   recipient: zlatko.lakisic
+#   at: "08:30"
+#   intent: "Give a one-sentence morning heads-up if anything is on the calendar."
+#   ttl_minutes: 120
+#   priority: normal
+#   dedupe_key: "schedule:morning_brief:{date}"

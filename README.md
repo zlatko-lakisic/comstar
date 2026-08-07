@@ -64,7 +64,7 @@ COMSTAR is the open version. Commodity parts, a GPU you already own, and an orch
 
 | | |
 |---|---|
-| **Local by default** | Nothing leaves the LAN unless you explicitly wire it to. |
+| **Local by default** | Phase 1 inference stays on LAN. Enabling the M11 text channel deliberately sends chat text via Telegram (see Privacy model). |
 | **Thin client, fat brain** | The Pi does I/O (capture, wake, VAD, kiosk, playback). Speech compute prefers AO-advertised sidecars on the AI server; local STT/TTS remain a fallback. |
 | **Identity is the session** | Face recognition isn't decoration — it selects the AO session and its memory. |
 | **The room is a tool** | Presence and vision are MCP tools the planner can call, not context you prepend. |
@@ -454,11 +454,12 @@ Prefer Ada speech when advertised; re-bench live fixtures after the move. Orches
 This device has a camera and a microphone pointed at your home. The boundaries are deliberate:
 
 1. **Wake word and capture stay on the Pi.** Audio is held in a rolling in-memory buffer and never persisted by default. After VAD end, utterance PCM is POSTed over LAN to the STT endpoint in use (AO-advertised sidecar on Ada when Reach speech is enabled; otherwise local `COMSTAR_STT_URL`, often `127.0.0.1`). Opt-in debug archives (`COMSTAR_STT_ARCHIVE=1`) may write `/tmp/comstar-last-utterance.wav` and `testdata/stt/live/*.wav` — leave that env unset in production.
-2. **No inference leaves the LAN.** Vision, orchestration, and (when enabled) speech compute run on the AI server. Nothing goes to the public cloud in Phase 1. PCM leaving the Pi for Ada speech is the same trust boundary as CPAI frames.
-3. **Camera frames are transient.** Sent to CodeProject.AI for inference, not written to disk by COMSTAR.
-4. **Face descriptors live in CodeProject.AI**, on your server, under `userid`s you chose.
-5. **Transcripts are session-scoped** and retained under AO's session memory policy — configure retention there.
-6. **There is a hardware kill.** Wire a physical switch or use the mic array's mute; software `systemctl stop` is not a promise you can make to a guest. See `docs/RUNBOOK.md` §7.
+2. **Inference stays on the LAN by default.** Vision, orchestration, and (when enabled) speech compute run on the AI server. Phase 1 does not phone home to public cloud APIs. PCM leaving the Pi for Ada speech is the same trust boundary as CPAI frames.
+3. **Text channel (M11) is an explicit exception.** When `comstar-channel` is enabled, allowlisted chat messages and COMSTAR replies leave the LAN via the Telegram Bot API. Unknown senders get silence (no outbound). Do not enable M11 unless you accept that trust boundary; leave the unit disabled to keep the Phase 1 LAN-only claim.
+4. **Camera frames are transient.** Sent to CodeProject.AI for inference, not written to disk by COMSTAR.
+5. **Face descriptors live in CodeProject.AI**, on your server, under `userid`s you chose.
+6. **Transcripts are session-scoped** and retained under AO's session memory policy — configure retention there. Channel and terminal use distinct session ids (`comstar-<uid>` vs `comstar-<uid>-channel`); continuity is userid / KB scoped.
+7. **There is a hardware kill.** Wire a physical switch or use the mic array's mute; software `systemctl stop` is not a promise you can make to a guest. See `docs/RUNBOOK.md` §7.
 
 Be deliberate about this now, both because it's the right default and because it's the answer you'll want ready the first time someone in your house asks what the camera is doing.
 

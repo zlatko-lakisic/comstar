@@ -74,6 +74,15 @@ presence:
     # adna: person.adna_zujo_lakisic
     # ibrica: person.ibrica_lakisic
 
+# Proactive announcements (M10). Sources enqueue; gate delivers when engaged.
+announce:
+  enabled: true
+  queue_path: ""                               # default ~/.local/share/comstar/announce/queue.db
+  schedule_path: announce/schedule.yaml
+  ha_rules_path: announce/ha_rules.yaml
+  quiet_start: "22:00"                         # hold normal priority
+  quiet_end: "07:00"                           # urgent may still deliver
+
 # FreeIPA directory resolve (ADR 0005). When enabled=false, faceId == session uid.
 directory:
   enabled: false

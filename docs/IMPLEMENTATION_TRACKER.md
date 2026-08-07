@@ -20,9 +20,9 @@
 
 | Field | Value |
 |---|---|
-| Active milestone | **M9 Hardening & soak** — software hardening landed 2026-08-07; 24h soak wall-clock open |
-| Overall Phase 1 | ~85% (M9 code/docs done; soak + wake ONNX still open) |
-| Overall Phase 2 | software path complete; hallway UAT / Ada MCP register open |
+| Active milestone | **M10+M11 landed 2026-08-07** — deploy/UAT + soak remain |
+| Overall Phase 1 | ~85% (M9 soak wall-clock open) |
+| Overall Phase 2 | Presence + **proactivity M10** + **channel M11 scaffold** |
 | Last updated | 2026-08-07 |
 | Board | `comstar-ai` Pi 4B 4GB @ `192.168.89.34` — SSH Host `comstar` |
 | Vision backend | CodeProject.AI `10.0.10.16:32168` — face `zlatko` enrolled |
@@ -70,12 +70,12 @@
 
 ## Next concrete actions (human / hardware)
 
-1. Let **24h soak** finish (`make soak`); read `summary.json` vs `docs/TESTING.md` §T5
-2. Human-label `testdata/stt/live-bridge-*.json` transcripts; re-run `bench_stt --require-live 10`
-3. Record “hey comstar” + negatives → train `models/hey_comstar.onnx` + ROC (unblocks M9.5)
-4. Hallway UAT: same-utterance wake, short replies, silent idle sleep, HDMI
-5. Register `ldap_mcp` + `vision_mcp` on Ada — blocked on Ada SSH + LDAP secrets + frame feed; handoff `docs/handoffs/ada-mcp-register.md`
-6. Optional: enable `COMSTAR_AEC=1` + monitor source for full duplex soak
+1. **Deploy** Pi bridge (announce) + Ada `comstar-channel` (`TELEGRAM_BOT_TOKEN` + allowlist)
+2. **UAT-10 / UAT-11** — hallway announce + Telegram continuity / unknown silence
+3. Wire M11.6 dual-surface delivery against live announce queue (bridge ↔ channel)
+4. Let **24h soak** finish (`20260807-141443`); read `summary.json` vs §T5
+5. Human-label STT fixtures; wake ONNX when recordings exist
+6. Register `ldap_mcp` + `vision_mcp` on Ada
 
 ---
 
@@ -99,3 +99,24 @@ Living plan: `docs/PHASE2_PLAN.md`. ADRs: `0006-house-presence-ha`, `0007-full-d
 - [x] LDAP planner MCP + voice_id resolve + inject stub; IPA `comstarHaPerson` attr
 - [x] Spoken replies set `speak.mood` → SVG emblem mood params
 - [x] Full duplex barge-in in machine when `duplex: full`; AEC helper + RUNBOOK; half remains default
+- [x] M10.0 proactivity ground truth (ADR 0009, CONTRACTS §4, BASELINES §13) — 2026-08-07
+- [x] M10.1–M10.6 announcement product path (queue/sources/gate/machine/greeter/admin) — 2026-08-07
+- [x] M11.0 text-channel ground truth (ADR 0010, CONTRACTS §4/§11, probe fixture) — 2026-08-07
+- [x] M11.1–M11.5 + M11.7–M11.8 scaffold (`channel/`, text_responder, privacy docs) — 2026-08-07
+- [ ] M11.6 dual-surface announce live wiring + UAT-10/11 operator sign-off
+
+Living plan: `docs/PHASE2_PLAN_PROACTIVITY_AND_CHANNEL.md`.
+
+### M11 progress detail
+
+| Slice | Status | Notes |
+|---|---|---|
+| M11.0 session probe + ADR 0010 | `done` | Same session id unsafe → `comstar-<uid>-channel` |
+| M11.1 Ada placement + systemd | `done` | `deploy/systemd/comstar-channel.service` example |
+| M11.2 Channel abstraction | `done` | `channel/lib/channel.dart` + Telegram long-poll |
+| M11.3 Allowlist silence | `done` | tests: unknown = zero outbound |
+| M11.4 text_responder overlay | `done` | + `text_output` skill (markdown OK) |
+| M11.5 Session wiring | `done` | `ChannelSessionManager`, idle reap, SIGTERM stop |
+| M11.6 Announce → channel gate | `in_progress` | stub `shouldDeliverToChannel`; bridge dual-surface TBD |
+| M11.7 Rate limit | `done` | per-sender + daily cap tests |
+| M11.8 Docs / privacy | `done` | README + CONTRACTS §11 |

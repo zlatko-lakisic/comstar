@@ -1,0 +1,29 @@
+# COMSTAR text channel (Ada) — example config
+#
+# Copy to a private path (never commit real tokens / allowlist of real ids).
+# Prefer env vars for secrets; this file documents the shape.
+
+ao:
+  # Co-located with AO on Ada
+  base_url: http://127.0.0.1:8765
+  # token: set AO_TOKEN / COMSTAR_AO_TOKEN instead
+
+overlay_root: /opt/comstar/src/overlays/comstar
+
+telegram:
+  # Prefer TELEGRAM_BOT_TOKEN env
+  # bot_token: "..."
+
+# Map Telegram user id (string) → COMSTAR userid (FreeIPA uid).
+# Also accepted via COMSTAR_CHANNEL_ALLOWLIST as JSON or a path to this file.
+allowlist:
+  "123456789": zlatko
+
+rate_limit:
+  per_sender_max: 20
+  per_sender_window_minutes: 10
+  daily_cap: 200
+
+session:
+  # Product id: comstar-<uid>-channel (never share terminal comstar-<uid>)
+  idle_ttl_hours: 6

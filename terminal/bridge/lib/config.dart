@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:comstar_bridge/announce/config.dart';
 import 'package:path/path.dart' as p;
 import 'package:yaml/yaml.dart';
 
@@ -23,6 +24,7 @@ class ComstarConfig {
     this.phrases = const PhrasesConfig(),
     this.memory = const MemoryConfig(),
     this.presence = const PresenceConfig(),
+    this.announce = const AnnounceConfig(),
     required this.sourcePath,
   });
 
@@ -37,6 +39,7 @@ class ComstarConfig {
   final PhrasesConfig phrases;
   final MemoryConfig memory;
   final PresenceConfig presence;
+  final AnnounceConfig announce;
   final String sourcePath;
 
   static const _topLevelKeys = {
@@ -51,6 +54,7 @@ class ComstarConfig {
     'phrases',
     'memory',
     'presence',
+    'announce',
   };
 
   static const _orchestrationKeys = {
@@ -137,6 +141,16 @@ class ComstarConfig {
     'ha_person_by_uid',
   };
 
+  static const _announceKeys = {
+    'enabled',
+    'queue_path',
+    'schedule_path',
+    'ha_rules_path',
+    'quiet_start',
+    'quiet_end',
+    'timezone',
+  };
+
   static ComstarConfig loadFile(String path) {
     final file = File(path);
     if (!file.existsSync()) {
@@ -196,6 +210,14 @@ class ComstarConfig {
                 ? Map<String, dynamic>.from(presenceRaw)
                 : (throw ConfigError('Section presence must be a mapping')),
           );
+    final announceRaw = root['announce'];
+    final announce = announceRaw == null
+        ? const AnnounceConfig()
+        : _parseAnnounce(
+            announceRaw is Map
+                ? Map<String, dynamic>.from(announceRaw)
+                : (throw ConfigError('Section announce must be a mapping')),
+          );
 
     _validateRanges(vision, audio, orchestration, avatar, attention, directory);
     _validatePhrases(phrases);
@@ -214,6 +236,7 @@ class ComstarConfig {
       phrases: phrases,
       memory: memory,
       presence: presence,
+      announce: announce,
       sourcePath: sourcePath,
     );
   }
@@ -445,6 +468,19 @@ class ComstarConfig {
       }
     }
     return PresenceConfig(haPersonByUid: byUid);
+  }
+
+  static AnnounceConfig _parseAnnounce(Map<String, dynamic> map) {
+    _assertKnownKeys(map.keys, _announceKeys, 'announce');
+    return AnnounceConfig(
+      enabled: map['enabled'] as bool? ?? true,
+      queuePath: map['queue_path']?.toString() ?? '',
+      schedulePath: map['schedule_path']?.toString() ?? 'announce/schedule.yaml',
+      haRulesPath: map['ha_rules_path']?.toString() ?? 'announce/ha_rules.yaml',
+      quietStart: map['quiet_start']?.toString() ?? '22:00',
+      quietEnd: map['quiet_end']?.toString() ?? '07:00',
+      timezone: map['timezone']?.toString() ?? '',
+    );
   }
 
   static void _validatePresence(PresenceConfig presence) {

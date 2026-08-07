@@ -357,3 +357,30 @@ API (sherpa-onnx 1.13.4 Python binding): OfflineTts.generate(text, sid, speed, c
 
 **Note:** Ada `venv-tts` sherpa-onnx ORT has **no CUDA EP** (`Please compile with -DSHERPA_ONNX_ENABLE_GPU=ON`); `provider=cuda` falls back to CPU. Contended mode storms CPAI detection; Kokoro itself stayed on CPU so VRAM (~15.7 GiB) is CPAI/other, not TTS.
 
+## 13. Quiet hours / wake-state (M10.0.2) — 2026-08-07
+
+Captured on Pi `comstar` mid-afternoon + journal lookback. `screen_state` terminal
+MCP tool is **not implemented**; reality below is OS + COMSTAR attention sleep.
+
+| Check | Result |
+|---|---|
+| Units | `comstar-bridge` / `kiosk` / `audio` **active** |
+| Panel | `wlr-randr`: HDMI-A-1 **Enabled: yes**, 1024×600 @ 60Hz, transform 90° |
+| Chromium kiosk | Running (kiosk URL on `:8776`) |
+| Admin health | `sleeping: false` at sample; sink path live |
+| Default sink | `comstar_hdmi`, **Mute: no**, volume **100%** |
+| paplay probe | `/tmp/comstar-soak-beep.wav` → `paplay --device=comstar_hdmi` → **ok** |
+| Attention sleep | Frequent `sleep_enter` in journal (idle / spoken sleep). `TerminalControl.sleepEnter` sets a flag only — **does not mute** the sink |
+| Overnight DPMS | No separate DPMS blanking observed in labwc config; overnight “asleep” ≈ attention `Sleeping`, panel typically still driven |
+
+### Implication for M10.3
+
+- An announcement while attention-sleeping is **not** automatically silent: TTS +
+  paplay still work unless the user muted the sink.
+- Prefer **ExitSleep / kiosk phase wake** before urgent speak for UX (eyes on
+  avatar), but do not block delivery solely on `sleeping==true`.
+- If sink is muted, gate must defer or use M11 channel — log, never silent-drop
+  urgent.
+
+See ADR 0009 delivery policy table.
+

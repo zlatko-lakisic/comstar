@@ -322,12 +322,30 @@ Overlay / `direct_agent` must keep working when `speechClient == null`.
 
 ### Session lifecycle rules
 
-- One `SessionBridge` per identity. Switching identity = `stop()` then `start()`.
+- One **terminal** `SessionBridge` per identity. Switching identity = `stop()` then
+  `start()`. Session id: `comstar-<uid>`.
 - Sessions are **not** opened on Noticed. Only on Engaged, when there is a userid.
 - Anonymous sessions use `x-agentic-user-name: guest` and the restricted overlay
   (`client.greeter` only, no `home_assistant`, no `memory`).
 - `stop()` must be called on SIGTERM. Overlay leakage on the daemon is a real
   failure mode — the bridge registers `client.*` agents and must clear them.
+- **Announcement / concurrent SessionBridge (M10.0 — VERIFIED 2026-08-07):**
+  A short-lived second `SessionBridge` for the **same userid** may generate
+  announcement text **only** with a **distinct** session id
+  (`comstar-<uid>-announce-<id>`). Sharing the terminal session id is **unsafe**:
+  announcer `stop(clearRemote: true)` clears the shared overlay and breaks the
+  terminal’s next `directAgent` (`unknown agent_provider_id`). Diff-session-id
+  concurrency (both orderings) kept the terminal healthy; 3× announce cycles did
+  not grow terminal `registeredAgentIds`. Evidence:
+  `docs/fixtures/announce_session_probe_20260807T1820Z.log`, ADR 0009.
+- **Text channel / concurrent SessionBridge (M11.0 — VERIFIED 2026-08-07):**
+  Terminal and messaging channel **must not** share `x-agentic-session-id`.
+  Channel sessions use `comstar-<uid>-channel` (same `x-agentic-user-name`).
+  Same-id concurrency is unsafe for the same reason as M10 (channel
+  `stop(clearRemote: true)` clears the shared overlay). Diff-id concurrency is
+  safe. Cross-surface continuity is userid / KB scoped, **not** a shared session
+  overlay. Evidence: `docs/fixtures/channel_session_probe_20260807T1830Z.log`,
+  ADR 0010.
 
 ### Overlay agents
 
@@ -674,6 +692,7 @@ While engaged, vision may keep recognizing at a reduced rate. The machine tracks
 | responding | ResponseReady | — | responding | `speak` to kiosk |
 | responding | PlaybackEnded | — | engaged | open follow-up window, re-enable wake |
 | responding | Tick | elapsed > orchestration timeout | engaged | speak fallback line, re-enable wake |
+| engaged | AnnouncementReady | gate passed, not playing, !announcedThisEngage | responding | `speak` (TTS), mark delivered, set announcedThisEngage |
 | any (not sleeping) | EnterSleep | — | sleeping | stop listen, cancel follow-up, wake armed, ignore vision |
 | sleeping | WakeWord | score ≥ threshold, wake-only utterance | listening (or engaged+follow-up) | `listen.start` (keep session if open) |
 | sleeping | WakeWord | score ≥ threshold, same utterance has residual prompt | responding | run residual via `directAgent` (no sleep-wake greeting) |
@@ -699,6 +718,9 @@ While engaged, vision may keep recognizing at a reduced rate. The machine tracks
 7. In `sleeping`, vision and VAD events are no-ops; only `WakeWord` exits.
 8. Memory attribution uses the **primary addressable** userid only; guest co-presence
    must not write into a known user's store.
+9. An announcement is delivered only when state is `engaged` and the cached identity
+   equals the announcement's recipient (or recipient is `any`). Never from `noticed`.
+10. At most one announcement utterance per entry into `engaged` (`announcedThisEngage`).
 
 ### Full duplex barge-in (Phase 2)
 
@@ -754,3 +776,47 @@ When `avatar.model` (`.glb`) is present and WebGL is healthy:
    `PlaybackEnded`.
 
 Pi fps / render-path ADR: `docs/adr/0002-render-path.md`.
+
+---
+
+## 11. Text channel protocol (Telegram)
+
+**Status:** SPEC / scaffold (M11.0–M11.5) — Ada-side `channel/` package.
+**ADR:** `docs/adr/0010-text-channel.md`.
+
+### Surfaces and session ids
+
+| Surface | Process | Session id | Agent |
+|---|---|---|---|
+| Terminal | `comstar-bridge` (Pi) | `comstar-<uid>` | `client.voice_responder` |
+| Channel | `comstar-channel` (Ada) | `comstar-<uid>-channel` | `client.text_responder` |
+| Announce | ephemeral on bridge / Ada | `comstar-<uid>-announce-<id>` | greeter / announcer |
+
+Same userid; distinct session ids. Do not share overlays across surfaces.
+
+### Identity mapping
+
+Static allowlist: channel sender id → COMSTAR userid (`COMSTAR_CHANNEL_ALLOWLIST`
+JSON or YAML path). **Unknown senders → zero outbound** (silence). No guest mode.
+
+### Inbound / outbound
+
+- Inbound: `(senderId, text, attachments?)` from the `Channel` abstraction.
+- Outbound: `send(senderId, text)` only after allowlist + rate limit.
+- Typing indicators optional (`ChannelTyping`).
+
+### Announcement dual-surface (M11.6)
+
+| Condition | Behaviour |
+|---|---|
+| Recipient present at terminal | Terminal wins; channel does not fire |
+| Recipient absent, `urgent` | Deliver to channel |
+| Recipient absent, `normal` | Hold for terminal until TTL, then drop |
+| Delivered on either surface | Marked delivered globally |
+
+Stub: `channel/lib/announce_gate.dart` → `shouldDeliverToChannel`.
+
+### Privacy
+
+Enabling M11 means message text (and Telegram metadata) leave the LAN via the
+Telegram Bot API. See README privacy model.

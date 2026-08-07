@@ -1,0 +1,6 @@
+# This package lives outside the main analysis_options at repo root.
+include: package:lints/recommended.yaml
+
+analyzer:
+  exclude:
+    - build/**

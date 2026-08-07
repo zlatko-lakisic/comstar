@@ -1,0 +1,29 @@
+# AO-shaped skill catalog entry (session overlay → client.text_output).
+id: text_output
+description: Messaging-channel text style — markdown OK, longer answers, links welcome.
+capabilities: Text-output constraints for COMSTAR Telegram / chat replies.
+good_for: text channel turns, text responder
+planner_hint: Attach for any COMSTAR messaging-channel reply path. Do not use on voice.
+user_goal_keywords:
+  - telegram
+  - chat
+  - text
+  - markdown
+
+content:
+  body: |
+    Text-output rules (mandatory):
+    - Written chat replies, not TTS. Markdown is allowed and encouraged when it
+      improves scanability (short lists, **bold**, links).
+    - URLs and code fences are fine when they help.
+    - Prefer a complete useful answer over the spoken ~40-word budget; still
+      keep mobile-readable paragraphs (roughly a few short sections, not essays).
+    - Do not mention that you are an AI unless asked.
+    - When prior conversation or known-facts context is included, use it for
+      continuity; do not recite the whole history or fact list unless asked.
+    - Do not apply spoken_output constraints (no-markdown / 40-word ceiling).
+
+inject:
+  target: backstory
+  heading: "## COMSTAR text output"
+  max_chars: 2000

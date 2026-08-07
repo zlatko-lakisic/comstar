@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import 'package:comstar_bridge/announce/types.dart';
 import 'package:comstar_bridge/attention/clock.dart';
 import 'package:comstar_bridge/attention/coordinator.dart';
 import 'package:comstar_bridge/attention/events.dart';
@@ -206,6 +207,24 @@ class AdminServer {
         return;
       }
 
+      if (request.method == 'GET' && adminPath == '/admin/api/announce') {
+        final svc = coordinator.announce;
+        if (svc == null) {
+          await _writeJson(request, 503, {'ok': false, 'error': 'announce_disabled'});
+          return;
+        }
+        await _writeJson(request, 200, {
+          'ok': true,
+          ...Map<String, Object?>.from(svc.inspect()),
+        });
+        return;
+      }
+
+      if (request.method == 'POST' && adminPath == '/admin/api/announce') {
+        await _handleAnnounce(request);
+        return;
+      }
+
       if (request.method == 'POST' && adminPath == '/admin/inject') {
         await _handleInject(request);
         return;
@@ -392,6 +411,54 @@ class AdminServer {
     });
   }
 
+  Future<void> _handleAnnounce(HttpRequest request) async {
+    final svc = coordinator.announce;
+    if (svc == null) {
+      await _writeJson(request, 503, {'ok': false, 'error': 'announce_disabled'});
+      return;
+    }
+    final body = await _readJson(request);
+    final action = (body['action'] ?? 'enqueue').toString();
+    if (action == 'evaluate' || action == 'force_gate') {
+      final decision = await svc.evaluateAndMaybeDeliver(force: true);
+      await _writeJson(request, 200, {
+        'ok': true,
+        'action': action,
+        'decision': decision.deliver ? 'deliver' : decision.reasonWire,
+        'count': decision.items.length,
+      });
+      return;
+    }
+    if (action == 'enqueue') {
+      final recipient = body['recipient']?.toString().trim() ?? '';
+      final intent = body['intent']?.toString().trim() ?? '';
+      if (recipient.isEmpty || intent.isEmpty) {
+        await _writeJson(request, 400, {
+          'ok': false,
+          'error': 'recipient_and_intent_required',
+        });
+        return;
+      }
+      final ttlMin = (body['ttl_minutes'] as num?)?.toInt() ?? 120;
+      final row = svc.enqueue(
+        recipient: recipient,
+        intent: intent,
+        priority: AnnouncementPriority.parse(body['priority']?.toString()),
+        source: AnnouncementSource.injected,
+        ttl: Duration(minutes: ttlMin.clamp(1, 24 * 60)),
+        dedupeKey: body['dedupe_key']?.toString(),
+        text: body['text']?.toString(),
+      );
+      logInfo('admin_announce_enqueue', 'Injected announcement', data: {
+        'id': row.id,
+        'src': 'injected',
+      });
+      await _writeJson(request, 200, {'ok': true, 'announcement': row.toJson()});
+      return;
+    }
+    await _writeJson(request, 400, {'ok': false, 'error': 'invalid_action'});
+  }
+
   Future<void> _handleInject(HttpRequest request) async {
     if (!injectEnabled) {
       await _writeJson(request, 403, {
@@ -439,14 +506,47 @@ class AdminServer {
           await _writeJson(request, 200, {
             'ok': true,
             'event': eventName,
-            'resolved': false,
+            'uid': null,
+            'miss': true,
           });
         case DirectoryError(:final message):
-          await _writeJson(request, 503, {
+          await _writeJson(request, 502, {
             'ok': false,
             'error': message,
           });
       }
+      return;
+    }
+
+    if (eventName == 'EnqueueAnnouncement') {
+      final svc = coordinator.announce;
+      if (svc == null) {
+        await _writeJson(request, 503, {'ok': false, 'error': 'announce_disabled'});
+        return;
+      }
+      final recipient = body['recipient']?.toString().trim() ?? '';
+      final intent = body['intent']?.toString().trim() ?? '';
+      if (recipient.isEmpty || intent.isEmpty) {
+        await _writeJson(request, 400, {
+          'ok': false,
+          'error': 'recipient_and_intent_required',
+        });
+        return;
+      }
+      final row = svc.enqueue(
+        recipient: recipient,
+        intent: intent,
+        priority: AnnouncementPriority.parse(body['priority']?.toString()),
+        source: AnnouncementSource.injected,
+        text: body['text']?.toString(),
+        dedupeKey: body['dedupe_key']?.toString(),
+      );
+      await _writeJson(request, 200, {
+        'ok': true,
+        'event': eventName,
+        'announcement': row.toJson(),
+        'src': 'injected',
+      });
       return;
     }
 
@@ -696,6 +796,17 @@ AttentionEvent? parseInjectEvent(String name, Map<String, dynamic> payload) {
       return const VisionDegraded();
     case 'VisionRecovered':
       return const VisionRecovered();
+    case 'AnnouncementReady':
+      final text = payload['text']?.toString() ?? '';
+      if (text.isEmpty) return null;
+      return AnnouncementReady(
+        id: payload['id']?.toString() ?? 'inject',
+        text: text,
+        audioUrl: payload['audioUrl']?.toString() ?? '',
+      );
+    case 'EnqueueAnnouncement':
+      // Handled specially in _handleInject when present — fall through null.
+      return null;
     default:
       return null;
   }

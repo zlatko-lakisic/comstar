@@ -24,7 +24,9 @@ overlays/comstar/
 | `harnesses/` | Live E2E / eval packs (e.g. `scripts/google_voice_data_e2e.sh`) |
 
 Agents of note: `client.greeter` (live engage fallback), `client.phrase_bank`
-(batch lines for engage / sleep_enter / sleep_wake banks), `client.voice_responder`.
+(batch lines for engage / sleep_enter / sleep_wake banks), `client.voice_responder`
+(hallway TTS), `client.text_responder` (Telegram / M11 — markdown OK via
+`text_output` skill; do not reuse spoken_output constraints).
 
 ## MCP note
 

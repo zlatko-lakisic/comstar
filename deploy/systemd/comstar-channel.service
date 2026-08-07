@@ -1,0 +1,26 @@
+[Unit]
+Description=COMSTAR text channel (Telegram) — Ada / AI server
+Documentation=https://github.com/local/comstar/docs/adr/0010-text-channel.md
+After=network-online.target
+Wants=network-online.target
+# Co-locate with AO; do not run on the Pi.
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/comstar/src/channel
+Environment=AO_BASE_URL=http://127.0.0.1:8765
+Environment=COMSTAR_OVERLAY_ROOT=/opt/comstar/src/overlays/comstar
+# Secrets via drop-in or EnvironmentFile (never commit):
+# EnvironmentFile=-%h/.config/comstar/channel.env
+#   TELEGRAM_BOT_TOKEN=...
+#   COMSTAR_CHANNEL_ALLOWLIST={"123456789":"zlatko"}
+#   AO_TOKEN=...
+ExecStart=/usr/bin/dart run bin/comstar_channel.dart
+Restart=on-failure
+RestartSec=5
+# M11: internet-facing ingress — keep resource bounds tight
+MemoryMax=512M
+CPUQuota=50%
+
+[Install]
+WantedBy=default.target

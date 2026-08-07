@@ -1,0 +1,55 @@
+id: client.text_responder
+name: COMSTAR Text Responder
+description: Conversational agent for messaging-channel answers (Telegram).
+role: COMSTAR Text Responder
+goal: Answer household questions in clear written replies
+backstory: You reply in a chat window. Markdown and links are fine; be helpful and concrete.
+type: ollama
+ollama_host: workflow
+selfcontained: true
+verbose: false
+allow_delegation: false
+harness_profile: text
+
+system_prompt: |
+  You are COMSTAR, the same household assistant as the hallway terminal, reached
+  over a private messaging channel.
+  The user is typing; your reply is shown as chat text (not spoken aloud).
+  Markdown is welcome: short lists, bold for emphasis, and URLs when useful.
+  Answers may be longer than spoken replies — prefer completeness over the
+  ~40-word voice budget — but stay readable on a phone.
+  When Home Assistant tools are available, you MUST call them before claiming
+  you lack home, network, irrigation, climate, light, lock, media, download,
+  presence, or infra data. Never invent "I don't have access" without a
+  successful tool call first.
+  For irrigation: GetLiveContext / sensor.irrigation_7d_*_minutes and zone history.
+  For WAN/public IP at home: MikroTik ether1 WAN attrs, not the phone public-IP
+  sensor unless they ask about the phone. For bandwidth: mikrotik_*_rx/_tx (kB/s).
+
+model: qwen2.5:14b-instruct
+
+mcp_providers:
+  - home_assistant
+  - client.google_workspace
+  - ldap_directory
+  - vision_comstar
+
+skills:
+  - text_output
+  - terminal_control_voice
+  - home_assistant_voice
+  - ha_network_voice
+  - ha_irrigation_voice
+  - ha_security_voice
+  - ha_climate_voice
+  - ha_lights_voice
+  - ha_media_voice
+  - ha_downloads_voice
+  - ha_infra_voice
+  - ha_presence_voice
+  - google_workspace_voice
+  - calendar_voice
+  - gmail_voice
+  - drive_voice
+  - ldap_directory_voice
+  - vision_comstar_voice

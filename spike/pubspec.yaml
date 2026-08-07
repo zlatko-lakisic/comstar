@@ -5,3 +5,4 @@ environment:
 dependencies:
   ao_reach:
     path: ../vendor/agentic-orchestration-reach
+  path: ^1.9.0
