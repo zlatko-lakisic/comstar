@@ -161,6 +161,8 @@ class ComstarConfig {
     'quiet_start',
     'quiet_end',
     'timezone',
+    'channel_url',
+    'channel_token',
   };
 
   static const _roadKeys = {
@@ -534,6 +536,8 @@ class ComstarConfig {
 
   static AnnounceConfig _parseAnnounce(Map<String, dynamic> map) {
     _assertKnownKeys(map.keys, _announceKeys, 'announce');
+    final envUrl = Platform.environment['COMSTAR_CHANNEL_URL'] ?? '';
+    final envToken = Platform.environment['COMSTAR_CHANNEL_TOKEN'] ?? '';
     return AnnounceConfig(
       enabled: map['enabled'] as bool? ?? true,
       queuePath: map['queue_path']?.toString() ?? '',
@@ -542,6 +546,12 @@ class ComstarConfig {
       quietStart: map['quiet_start']?.toString() ?? '22:00',
       quietEnd: map['quiet_end']?.toString() ?? '07:00',
       timezone: map['timezone']?.toString() ?? '',
+      channelUrl: envUrl.trim().isNotEmpty
+          ? envUrl.trim()
+          : (map['channel_url']?.toString() ?? '').trim(),
+      channelToken: envToken.trim().isNotEmpty
+          ? envToken.trim()
+          : (map['channel_token']?.toString() ?? '').trim(),
     );
   }
 

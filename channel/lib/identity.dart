@@ -23,6 +23,25 @@ class Allowlist {
   /// Resolve sender → userid, or null if not allowlisted.
   String? useridFor(String senderId) => _map[senderId];
 
+  /// First allowlisted sender id for [userid], or null.
+  ///
+  /// Used for outbound announcements (bridge → channel). Exact userid match;
+  /// if multiple senders map to the same userid, the first map insertion wins.
+  String? senderIdFor(String userid) {
+    for (final e in _map.entries) {
+      if (e.value == userid) return e.key;
+    }
+    return null;
+  }
+
+  /// All allowlisted sender ids for [userid] (stable map order).
+  List<String> senderIdsFor(String userid) {
+    return [
+      for (final e in _map.entries)
+        if (e.value == userid) e.key,
+    ];
+  }
+
   bool contains(String senderId) => _map.containsKey(senderId);
 
   int get length => _map.length;

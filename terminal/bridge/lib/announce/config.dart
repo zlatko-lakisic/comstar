@@ -10,6 +10,8 @@ class AnnounceConfig {
     this.quietStart = '22:00',
     this.quietEnd = '07:00',
     this.timezone = '',
+    this.channelUrl = '',
+    this.channelToken = '',
   });
 
   final bool enabled;
@@ -27,4 +29,11 @@ class AnnounceConfig {
 
   /// IANA TZ label for schedule evaluation; empty → system local.
   final String timezone;
+
+  /// Ada `comstar-channel` base URL for M11.6 dual-surface (e.g. http://10.0.10.16:8782).
+  /// Empty disables channel delivery. Overridable via `COMSTAR_CHANNEL_URL`.
+  final String channelUrl;
+
+  /// Shared token for `X-Comstar-Channel-Token`. Env `COMSTAR_CHANNEL_TOKEN`.
+  final String channelToken;
 }

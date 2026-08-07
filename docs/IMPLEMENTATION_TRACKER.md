@@ -22,7 +22,7 @@
 |---|---|
 | Active milestone | **M10+M11 landed 2026-08-07** — deploy/UAT + soak remain |
 | Overall Phase 1 | ~85% (M9 soak wall-clock open) |
-| Overall Phase 2 | Presence + **proactivity M10** + **channel M11 scaffold** |
+| Overall Phase 2 | Presence + **proactivity M10** + **channel M11** (UAT open) |
 | Last updated | 2026-08-07 |
 | Board | `comstar-ai` Pi 4B 4GB @ `192.168.89.34` — SSH Host `comstar` |
 | Vision backend | CodeProject.AI `10.0.10.16:32168` — face `zlatko` enrolled |
@@ -70,12 +70,11 @@
 
 ## Next concrete actions (human / hardware)
 
-1. **Deploy** Pi bridge (announce) + Ada `comstar-channel` (`TELEGRAM_BOT_TOKEN` + allowlist)
-2. **UAT-10 / UAT-11** — hallway announce + Telegram continuity / unknown silence
-3. Wire M11.6 dual-surface delivery against live announce queue (bridge ↔ channel)
-4. Let **24h soak** finish (`20260807-141443`); read `summary.json` vs §T5
-5. Human-label STT fixtures; wake ONNX when recordings exist
-6. Register `ldap_mcp` + `vision_mcp` on Ada
+1. **Deploy** Pi bridge (announce + `announce.channel_url`) + Ada `comstar-channel` (`TELEGRAM_BOT_TOKEN` + allowlist + `COMSTAR_CHANNEL_TOKEN` / bind)
+2. **UAT-10 / UAT-11** — hallway announce + Telegram continuity / unknown silence / urgent→Telegram when away
+3. Let **24h soak** finish (`20260807-141443`); read `summary.json` vs §T5
+4. Human-label STT fixtures; wake ONNX when recordings exist
+5. Register `ldap_mcp` + `vision_mcp` on Ada
 
 ---
 
@@ -103,7 +102,8 @@ Living plan: `docs/PHASE2_PLAN.md`. ADRs: `0006-house-presence-ha`, `0007-full-d
 - [x] M10.1–M10.6 announcement product path (queue/sources/gate/machine/greeter/admin) — 2026-08-07
 - [x] M11.0 text-channel ground truth (ADR 0010, CONTRACTS §4/§11, probe fixture) — 2026-08-07
 - [x] M11.1–M11.5 + M11.7–M11.8 scaffold (`channel/`, text_responder, privacy docs) — 2026-08-07
-- [ ] M11.6 dual-surface announce live wiring + UAT-10/11 operator sign-off
+- [x] M11.6 dual-surface announce live wiring (bridge CAS + channel `/v1/announce`) — 2026-08-07
+- [ ] UAT-10/11 operator sign-off
 
 Living plan: `docs/PHASE2_PLAN_PROACTIVITY_AND_CHANNEL.md`.
 
@@ -117,6 +117,6 @@ Living plan: `docs/PHASE2_PLAN_PROACTIVITY_AND_CHANNEL.md`.
 | M11.3 Allowlist silence | `done` | tests: unknown = zero outbound |
 | M11.4 text_responder overlay | `done` | + `text_output` skill (markdown OK) |
 | M11.5 Session wiring | `done` | `ChannelSessionManager`, idle reap, SIGTERM stop |
-| M11.6 Announce → channel gate | `in_progress` | stub `shouldDeliverToChannel`; bridge dual-surface TBD |
+| M11.6 Announce → channel gate | `done` | bridge `evaluateChannelSurface` + Ada `/v1/announce`; CAS delivered-once |
 | M11.7 Rate limit | `done` | per-sender + daily cap tests |
 | M11.8 Docs / privacy | `done` | README + CONTRACTS §11 |

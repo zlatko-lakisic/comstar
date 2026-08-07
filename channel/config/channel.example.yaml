@@ -27,3 +27,8 @@ rate_limit:
 session:
   # Product id: comstar-<uid>-channel (never share terminal comstar-<uid>)
   idle_ttl_hours: 6
+
+# Announce ingress from the Pi bridge (M11.6). Env overrides preferred.
+# COMSTAR_CHANNEL_BIND=0.0.0.0
+# COMSTAR_CHANNEL_PORT=8782
+# COMSTAR_CHANNEL_TOKEN=...

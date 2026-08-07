@@ -280,12 +280,12 @@ CONTRACTS gains §11 (channel protocol, identity mapping, allowlist). README gai
 `UAT-11`. Ask something in the kitchen, leave, continue it from Telegram. Then have someone not on the allowlist message the bot and confirm total silence.
 
 ### Exit criteria
-- [ ] A conversation started at the terminal continues on the channel with context intact
-- [ ] Non-allowlisted senders receive nothing, ever, verified by packet-level check
-- [ ] Text answers use markdown; spoken answers still do not
-- [ ] An urgent announcement reaches exactly one surface, never both
-- [ ] Rate limits hold under a scripted flood
-- [ ] README privacy model updated and true
+- [ ] A conversation started at the terminal continues on the channel with context intact *(UAT-11)*
+- [ ] Non-allowlisted senders receive nothing, ever, verified by packet-level check *(UAT-11)*
+- [x] Text answers use markdown; spoken answers still do not *(overlays + tests)*
+- [x] An urgent announcement reaches exactly one surface, never both *(CAS + gate tests)*
+- [x] Rate limits hold under a scripted flood *(ratelimit tests)*
+- [x] README privacy model updated and true
 
 ### Risks
 - **This is the project's first internet-facing ingress.** Everything before this was LAN-only by construction. Treat M11.3 as the security review, and do it as a review, not as a task you tick.

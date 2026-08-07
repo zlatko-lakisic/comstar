@@ -1,8 +1,7 @@
-/// Announcement delivery gate stub for the text channel surface (M11.6).
+/// Announcement delivery gate for the text channel surface (M11.6).
 ///
-/// Full dual-surface gate lives with M10's announce queue on the bridge.
-/// This documents the channel-side policy and provides a pure function for
-/// unit tests until bridge ↔ channel coordination is wired.
+/// Bridge owns delivered-once truth and POSTs `/v1/announce`; this pure
+/// function is re-checked on Ada before Telegram send (CONTRACTS §11).
 library;
 
 /// Priority matching M10 announcement priorities.

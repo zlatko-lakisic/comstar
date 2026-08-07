@@ -605,6 +605,32 @@ Environment=COMSTAR_AEC_REF_SOURCE=alsa_output.platform-….hdmi.monitor
    If `aec_unavailable`, keep `duplex: half` — do not claim full duplex in hallway UAT.
 5. Optional SpeexDSP: `pip install speexdsp` in the audio venv (`terminal/audio`).
 
+## 9c. Text channel + dual-surface announce (M11)
+
+Runs on **Ada**, not the Pi (`deploy/systemd/comstar-channel.service`).
+
+1. Set `TELEGRAM_BOT_TOKEN` + `COMSTAR_CHANNEL_ALLOWLIST` (JSON sender→userid).
+2. For Pi → Ada announce delivery: bind LAN and share a token:
+
+```bash
+# ~/.config/comstar/channel.env on Ada
+COMSTAR_CHANNEL_BIND=0.0.0.0
+COMSTAR_CHANNEL_PORT=8782
+COMSTAR_CHANNEL_TOKEN=<secret>
+```
+
+3. On the Pi `comstar.yaml` (or env):
+
+```yaml
+announce:
+  channel_url: http://10.0.10.16:8782
+  # channel_token via COMSTAR_CHANNEL_TOKEN preferred
+```
+
+4. Urgent announcements while the recipient is **not** at the terminal POST
+   `/v1/announce` and mark delivered once (CAS). Normal priority waits for the
+   hallway. Unknown Telegram senders get silence.
+
 ## 10. Google Workspace (mail / calendar / Drive)
 
 Comstar does **not** ship a custom Gmail MCP. It pairs once (voice + QR), stores a

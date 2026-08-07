@@ -294,6 +294,46 @@ WHERE id = ?
     });
   }
 
+  /// CAS: mark delivered only if still `pending`. Returns false if raced/lost.
+  bool claimDelivered(String id, {DateTime? at, String? text}) {
+    open();
+    final t = (at ?? _clock()).toUtc();
+    _require.execute(
+      '''
+UPDATE announcements
+SET status = 'delivered', delivered_at_ms = ?, text = COALESCE(?, text)
+WHERE id = ? AND status = 'pending'
+''',
+      [t.millisecondsSinceEpoch, text, id],
+    );
+    final changed = _require.updatedRows > 0;
+    if (changed) {
+      logInfo('announce_delivered', 'Announcement delivered', data: {
+        'id': id,
+        'cas': true,
+      });
+    }
+    return changed;
+  }
+
+  /// Undo a failed channel delivery claim so the item can retry or hit terminal.
+  void reopenPending(String id) {
+    open();
+    _require.execute(
+      '''
+UPDATE announcements
+SET status = 'pending', delivered_at_ms = NULL
+WHERE id = ? AND status = 'delivered'
+''',
+      [id],
+    );
+    if (_require.updatedRows > 0) {
+      logWarn('announce_reopened', 'Reopened after failed channel send', data: {
+        'id': id,
+      });
+    }
+  }
+
   void cancel(String id) {
     open();
     _require.execute(

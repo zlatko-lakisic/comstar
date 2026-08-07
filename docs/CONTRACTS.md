@@ -982,7 +982,8 @@ Pi fps / render-path ADR: `docs/adr/0002-render-path.md`.
 
 ## 11. Text channel protocol (Telegram)
 
-**Status:** SPEC / scaffold (M11.0–M11.5) — Ada-side `channel/` package.
+**Status:** VERIFIED path (M11.0–M11.7) — Ada-side `channel/` package; dual-surface
+announce live (M11.6). Operator UAT-11 remains.
 **ADR:** `docs/adr/0010-text-channel.md`.
 
 ### Surfaces and session ids
@@ -999,6 +1000,9 @@ Same userid; distinct session ids. Do not share overlays across surfaces.
 
 Static allowlist: channel sender id → COMSTAR userid (`COMSTAR_CHANNEL_ALLOWLIST`
 JSON or YAML path). **Unknown senders → zero outbound** (silence). No guest mode.
+Reverse map (userid → sender id) is used only for **outbound announcements**
+from the bridge; if a userid has no allowlisted sender, channel delivery is a
+no-op (logged, not an error to strangers).
 
 ### Inbound / outbound
 
@@ -1006,16 +1010,57 @@ JSON or YAML path). **Unknown senders → zero outbound** (silence). No guest mo
 - Outbound: `send(senderId, text)` only after allowlist + rate limit.
 - Typing indicators optional (`ChannelTyping`).
 
+### Channel HTTP (Ada, announce ingress from Pi)
+
+`comstar-channel` listens on `COMSTAR_CHANNEL_BIND` / `COMSTAR_CHANNEL_PORT`
+(default `127.0.0.1:8782`). When bound beyond loopback, `COMSTAR_CHANNEL_TOKEN`
+is required (`X-Comstar-Channel-Token` or `?token=`).
+
+| Route | Method | Auth | Meaning |
+|---|---|---|---|
+| `/health` | GET | none | Liveness |
+| `/v1/announce` | POST | token if non-loopback | Deliver one announcement to an allowlisted userid |
+
+`POST /v1/announce` body:
+
+```json
+{
+  "id": "ulid-or-uuid",
+  "recipient": "zlatko",
+  "text": "Your 2pm moved to 3.",
+  "priority": "urgent",
+  "present_at_terminal": false,
+  "already_delivered": false
+}
+```
+
+- Channel re-checks `shouldDeliverToChannel` (same policy as bridge) before send.
+- `recipient: "any"` is rejected (`400`) — channel delivery requires a concrete userid.
+- Unknown / unmapped recipient → `200` with `{ "delivered": false, "reason": "no_sender" }`
+  (no Telegram traffic).
+- Success → `{ "delivered": true, "sender_id": "…" }`.
+
+Bridge config (`announce.channel_url`, `announce.channel_token`) or env
+`COMSTAR_CHANNEL_URL` / `COMSTAR_CHANNEL_TOKEN`. Empty URL disables channel surface.
+
 ### Announcement dual-surface (M11.6)
+
+Policy lives on the **bridge** announce queue (source of delivered-once truth).
+Pure helper: `shouldDeliverToChannel` (`channel/lib/announce_gate.dart` and
+`terminal/bridge/lib/announce/channel_surface.dart`).
 
 | Condition | Behaviour |
 |---|---|
 | Recipient present at terminal | Terminal wins; channel does not fire |
-| Recipient absent, `urgent` | Deliver to channel |
+| Recipient absent, `urgent` | Bridge POSTs `/v1/announce`; on success `markDelivered` |
 | Recipient absent, `normal` | Hold for terminal until TTL, then drop |
-| Delivered on either surface | Marked delivered globally |
+| Delivered on either surface | Marked delivered globally (SQLite CAS on pending) |
 
-Stub: `channel/lib/announce_gate.dart` → `shouldDeliverToChannel`.
+**Present at terminal** = attention state is `Engaged` \| `Listening` \| `Responding`
+and `cachedUserid == recipient`. `Noticed` / guest / ambient / sleeping = absent.
+
+Bridge evaluates the channel surface on a timer (independent of Engaged), so
+urgent items can leave while the room is empty.
 
 ### Privacy
 

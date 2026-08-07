@@ -88,6 +88,9 @@ announce:
   ha_rules_path: announce/ha_rules.yaml
   quiet_start: "22:00"                         # hold normal priority
   quiet_end: "07:00"                           # urgent may still deliver
+  # M11.6 dual-surface: Ada comstar-channel announce HTTP (empty = off)
+  # channel_url: http://10.0.10.16:8782
+  # channel_token: ""                          # or COMSTAR_CHANNEL_TOKEN env
 
 # FreeIPA directory resolve (ADR 0005). When enabled=false, faceId == session uid.
 directory:

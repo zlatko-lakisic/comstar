@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:comstar_bridge/announce/channel_client.dart';
+import 'package:comstar_bridge/announce/channel_surface.dart';
 import 'package:comstar_bridge/announce/gate.dart';
 import 'package:comstar_bridge/announce/ha_source.dart';
 import 'package:comstar_bridge/announce/queue.dart';
@@ -18,6 +20,7 @@ import 'package:uuid/uuid.dart';
 typedef AnnounceHandler = void Function(AttentionEvent event);
 
 /// Wires queue + sources + gate (M10.2–M10.3). Delivery via [onEvent].
+/// Channel surface (M11.6) posts urgent+absent items to Ada `comstar-channel`.
 class AnnounceService {
   AnnounceService({
     required this.config,
@@ -26,6 +29,7 @@ class AnnounceService {
     AnnouncementQueue? queue,
     AnnouncementGate? gate,
     HaAgentClient? ha,
+    ChannelAnnounceClient? channelClient,
     DateTime Function()? clock,
   })  : _clock = clock ?? DateTime.now,
         queue = queue ??
@@ -38,7 +42,12 @@ class AnnounceService {
               start: config.announce.quietStart,
               end: config.announce.quietEnd,
             ),
-        _ha = ha ?? HaAgentClient();
+        _ha = ha ?? HaAgentClient(),
+        _channel = channelClient ??
+            ChannelAnnounceClient(
+              baseUrl: config.announce.channelUrl,
+              token: config.announce.channelToken,
+            );
 
   final ComstarConfig config;
   final AttentionMachine machine;
@@ -46,6 +55,7 @@ class AnnounceService {
   final AnnouncementQueue queue;
   final AnnouncementGate gate;
   final HaAgentClient _ha;
+  final ChannelAnnounceClient _channel;
   final DateTime Function() _clock;
   final _uuid = const Uuid();
 
@@ -53,6 +63,7 @@ class AnnounceService {
   HaAnnounceSource? _haSource;
   Timer? _sourceTimer;
   var _evaluating = false;
+  var _channelEvaluating = false;
   var _lastScheduleMinute = -1;
 
   static String _resolveQueuePath(ComstarConfig config) {
@@ -99,12 +110,15 @@ class AnnounceService {
     )..load();
     _sourceTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       unawaited(_tickSources());
+      unawaited(evaluateChannelSurface());
     });
     unawaited(_tickSources());
+    unawaited(evaluateChannelSurface());
     logInfo('announce_started', 'Announce service running', data: {
       'queue': queue.dbPath,
       'schedule': config.announce.schedulePath,
       'ha_rules': config.announce.haRulesPath,
+      'channel': _channel.enabled ? config.announce.channelUrl : null,
     });
   }
 
@@ -112,6 +126,7 @@ class AnnounceService {
     _sourceTimer?.cancel();
     _sourceTimer = null;
     queue.close();
+    _channel.close();
   }
 
   Future<void> _tickSources() async {
@@ -195,17 +210,83 @@ class AnnounceService {
         'userid': userid,
         'text': text,
       });
+      final claimed = <Announcement>[];
       for (final a in items) {
-        queue.markDelivered(a.id, text: text);
+        if (queue.claimDelivered(a.id, text: text)) {
+          claimed.add(a);
+        }
+      }
+      if (claimed.isEmpty) {
+        return const GateDecision.hold(GateHoldReason.noDue);
       }
       onEvent(AnnouncementReady(
-        id: id,
+        id: claimed.first.id,
         text: text,
-        announcementIds: ids,
+        announcementIds: claimed.map((a) => a.id).toList(),
       ));
-      return GateDecision.deliver(items);
+      return GateDecision.deliver(claimed);
     } finally {
       _evaluating = false;
+    }
+  }
+
+  /// M11.6 — push urgent+absent announcements to Ada channel.
+  ///
+  /// Runs on a timer even when the room is empty. Uses CAS claim so terminal
+  /// and channel cannot both deliver the same row.
+  Future<int> evaluateChannelSurface() async {
+    if (!config.announce.enabled || !_channel.enabled) return 0;
+    if (_channelEvaluating) return 0;
+    _channelEvaluating = true;
+    var sent = 0;
+    try {
+      final ctx = machine.context;
+      final stateName = machine.state.name;
+      final due = queue.duePending(limit: 50);
+      for (final a in due) {
+        final recipient = a.recipient.trim();
+        if (recipient.isEmpty || recipient == 'any') continue;
+        final present = recipientPresentAtTerminal(
+          cachedUserid: ctx.cachedUserid,
+          stateName: stateName,
+          recipient: recipient,
+        );
+        final decision = shouldDeliverToChannel(
+          recipientUserid: recipient,
+          priority: a.priority,
+          recipientPresentAtTerminal: present,
+          alreadyDelivered: false,
+        );
+        if (decision != ChannelDeliverDecision.deliver) continue;
+
+        final text = (a.text?.trim().isNotEmpty == true)
+            ? a.text!.trim()
+            : a.intent.trim();
+        if (text.isEmpty) continue;
+
+        // Claim first so a concurrent Engaged delivery cannot also speak.
+        if (!queue.claimDelivered(a.id, text: text)) continue;
+
+        final ok = await _channel.deliver(
+          id: a.id,
+          recipient: recipient,
+          text: text,
+          priority: a.priority.wire,
+          presentAtTerminal: present,
+        );
+        if (!ok) {
+          queue.reopenPending(a.id);
+          continue;
+        }
+        sent++;
+        logInfo('announce_channel_deliver', 'Delivered via text channel', data: {
+          'id': a.id,
+          'userid': recipient,
+        });
+      }
+      return sent;
+    } finally {
+      _channelEvaluating = false;
     }
   }
 
@@ -230,6 +311,7 @@ class AnnounceService {
       'userid': userid,
       'quiet': gate.isQuietHours(_clock().toLocal()),
       'announced_this_engage': ctx.announcedThisEngage,
+      'channel_url': _channel.enabled ? config.announce.channelUrl : null,
       'due': due.map((a) => a.toJson()).toList(),
       'decision': decision.deliver ? 'deliver' : decision.reasonWire,
       'pending': queue.list(status: AnnouncementStatus.pending, limit: 20)

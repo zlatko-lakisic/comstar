@@ -8,6 +8,9 @@
 ///   COMSTAR_OVERLAY_ROOT        default /opt/comstar/src/overlays/comstar
 ///   COMSTAR_CHANNEL_RATE_MAX    per-sender max (default 20)
 ///   COMSTAR_CHANNEL_DAILY_CAP   daily orchestration cap (default 200)
+///   COMSTAR_CHANNEL_BIND        announce HTTP bind (default 127.0.0.1)
+///   COMSTAR_CHANNEL_PORT        announce HTTP port (default 8782)
+///   COMSTAR_CHANNEL_TOKEN       required when bind is non-loopback
 ///
 /// Unknown senders: ZERO outbound (allowlist silence).
 library;
@@ -19,6 +22,7 @@ import 'dart:io';
 import 'package:args/args.dart';
 import 'package:path/path.dart' as p;
 
+import 'package:comstar_channel/announce_http.dart';
 import 'package:comstar_channel/channel.dart';
 import 'package:comstar_channel/identity.dart';
 import 'package:comstar_channel/rate_limit.dart';
@@ -85,13 +89,26 @@ Future<void> main(List<String> args) async {
   final limiter = RateLimiter(perSenderMax: perSenderMax, dailyCap: dailyCap);
 
   final channel = TelegramChannel(botToken: token);
-  // Outbound send is gated: only called after allowlist + rate limit.
-  // Unknown senders never reach send().
   late final StreamSubscription<ChannelInbound> sub;
+
+  final announceBind =
+      Platform.environment['COMSTAR_CHANNEL_BIND'] ?? '127.0.0.1';
+  final announcePort =
+      int.tryParse(Platform.environment['COMSTAR_CHANNEL_PORT'] ?? '') ?? 8782;
+  final channelHttpToken = Platform.environment['COMSTAR_CHANNEL_TOKEN'] ?? '';
+  final announceHttp = AnnounceHttpServer(
+    channel: channel,
+    allowlist: allowlist,
+    token: channelHttpToken,
+    bindHost: announceBind,
+    port: announcePort,
+    log: _log,
+  );
 
   Future<void> shutdown() async {
     _log('info', 'shutdown', 'stopping channel');
     await sub.cancel();
+    await announceHttp.stop();
     await channel.stop();
     await sessions.stopAll();
     exit(0);
@@ -146,9 +163,16 @@ Future<void> main(List<String> args) async {
   });
 
   await channel.start();
+  try {
+    await announceHttp.start();
+  } catch (e) {
+    _log('error', 'announce_http_fail', '$e');
+    exit(2);
+  }
   _log('info', 'ready', 'comstar-channel polling Telegram', {
     'overlayRoot': overlayRoot,
     'ao': aoBaseUrlFromEnv(),
+    'announceHttp': '$announceBind:$announcePort',
   });
 
   // Idle reaper

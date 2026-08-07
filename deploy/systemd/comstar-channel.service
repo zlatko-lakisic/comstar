@@ -15,6 +15,9 @@ Environment=COMSTAR_OVERLAY_ROOT=/opt/comstar/src/overlays/comstar
 #   TELEGRAM_BOT_TOKEN=...
 #   COMSTAR_CHANNEL_ALLOWLIST={"123456789":"zlatko"}
 #   AO_TOKEN=...
+#   COMSTAR_CHANNEL_TOKEN=...          # required when binding beyond loopback
+#   COMSTAR_CHANNEL_BIND=0.0.0.0       # Pi bridge POSTs /v1/announce
+#   COMSTAR_CHANNEL_PORT=8782
 ExecStart=/usr/bin/dart run bin/comstar_channel.dart
 Restart=on-failure
 RestartSec=5
