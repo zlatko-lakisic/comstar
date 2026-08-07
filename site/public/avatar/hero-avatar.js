@@ -161,8 +161,10 @@ export function mountHero(container, opts = {}) {
     const doc = new DOMParser().parseFromString(wrap, 'image/svg+xml');
     if (doc.querySelector('parsererror')) return;
     const root = doc.documentElement;
+    // Move nodes (appendChild adopts). importNode alone copies and leaves
+    // firstChild in place → infinite loop and a frozen product page.
     while (root.firstChild) {
-      parent.appendChild(document.importNode(root.firstChild, true));
+      parent.appendChild(root.firstChild);
     }
   }
   mountEmblem(halo, emblem);
