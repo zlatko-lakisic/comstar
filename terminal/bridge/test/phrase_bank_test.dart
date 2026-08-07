@@ -98,6 +98,8 @@ void main() {
         PhraseCategory.sleepEnter: ['Bye.'],
         PhraseCategory.sleepWake: ['Up.'],
         PhraseCategory.social: ['Sup.'],
+        PhraseCategory.working: ['Working.'],
+        PhraseCategory.resultReady: ['Ready.'],
       });
       expect(bank.needsRefresh(const Duration(hours: 6)), isFalse);
       clock = clock.add(const Duration(hours: 7));

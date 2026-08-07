@@ -27,6 +27,8 @@ model: qwen2.5:14b-instruct
 mcp_providers:
   - home_assistant
   - client.google_workspace
+  - ldap_directory
+  - vision_comstar
 
 skills:
   - spoken_output
@@ -45,3 +47,5 @@ skills:
   - calendar_voice
   - gmail_voice
   - drive_voice
+  - ldap_directory_voice
+  - vision_comstar_voice

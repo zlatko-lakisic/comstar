@@ -391,6 +391,33 @@ void main() {
       expect(m.context.turnId, isNull);
     });
 
+    test('responding + PlaybackEnded while AO in flight stays responding', () {
+      final m = _machine();
+      _engageAndListen(m);
+      _apply(m, const SpeechEnd(500));
+      _apply(m, const TranscriptReady('turn on the lights'));
+      expect(m.state, isA<Responding>());
+      expect(m.context.directAgentInFlight, isTrue);
+      m.context.playing = true;
+      final t = m.handle(const PlaybackEnded());
+      expect(t.to, isA<Responding>());
+      expect(m.context.directAgentInFlight, isTrue);
+      expect(m.context.playing, isFalse);
+      expect(_hasEffectType<OpenFollowUpWindow>(t.effects), isFalse);
+    });
+
+    test('listening + ResponseReady drops capture and speaks', () {
+      final m = _machine();
+      _engageAndListen(m);
+      expect(m.state, isA<Listening>());
+      final t = m.handle(const ResponseReady('heal result', 'http://a/b.wav'));
+      expect(t.to, isA<Responding>());
+      expect(m.context.playing, isTrue);
+      expect(m.context.directAgentInFlight, isFalse);
+      expect(_hasEffectType<StopListening>(t.effects), isTrue);
+      expect(_hasEffectType<Speak>(t.effects), isTrue);
+    });
+
     test('responding + Tick orchestration timeout → engaged', () {
       final clock = FakeClock();
       final m = _machine(clock: clock);

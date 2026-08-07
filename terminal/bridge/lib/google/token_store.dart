@@ -8,6 +8,10 @@ enum GoogleOAuthClientKind { tv, desktop }
 /// Per-userid Google OAuth refresh tokens (`0600` files).
 ///
 /// Default root: `$COMSTAR_DATA_DIR/google` or `~/.local/share/comstar/google`.
+///
+/// Keys may be the biometric faceId (`zlatko`) or FreeIPA uid (`zlatko.lakisic`).
+/// Reads accept both forms so directory resolve does not orphan an earlier
+/// faceId pairing.
 class GoogleTokenStore {
   GoogleTokenStore({Directory? root}) : _root = root;
 
@@ -27,7 +31,7 @@ class GoogleTokenStore {
     return Directory(p.join(base, 'google'));
   }
 
-  /// Safe filename stem for [userid] (face id).
+  /// Safe filename stem for [userid] (face id or LDAP uid).
   static String safeUserid(String userid) {
     final cleaned = userid.trim().toLowerCase().replaceAll(
           RegExp(r'[^a-z0-9_-]'),
@@ -39,17 +43,41 @@ class GoogleTokenStore {
     return cleaned;
   }
 
-  File _fileFor(String userid) =>
-      File(p.join(root.path, '${safeUserid(userid)}.json'));
+  /// Filename stems to try for [userid], longest/exact first.
+  ///
+  /// `zlatko.lakisic` → `zlatko_lakisic`, then `zlatko` (legacy faceId file).
+  static List<String> candidateStems(String userid) {
+    final primary = safeUserid(userid);
+    final out = <String>[primary];
+    final raw = userid.trim().toLowerCase();
+    // LDAP uid / email-local: keep first segment as faceId alias.
+    for (final sep in ['.', '_', '-']) {
+      final i = raw.indexOf(sep);
+      if (i > 0) {
+        final short = safeUserid(raw.substring(0, i));
+        if (short != primary && !out.contains(short)) {
+          out.add(short);
+        }
+        break;
+      }
+    }
+    return out;
+  }
+
+  File _fileForStem(String stem) => File(p.join(root.path, '$stem.json'));
+
+  File _fileFor(String userid) => _fileForStem(safeUserid(userid));
 
   Future<Map<String, dynamic>?> readRecord(String userid) async {
-    final file = _fileFor(userid);
-    if (!await file.exists()) return null;
-    try {
-      final map = jsonDecode(await file.readAsString());
-      if (map is Map<String, dynamic>) return map;
-      if (map is Map) return Map<String, dynamic>.from(map);
-    } catch (_) {}
+    for (final stem in candidateStems(userid)) {
+      final file = _fileForStem(stem);
+      if (!await file.exists()) continue;
+      try {
+        final map = jsonDecode(await file.readAsString());
+        if (map is Map<String, dynamic>) return map;
+        if (map is Map) return Map<String, dynamic>.from(map);
+      } catch (_) {}
+    }
     return null;
   }
 
@@ -86,22 +114,27 @@ class GoogleTokenStore {
     if (Platform.isLinux || Platform.isMacOS) {
       await Process.run('chmod', ['700', dir.path]);
     }
-    final file = _fileFor(userid);
     final payload = jsonEncode({
       'refresh_token': token,
       'client': client.name,
       'updated_at': DateTime.now().toUtc().toIso8601String(),
     });
-    await file.writeAsString(payload, flush: true);
-    if (Platform.isLinux || Platform.isMacOS) {
-      await Process.run('chmod', ['600', file.path]);
+    // Write primary + faceId alias so LDAP uid sessions still find faceId files.
+    for (final stem in candidateStems(userid)) {
+      final file = _fileForStem(stem);
+      await file.writeAsString(payload, flush: true);
+      if (Platform.isLinux || Platform.isMacOS) {
+        await Process.run('chmod', ['600', file.path]);
+      }
     }
   }
 
   Future<void> clear(String userid) async {
-    final file = _fileFor(userid);
-    if (await file.exists()) {
-      await file.delete();
+    for (final stem in candidateStems(userid)) {
+      final file = _fileForStem(stem);
+      if (await file.exists()) {
+        await file.delete();
+      }
     }
   }
 }

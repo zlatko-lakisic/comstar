@@ -86,5 +86,20 @@ void main() {
       final prompt = await memory.wrapForAgent('guest', 'hello');
       expect(prompt, 'hello');
     });
+
+    test('assistant-only lines are retained for follow-ups', () async {
+      await memory.recordExchange(
+        userid: 'zlatko',
+        userText: '',
+        assistantText: 'Just push the button when you are ready.',
+      );
+      final prompt = await memory.wrapForAgent('zlatko', 'which button');
+      expect(prompt, contains('Just push the button'));
+      expect(prompt, contains('short follow-up'));
+      expect(prompt, contains('which button'));
+      final hist = await memory.store.load('zlatko');
+      expect(hist.turns.length, 1);
+      expect(hist.turns.single.role, 'assistant');
+    });
   });
 }

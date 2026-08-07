@@ -1,0 +1,35 @@
+id: vision_comstar_voice
+description: >
+  Ada vision MCP — live camera frames via CodeProject.AI, plus Frigate visitor
+  history (recognized faces and descriptions of unknowns).
+capabilities: >
+  who_is_present, describe_view, check_camera, who_visited, list_person_visits,
+  describe_visit against Frigate/CPAI.
+good_for: >
+  who is at the front door, describe the camera, what do you see,
+  who was in the driveway, visitors today, who came by
+planner_hint: >
+  Attach for camera/scene and visitor-history questions. Use who_visited for
+  "who was in the driveway today". Not for "who's home" (use HA presence).
+  Not for hallway session identity (Pi face poller).
+user_goal_keywords:
+  - front door
+  - who is at the door
+  - describe the camera
+  - what do you see
+  - check the camera
+  - who's outside
+  - driveway
+  - who was in the driveway
+  - visitors today
+  - who came by
+  - unrecognized
+  - someone in the driveway
+
+content:
+  file: vision_comstar_voice/instructions.md
+
+inject:
+  target: backstory
+  heading: "## Vision camera (voice)"
+  max_chars: 1600

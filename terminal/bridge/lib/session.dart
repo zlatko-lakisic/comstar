@@ -572,6 +572,15 @@ class ComstarSession {
         return const ['client.google_workspace'];
       }
     }
+    // Ada-hosted COMSTAR MCPs — attach alone so tool choice is unambiguous.
+    // Do not gate on registeredMcpIds: Reach often lists only tunnel/client MCPs
+    // while ldap/vision are AO catalog extras on the AI server.
+    if (utterance != null && _looksLikeDirectoryLookup(utterance)) {
+      return const ['ldap_directory'];
+    }
+    if (utterance != null && _looksLikeVisionComstar(utterance)) {
+      return const ['vision_comstar'];
+    }
     // Default voice: stock MCP only. Attaching client.google_workspace (tunnel
     // URL host 127.0.0.1) makes CrewAI mint OpenAI function names that start
     // with a digit → every turn fails with the "could not get an answer" sorry
@@ -586,7 +595,35 @@ class ComstarSession {
     final t = text.toLowerCase();
     return RegExp(
       r'\b(google|gmail|calendar|g-?cal|drive|workspace|inbox|email|e-?mail|'
-      r'meeting|appointments?|schedule)\b',
+      r'meeting|appointments?|schedule|planned)\b',
+    ).hasMatch(t);
+  }
+
+  /// Planner LDAP MCP (Ada) — not session identity (that is directory sidecar).
+  static bool _looksLikeDirectoryLookup(String text) {
+    final t = text.toLowerCase();
+    return RegExp(
+      r'\b(ldap|freeipa|directory|look\s*up\s+(the\s+)?user|find\s+user|'
+      r'who is enrolled|household roster|user\s*id)\b',
+    ).hasMatch(t);
+  }
+
+  /// Ada vision MCP (Frigate/CPAI) — not "who's home" (HA presence).
+  static bool _looksLikeVisionComstar(String text) {
+    final t = text.toLowerCase();
+    if (RegExp(r"\b(who'?s?\s+home|anyone home|who is home)\b").hasMatch(t)) {
+      return false;
+    }
+    return RegExp(
+      r"\b(who'?s?\s+(at|in|on)\s+(the\s+|my\s+)?(front\s+door|door|camera|driveway)|"
+      r'who is (at|in|on) (the |my )?(front door|door|camera|driveway)|'
+      r'who was (at|in|on) (the |my )?(front door|door|camera|driveway)|'
+      r'who were (at|in|on) (the |my )?(front door|door|camera|driveway)|'
+      r'(anyone|somebody|someone) (in|at|on) (the |my )?driveway|'
+      r'visitors?( today| this (morning|afternoon|evening))?|'
+      r'who came by|who came over|'
+      r'describe (the )?(view|scene|camera)|what do you see|'
+      r'check (the )?camera|who.?s outside|who is outside)\b',
     ).hasMatch(t);
   }
 
@@ -595,7 +632,10 @@ class ComstarSession {
     final mcps = mcpProvidersForVoice(utterance: text);
     final googleOnly = mcps.length == 1 && mcps.first == 'client.google_workspace';
     final haOnly = mcps.length == 1 && mcps.first == 'home_assistant';
-    final needsTools = googleOnly || haOnly || mcps.length > 1;
+    final ldapOnly = mcps.length == 1 && mcps.first == 'ldap_directory';
+    final visionOnly = mcps.length == 1 && mcps.first == 'vision_comstar';
+    final needsTools =
+        googleOnly || haOnly || ldapOnly || visionOnly || mcps.length > 1;
     final timeoutSec = needsTools && config.orchestration.timeoutSeconds < 60
         ? 60
         : config.orchestration.timeoutSeconds;
@@ -654,6 +694,20 @@ class ComstarSession {
     if (mcps.contains('client.google_workspace')) {
       return 'Google Workspace tools are attached. Call the matching Gmail, '
           'Calendar, or Drive tools before answering. Do not invent data.\n\n'
+          'Resident said: $trimmed';
+    }
+    if (mcps.contains('ldap_directory')) {
+      return 'LDAP directory tools are attached. Call lookup_user or '
+          'list_comstar_users before answering. Do not invent people.\n\n'
+          'Resident said: $trimmed';
+    }
+    if (mcps.contains('vision_comstar')) {
+      return 'Vision tools are attached. For live camera questions call '
+          'who_is_present, describe_view, or check_camera. For historical '
+          'visitor questions (who was in the driveway, visitors, who came by) '
+          'call who_visited with camera (driveway or front_door) and since '
+          'matching the resident (today / yesterday). Speak spoken_hint from '
+          'the tool result. Do not invent who was on camera.\n\n'
           'Resident said: $trimmed';
     }
     return trimmed;
@@ -750,6 +804,14 @@ class ComstarSession {
         'Someone asked a social check-in with no task (whats up, how are you, '
             'whats shaking, thanks). Reply in character as the hallway terminal: '
             'warm, brief, lightly witty; invite a real request without being pushy.',
+      'working' =>
+        'COMSTAR is still fetching an answer (Home Assistant, calendar, etc.). '
+            'One short reassurance that work is in progress; no promises of '
+            'timing beyond "a moment/minute". Do not ask a question.',
+      'result_ready' =>
+        'COMSTAR is about to speak the real answer after a progress ack. '
+            'One short framing line like "I have what you asked for" — no '
+            'content of the answer itself. Do not ask a question.',
       _ => 'Short household terminal phrases.',
     };
     return 'Write exactly $count spoken phrases for category "$category". '

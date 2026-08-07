@@ -18,6 +18,12 @@ enum TerminalIntentKind {
   volumeUp,
   volumeDown,
   volumeSet,
+  healthStatus,
+  restartSelf,
+  restartAudio,
+  restartKiosk,
+  rebootHost,
+  healSelf,
 }
 
 /// Returns a [TerminalIntent] when [text] clearly asks for device control.
@@ -36,6 +42,46 @@ TerminalIntent? parseTerminalIntent(String text) {
       t == 'sleep' ||
       t == 'go to sleep') {
     return const TerminalIntent._(TerminalIntentKind.sleepEnter);
+  }
+
+  // Self-care before volume so "restart" is not swallowed by unrelated matches.
+  if (RegExp(
+        r"\b(heal yourself|fix yourself|run (a )?health check|"
+        r'auto[- ]?heal|repair yourself)\b',
+      ).hasMatch(t)) {
+    return const TerminalIntent._(TerminalIntentKind.healSelf);
+  }
+  if (RegExp(
+        r'\b(restart (the )?audio|restart (the )?mic|restart (the )?speaker)\b',
+      ).hasMatch(t)) {
+    return const TerminalIntent._(TerminalIntentKind.restartAudio);
+  }
+  if (RegExp(
+        r'\b(restart (the )?kiosk|restart (the )?screen|restart (the )?display)\b',
+      ).hasMatch(t)) {
+    return const TerminalIntent._(TerminalIntentKind.restartKiosk);
+  }
+  // Full host reboot — distinct from bridge restart.
+  if (RegExp(
+        r'\b(full reboot|reboot (the )?(pi|terminal|system|host|computer|machine)|'
+        r'reboot yourself|reboot comstar)\b',
+      ).hasMatch(t) ||
+      t == 'reboot') {
+    return const TerminalIntent._(TerminalIntentKind.rebootHost);
+  }
+  if (RegExp(
+        r'\b(restart yourself|restart (the )?bridge|restart comstar)\b',
+      ).hasMatch(t)) {
+    return const TerminalIntent._(TerminalIntentKind.restartSelf);
+  }
+  if (RegExp(
+        r'\b(what s your health|whats your health|how s your health|'
+        r'hows your health|are you healthy|system status|status check|'
+        r'how are your systems|(check|report) (your )?health)\b',
+      ).hasMatch(t) ||
+      t == 'health check' ||
+      t == 'your health') {
+    return const TerminalIntent._(TerminalIntentKind.healthStatus);
   }
 
   if (RegExp(r'\b(unmute|un mute)\b').hasMatch(t)) {

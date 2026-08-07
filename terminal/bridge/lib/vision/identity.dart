@@ -19,6 +19,9 @@ class IdentityResolver {
   /// When true, keep calling CPAI recognize while a person is present (multi-user).
   bool continuousRecognize = false;
 
+  /// One-shot: next recognize pass must run even if already resolved.
+  bool forceRecognizeOnce = false;
+
   String? get resolvedUserid => isResolved ? _resolvedUserid : null;
 
   bool get isResolved =>
@@ -31,7 +34,8 @@ class IdentityResolver {
       _expiresAtMs == null ||
       clock.nowMs >= _expiresAtMs!;
 
-  bool get needsRecognition => continuousRecognize || !isResolved;
+  bool get needsRecognition =>
+      continuousRecognize || forceRecognizeOnce || !isResolved;
 
   /// Positive recognition refreshes TTL; person detection alone does not.
   IdentityVoteResult recordMatch(String userid, double confidence) {
@@ -49,6 +53,7 @@ class IdentityResolver {
       if (_resolvedUserid == userid) {
         _expiresAtMs = clock.nowMs + config.identityTtlSeconds * 1000;
       }
+      forceRecognizeOnce = false;
       return IdentityVoteRecognized(userid, confidence);
     }
 
@@ -59,9 +64,10 @@ class IdentityResolver {
       _voteCount = 1;
     }
 
-    if (_voteCount >= config.recognizeVotes) {
+    if (_voteCount >= config.recognizeVotes || forceRecognizeOnce) {
       _resolvedUserid = userid;
       _expiresAtMs = clock.nowMs + config.identityTtlSeconds * 1000;
+      forceRecognizeOnce = false;
       _resetVotes();
       return IdentityVoteRecognized(userid, confidence);
     }
@@ -69,7 +75,15 @@ class IdentityResolver {
     return const IdentityVotePending();
   }
 
-  IdentityVoteResult recordUnknown() {
+  /// Soft-unknown while already resolved: keep identity, clear only vote progress.
+  /// Hard wipe when nothing is resolved (or forced re-identify cleared cache).
+  IdentityVoteResult recordUnknown({bool softIfResolved = true}) {
+    if (softIfResolved && isResolved && !forceRecognizeOnce) {
+      _resetVotes();
+      return const IdentityVotePending();
+    }
+    _resolvedUserid = null;
+    _expiresAtMs = null;
     _resetVotes();
     return const IdentityVoteUnknown();
   }
@@ -77,9 +91,17 @@ class IdentityResolver {
   /// Person presence alone must not extend identity TTL.
   void onPersonDetected() {}
 
+  /// Voice "recognize me" / who-am-I: drop cache and force the next CPAI pass.
+  void requestReidentify() {
+    clear();
+    forceRecognizeOnce = true;
+    continuousRecognize = true;
+  }
+
   void clear() {
     _resolvedUserid = null;
     _expiresAtMs = null;
+    forceRecognizeOnce = false;
     _resetVotes();
   }
 

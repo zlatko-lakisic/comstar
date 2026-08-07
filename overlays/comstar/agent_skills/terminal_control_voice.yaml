@@ -1,20 +1,28 @@
 id: terminal_control_voice
-description: Sleep and volume are handled locally — acknowledge only.
-capabilities: Avoid inventing device-control tool calls for sleep/volume.
-good_for: sleep, mute, volume
+description: Sleep, volume, identity, and self-care are handled locally — acknowledge only.
+capabilities: Avoid inventing device-control tool calls for sleep/volume/health/restart.
+good_for: sleep, mute, volume, health, restart, heal, who am i
 planner_hint: Attach for COMSTAR voice agents that may hear device commands.
 user_goal_keywords:
   - sleep
   - volume
   - mute
+  - health
+  - restart
+  - heal
+  - who am i
+  - recognize me
 
 content:
   body: |
     Device control note:
-    - Sleep and speaker volume are handled by the terminal outside this agent.
-    - If asked about sleep or volume, give a short acknowledgment only.
+    - Sleep, speaker volume, who-am-I / recognize-me, health status,
+      restart bridge/audio/kiosk, full reboot, and heal-yourself are handled
+      by the terminal outside this agent.
+    - If asked about those, give a short acknowledgment only.
+    - Heal reports what was wrong and what was fixed after the check finishes.
 
 inject:
   target: backstory
   heading: "## Terminal control (voice)"
-  max_chars: 1000
+  max_chars: 1200

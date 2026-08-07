@@ -17,7 +17,7 @@ vision:
   person_confidence: 0.60                    # 0.3–0.95
   face_confidence: 0.40                      # 0.3–0.95
   recognize_votes: 2                         # 1–10 consecutive matches
-  identity_ttl_seconds: 300
+  identity_ttl_seconds: 600
 
 audio:
   wakeword_model: ./models/hey_comstar.onnx
@@ -36,9 +36,11 @@ avatar:
 
 attention:
   face_attention_trigger: true
-  stranger_mode: restricted                    # restricted | greet | ignore
+  stranger_mode: greet                         # restricted | greet | ignore — greet = guest session for unknowns
   timezone: America/New_York                   # optional spoken label; clock uses Pi system TZ
   idle_sleep_seconds: 600                      # 0 disables; silent auto-sleep after idle
+  working_ack_ms: 4500                         # 0 disables; "working on it" only for slow tool/query turns
+  working_ack_on_tools: true                   # also require mcpProvidersForVoice non-empty; never for chit-chat
 
 # AO phrase banks — periodic short lines for engage / sleep / social.
 # Text only; TTS runs at speak time. Optional [[name]] slots filled with display name.

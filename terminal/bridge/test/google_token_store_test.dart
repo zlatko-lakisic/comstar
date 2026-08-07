@@ -48,5 +48,32 @@ void main() {
       expect(await store.readClientKind('zlatko'), GoogleOAuthClientKind.desktop);
       expect(await store.readRefreshToken('zlatko'), 'rt-desk');
     });
+
+    test('LDAP uid reads faceId token file', () async {
+      await store.writeRefreshToken(
+        'zlatko',
+        'rt-face',
+        client: GoogleOAuthClientKind.desktop,
+      );
+      // Only faceId file on disk (legacy pairing before directory resolve).
+      expect(File('${store.root.path}/zlatko.json').existsSync(), isTrue);
+      expect(
+        File('${store.root.path}/zlatko_lakisic.json').existsSync(),
+        isFalse,
+      );
+
+      expect(await store.hasTokens('zlatko.lakisic'), isTrue);
+      expect(await store.readRefreshToken('zlatko.lakisic'), 'rt-face');
+      expect(
+        await store.readClientKind('zlatko.lakisic'),
+        GoogleOAuthClientKind.desktop,
+      );
+    });
+
+    test('writing LDAP uid also keeps faceId alias file', () async {
+      await store.writeRefreshToken('zlatko.lakisic', 'rt-ldap');
+      expect(await store.readRefreshToken('zlatko'), 'rt-ldap');
+      expect(await store.readRefreshToken('zlatko.lakisic'), 'rt-ldap');
+    });
   });
 }

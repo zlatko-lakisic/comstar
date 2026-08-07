@@ -1,37 +1,35 @@
-# Ada / AI-server MCP bring-up (ldap + vision) — needs SSH + secrets.
+# Ada / AI-server MCP bring-up (ldap + vision)
 #
-# Blockers from a Mac without Ada SSH keys (2026-08-06):
-#   - 10.0.10.16:22 open but md-admin/zlatko → publickey denied
-#   - :8780 directory_sidecar, :8793 vision_mcp, :8794 ldap_mcp all closed
+# Status 2026-08-07 (Ada / nvr.mostardesigns.com as zlatko.lakisic):
+#   - vision_mcp :8793 — user systemd `comstar-vision-mcp`
+#   - directory_sidecar :8780 — `comstar-directory-sidecar`
+#   - ldap_mcp :8794 — `comstar-ldap-mcp`
+#   - secrets: ~/projects/comstar/config/{ldap,vision}.env (chmod 600)
+#   - linger enabled so units survive logout
 #
-# Once you can SSH as the AO host user:
-#
-#   export COMSTAR_SRC=/var/projects/comstar   # or clone path
-#   export AO_TOOL=/var/projects/agentic-orchestration/agentic-orchestration-tool
-#
-#   # FreeIPA bind (from docs/ldap — not committed)
-#   export COMSTAR_LDAP_URL=… COMSTAR_LDAP_BIND_DN=… COMSTAR_LDAP_BIND_PASSWORD=…
-#   export COMSTAR_LDAP_BASE_DN=…
-#
-#   cd "$COMSTAR_SRC/mcp"
-#   python -m directory_sidecar &          # :8780
-#   COMSTAR_DIRECTORY_URL=http://127.0.0.1:8780 \
-#     COMSTAR_MCP_HTTP=1 python -m ldap_mcp --http --host 127.0.0.1 --port 8794 &
-#
-#   export COMSTAR_CPAI_URL=http://127.0.0.1:32168
-#   export COMSTAR_VISION_FRAME_URL=…      # or COMSTAR_VISION_FRAME=/path/latest.jpg
-#   COMSTAR_MCP_HTTP=1 python -m vision_mcp --http --host 127.0.0.1 --port 8793 &
-#
-#   cp "$COMSTAR_SRC/overlays/comstar/mcp_providers/ldap_directory.yaml" \
-#      "$AO_TOOL/config/mcp_providers/"
-#   cp "$COMSTAR_SRC/overlays/comstar/mcp_providers/vision_comstar.yaml" \
-#      "$AO_TOOL/config/mcp_providers/"
-#
-#   # AO .env / k8s secret:
-#   #   COMSTAR_LDAP_MCP_URL=http://127.0.0.1:8794/mcp
-#   #   COMSTAR_VISION_MCP_URL=http://127.0.0.1:8793/mcp
-#   # restart AO engine / coordinator so catalogs reload
+# Ops:
+#   systemctl --user status comstar-directory-sidecar comstar-ldap-mcp comstar-vision-mcp
+#   systemctl --user restart comstar-ldap-mcp
 #
 # Smoke:
+#   curl -sS http://127.0.0.1:8780/health
 #   curl -sS http://127.0.0.1:8794/mcp -H 'Content-Type: application/json' \
+#     -H 'Accept: application/json, text/event-stream' \
 #     -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+#
+# Still needed (IPA admin / root on 10.0.10.10):
+#   - Load docs/ldap/comstar.schema into FreeIPA (comstarFaceId / comstarPerson)
+#   - Prefer dedicated bind uid=comstar-dir over mailserver
+#   - Enroll faces with scripts/enroll_face.sh
+#
+# Frame source (vision) — already set on Ada:
+#   COMSTAR_VISION_FRAME_URL=http://127.0.0.1:5000/api/front_door/latest.jpg
+#   (Frigate on Ada; check_camera OK; who_is_present returns CPAI face result)
+#   Prefer: systemctl --user restart comstar-vision-mcp
+#   Fallback script sources config/vision.env: scripts/start-ada-mcps.sh
+#
+# AO env — MCP URLs must use letter-leading hosts (localhost), not raw IPs:
+#   COMSTAR_LDAP_MCP_URL=http://localhost:8794/mcp
+#   COMSTAR_VISION_MCP_URL=http://localhost:8793/mcp
+# (http://10.0.10.16:8793/mcp mints illegal OpenAI tool names like
+#  10_0_10_16_8793_mcp_who_visited and every vision turn fails.)

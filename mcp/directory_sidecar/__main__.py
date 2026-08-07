@@ -33,6 +33,23 @@ HA_PERSON_ATTR = _env("COMSTAR_LDAP_HA_PERSON_ATTR", "comstarHaPerson")
 HOST = _env("COMSTAR_DIR_HOST", "127.0.0.1")
 PORT = int(_env("COMSTAR_DIR_PORT", "8780") or "8780")
 
+# Optional CPAI faceId → IPA uid aliases until comstarFaceId schema is loaded.
+# Format: old=new,old2=new2  e.g. zlatko=zlatko.lakisic
+def _parse_aliases(raw: str) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for part in raw.split(","):
+        part = part.strip()
+        if not part or "=" not in part:
+            continue
+        src, _, dst = part.partition("=")
+        src, dst = src.strip(), dst.strip()
+        if src and dst:
+            out[src] = dst
+    return out
+
+
+FACE_ALIASES = _parse_aliases(_env("COMSTAR_LDAP_FACE_ALIASES"))
+
 _ATTR_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,63}$")
 _MODALITY_ID = re.compile(r"^[A-Za-z0-9._:@+=/-]{1,128}$")
 _UID = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
@@ -98,15 +115,57 @@ def ldap_configured() -> bool:
     return bool(LDAP_URL and BIND_DN and BASE_DN)
 
 
-_SEARCH_ATTRS = [
+_BASE_SEARCH_ATTRS = [
     "uid",
     "cn",
     "displayName",
     "memberOf",
-    FACE_ATTR,
-    VOICE_ATTR,
-    HA_PERSON_ATTR,
 ]
+
+_CUSTOM_SEARCH_ATTRS = [FACE_ATTR, VOICE_ATTR, HA_PERSON_ATTR]
+
+# When FreeIPA lacks docs/ldap/comstar.schema, requesting custom attrs fails the
+# whole search ("invalid attribute type"). Probe once; fall back to base attrs.
+_schema_attrs_ok: bool | None = None
+
+
+def _search_attrs() -> list[str]:
+    if _schema_attrs_ok is False:
+        return list(_BASE_SEARCH_ATTRS)
+    return [*_BASE_SEARCH_ATTRS, *[a for a in _CUSTOM_SEARCH_ATTRS if a]]
+
+
+def _mark_schema_attrs(ok: bool) -> None:
+    global _schema_attrs_ok
+    _schema_attrs_ok = ok
+
+
+def _is_unknown_attr_error(exc: BaseException) -> bool:
+    msg = str(exc).lower()
+    return "invalid attribute" in msg or "undefined attribute" in msg
+
+
+def _conn_search(
+    conn: Connection,
+    filt: str,
+    *,
+    size_limit: int | None = None,
+) -> None:
+    """Search with custom attrs when schema is loaded; else base attrs only."""
+    attrs = _search_attrs()
+    kwargs: dict[str, Any] = {"search_base": BASE_DN, "search_filter": filt, "attributes": attrs}
+    if size_limit is not None:
+        kwargs["size_limit"] = size_limit
+    try:
+        conn.search(**kwargs)
+        if _schema_attrs_ok is None and attrs != _BASE_SEARCH_ATTRS:
+            _mark_schema_attrs(True)
+    except LDAPException as exc:
+        if attrs == _BASE_SEARCH_ATTRS or not _is_unknown_attr_error(exc):
+            raise
+        _mark_schema_attrs(False)
+        kwargs["attributes"] = list(_BASE_SEARCH_ATTRS)
+        conn.search(**kwargs)
 
 
 def _profile_from_entry(entry: Any) -> dict[str, Any] | None:
@@ -152,14 +211,25 @@ def resolve(attr: str, value: str) -> dict[str, Any] | None:
     )
     try:
         escaped = _escape_filter(safe_value)
-        filt = f"(&(objectClass=comstarPerson)({safe_attr}={escaped}))"
-        conn.search(BASE_DN, filt, attributes=_SEARCH_ATTRS)
-        if not conn.entries:
-            filt2 = f"(uid={escaped})"
-            conn.search(BASE_DN, filt2, attributes=_SEARCH_ATTRS)
-        if not conn.entries:
-            return None
-        return _profile_from_entry(conn.entries[0])
+        # Prefer enrolled COMSTAR people; fall back to bare uid (faceId≈uid).
+        filters = [
+            f"(&(objectClass=comstarPerson)({safe_attr}={escaped}))",
+            f"(uid={escaped})",
+        ]
+        if safe_attr != "uid" and safe_attr in _CUSTOM_SEARCH_ATTRS:
+            # Direct modality match when schema exists.
+            filters.insert(0, f"({safe_attr}={escaped})")
+        for filt in filters:
+            try:
+                _conn_search(conn, filt)
+            except LDAPException as exc:
+                # Unknown objectClass / attr in filter — try next fallback.
+                if _is_unknown_attr_error(exc) or "objectclass" in str(exc).lower():
+                    continue
+                raise
+            if conn.entries:
+                return _profile_from_entry(conn.entries[0])
+        return None
     finally:
         conn.unbind()
 
@@ -181,12 +251,13 @@ def list_comstar_users(limit: int = 50) -> list[dict[str, Any]]:
         raise_exceptions=True,
     )
     try:
-        conn.search(
-            BASE_DN,
-            "(objectClass=comstarPerson)",
-            attributes=_SEARCH_ATTRS,
-            size_limit=limit,
-        )
+        try:
+            _conn_search(conn, "(objectClass=comstarPerson)", size_limit=limit)
+        except LDAPException as exc:
+            if _is_unknown_attr_error(exc) or "objectclass" in str(exc).lower():
+                # Schema not installed yet — empty list, not 503.
+                return []
+            raise
         out: list[dict[str, Any]] = []
         for entry in conn.entries:
             profile = _profile_from_entry(entry)
@@ -293,8 +364,13 @@ class Handler(BaseHTTPRequestHandler):
 
         attr = FACE_ATTR if face_id else VOICE_ATTR
         value = face_id or voice_id or ""
+        if face_id and value in FACE_ALIASES:
+            value = FACE_ALIASES[value]
         try:
             profile = resolve(attr, value)
+            # Bring-up: CPAI face id may still be a short alias; also try uid=alias.
+            if profile is None and face_id and face_id in FACE_ALIASES:
+                profile = resolve("uid", FACE_ALIASES[face_id])
         except LDAPException as exc:
             self._send(503, {"error": "ldap_unavailable", "detail": str(exc)})
             return

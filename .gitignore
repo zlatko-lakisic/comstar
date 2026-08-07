@@ -1,6 +1,8 @@
 config/comstar.yaml
 config/comstar.dev.yaml
 config/comstar.mac.env
+config/ldap.env
+config/vision.env
 .venv
 node_modules
 *.onnx

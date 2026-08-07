@@ -8,8 +8,17 @@ abstract final class PhraseCategory {
   static const sleepEnter = 'sleep_enter';
   static const sleepWake = 'sleep_wake';
   static const social = 'social';
+  static const working = 'working';
+  static const resultReady = 'result_ready';
 
-  static const all = <String>[engage, sleepEnter, sleepWake, social];
+  static const all = <String>[
+    engage,
+    sleepEnter,
+    sleepWake,
+    social,
+    working,
+    resultReady,
+  ];
 }
 
 /// On-disk + in-memory banks of short spoken lines with optional `{name}` slots.

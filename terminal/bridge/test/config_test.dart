@@ -17,6 +17,8 @@ void main() {
       expect(config.vision.engagedFps, 3);
       expect(config.orchestration.timeoutSeconds, 15);
       expect(config.attention.strangerMode, 'restricted');
+      expect(config.attention.workingAckMs, 4500);
+      expect(config.attention.workingAckOnTools, isTrue);
       expect(config.dev.bindLan, isFalse);
       expect(config.phrases.enabled, isTrue);
       expect(config.phrases.refreshHours, 6);

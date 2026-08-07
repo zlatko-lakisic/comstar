@@ -24,4 +24,35 @@ void main() {
     expect(parseTerminalIntent('what time is it'), isNull);
     expect(parseTerminalIntent('how are you'), isNull);
   });
+
+  test('self-care health / heal / restart', () {
+    expect(
+      parseTerminalIntent("what's your health")?.kind,
+      TerminalIntentKind.healthStatus,
+    );
+    expect(
+      parseTerminalIntent('heal yourself')?.kind,
+      TerminalIntentKind.healSelf,
+    );
+    expect(
+      parseTerminalIntent('restart yourself')?.kind,
+      TerminalIntentKind.restartSelf,
+    );
+    expect(
+      parseTerminalIntent('reboot the pi')?.kind,
+      TerminalIntentKind.rebootHost,
+    );
+    expect(
+      parseTerminalIntent('reboot yourself')?.kind,
+      TerminalIntentKind.rebootHost,
+    );
+    expect(
+      parseTerminalIntent('restart the audio')?.kind,
+      TerminalIntentKind.restartAudio,
+    );
+    expect(
+      parseTerminalIntent('restart the kiosk')?.kind,
+      TerminalIntentKind.restartKiosk,
+    );
+  });
 }

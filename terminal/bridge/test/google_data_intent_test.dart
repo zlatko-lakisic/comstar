@@ -11,6 +11,10 @@ void main() {
       parseGoogleDataIntent('What meetings do I have today?')?.kind,
       GoogleDataIntentKind.calendarToday,
     );
+    expect(
+      parseGoogleDataIntent('What do we have planned for today?')?.kind,
+      GoogleDataIntentKind.calendarToday,
+    );
   });
 
   test('calendar list phrases', () {

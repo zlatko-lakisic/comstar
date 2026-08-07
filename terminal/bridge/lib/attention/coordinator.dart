@@ -35,11 +35,17 @@ import 'package:comstar_bridge/session.dart';
 import 'package:comstar_bridge/social_intent.dart';
 import 'package:comstar_bridge/stt.dart';
 import 'package:comstar_bridge/utterance_gate.dart';
+import 'package:comstar_bridge/admin_ops.dart';
+import 'package:comstar_bridge/heal_summary.dart';
+import 'package:comstar_bridge/identity_intent.dart';
 import 'package:comstar_bridge/terminal_control.dart';
 import 'package:comstar_bridge/terminal_intent.dart';
 import 'package:comstar_bridge/tts.dart';
+import 'package:comstar_bridge/vision_mcp_client.dart';
+import 'package:comstar_bridge/vision_visit_intent.dart';
 import 'package:comstar_bridge/wake_phrase.dart';
 import 'package:comstar_bridge/wav_duration.dart';
+import 'package:comstar_bridge/working_ack.dart';
 import 'package:comstar_bridge/vision/vision_poller.dart' as vision;
 import 'package:path/path.dart' as p;
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -160,6 +166,14 @@ class AttentionCoordinator {
   /// WAV (or text-estimate) play length for the in-flight speak — not TTS synth time.
   int _lastSpeakDurationMs = 3000;
 
+  /// One-shot "working on it" while AO is slow (see [shouldArmWorkingAck]).
+  Timer? _workingAckTimer;
+  String? _workingAckSpokenTurnId;
+  Completer<void>? _workingAckPlayback;
+
+  /// Wait for the current speak to finish (speak.ended / watchdog / local play).
+  Completer<void>? _playbackWait;
+
   /// Force-wake while Sleeping: capture + STT must match hey/hello comstar.
   var _sleepWakeVerifyInFlight = false;
   double _sleepWakeScore = 0.8;
@@ -262,8 +276,13 @@ class AttentionCoordinator {
         _visionPoller?.setTargetFps(fps);
         final id = _visionPoller?.identity;
         if (id != null) {
+          final engagedLike = machine.state is Engaged ||
+              machine.state is Listening ||
+              machine.state is Responding ||
+              machine.state is Noticed;
           id.continuousRecognize =
-              fps >= config.vision.engagedFps - 0.001;
+              fps >= config.vision.engagedFps - 0.001 ||
+                  (machine.context.personPresent && engagedLike);
         }
       case OpenSession(:final userid, :final guest):
         _sessionOpenFuture = session.open(userid: userid, guest: guest);
@@ -1029,10 +1048,23 @@ class AttentionCoordinator {
           'Kiosk reported speak.ended',
           data: {'state': machine.state.name},
         );
+        // Progress line while still working (AO working-ack or heal check).
+        final holdingReply = machine.state is Responding &&
+            machine.context.directAgentInFlight;
         final alreadyFollowUp = machine.context.followUpListening ||
             machine.context.followUpOpen;
         final micNeverArmed = machine.context.followUpMicArmedAtMs == null;
         handle(const PlaybackEnded());
+        _signalPlaybackDone();
+        if (holdingReply) {
+          _completeWorkingAckPlayback();
+          // Keep thinking UI; do not open follow-up until the final reply.
+          _broadcastKiosk(
+            Envelope.create(type: 'thinking', data: {'active': true}),
+          );
+          _broadcastPhase('thinking', detail: 'Working…');
+          break;
+        }
         // Defensive: open follow-up if the machine did not; re-open when a
         // premature PlaybackEnded raced greeter (_followUpGen) and cancelled
         // settle before the mic was armed.
@@ -1087,13 +1119,23 @@ class AttentionCoordinator {
           'play_ms': playMs,
         },
       );
+      final holdingReply = machine.state is Responding &&
+          machine.context.directAgentInFlight;
       // Greeter speaks while Engaged — mirror speak.ended wake restore.
-      if (machine.context.state is! Responding) {
+      if (machine.state is! Responding) {
         _sendAudio(
           Envelope.create(type: 'wake.enable', data: {'enabled': true}),
         );
       }
       handle(const PlaybackEnded());
+      _signalPlaybackDone();
+      if (holdingReply) {
+        _completeWorkingAckPlayback();
+        _broadcastKiosk(
+          Envelope.create(type: 'thinking', data: {'active': true}),
+        );
+        _broadcastPhase('thinking', detail: 'Working…');
+      }
     });
   }
 
@@ -1387,6 +1429,9 @@ class AttentionCoordinator {
       final local = await _tryTerminalIntent(text, turnId);
       if (local) return;
 
+      final identity = await _tryIdentityIntent(text, turnId);
+      if (identity) return;
+
       final clock = await _tryClockIntent(text, turnId);
       if (clock) return;
 
@@ -1402,6 +1447,10 @@ class AttentionCoordinator {
       final homeData = await _tryHomeDataIntent(text, turnId);
       if (homeData) return;
 
+      final visionVisit = await _tryVisionVisitIntent(text, turnId);
+      if (visionVisit) return;
+
+      final mcp = session.mcpProvidersForVoice(utterance: text);
       final clipped =
           text.length > 500 ? '${text.substring(0, 500)}…' : text;
       final memoryUser = _memoryUserid;
@@ -1412,9 +1461,11 @@ class AttentionCoordinator {
         'turn_id': turnId,
         'text': clipped,
         'memory': memoryUser != null,
-        'mcp': session.mcpProvidersForVoice(utterance: text),
+        'mcp': mcp,
       });
+      _armWorkingAck(turnId: turnId, mcpProviders: mcp, utterance: text);
       var response = await session.directVoice(agentText);
+      _cancelWorkingAckTimer();
       if (_looksLikeToolStallProse(response)) {
         logWarn('direct_agent_tool_stall', 'AO returned tool-loop stall prose', data: {
           'turn_id': turnId,
@@ -1441,9 +1492,19 @@ class AttentionCoordinator {
         );
         return;
       }
+      final ackSpoken = _workingAckSpokenTurnId == turnId;
+      if (ackSpoken) {
+        await _awaitWorkingAckPlayback();
+        final preface = _phraseFor(
+          PhraseCategory.resultReady,
+          fallback: 'I have what you asked for.',
+        );
+        response = prefixResultReady(response, preface: preface);
+      }
       logInfo('direct_agent_ok', 'AO reply ready', data: {
         'turn_id': turnId,
         'chars': response.length,
+        'working_ack': ackSpoken,
         'preview': response.length > 80
             ? '${response.substring(0, 80)}…'
             : response,
@@ -1463,7 +1524,107 @@ class AttentionCoordinator {
         turnId,
       );
     } finally {
+      _cancelWorkingAckTimer();
       turnSpan.close();
+    }
+  }
+
+  void _armWorkingAck({
+    required String turnId,
+    required List<String> mcpProviders,
+    required String utterance,
+  }) {
+    _cancelWorkingAckTimer();
+    if (_workingAckSpokenTurnId == turnId) return;
+    if (!shouldArmWorkingAck(
+      mcpProviders: mcpProviders,
+      workingAckOnTools: config.attention.workingAckOnTools,
+      workingAckMs: config.attention.workingAckMs,
+      utterance: utterance,
+    )) {
+      return;
+    }
+    final delayMs = config.attention.workingAckMs;
+    _workingAckTimer = Timer(Duration(milliseconds: delayMs), () {
+      if (machine.context.turnId != turnId) return;
+      if (!machine.context.directAgentInFlight) return;
+      if (machine.state is! Responding) return;
+      unawaited(_speakWorkingAck(turnId));
+    });
+  }
+
+  void _cancelWorkingAckTimer() {
+    _workingAckTimer?.cancel();
+    _workingAckTimer = null;
+  }
+
+  void _completeWorkingAckPlayback() {
+    final c = _workingAckPlayback;
+    if (c != null && !c.isCompleted) c.complete();
+  }
+
+  Future<void> _awaitWorkingAckPlayback() async {
+    final c = _workingAckPlayback;
+    if (c == null || c.isCompleted) return;
+    try {
+      await c.future.timeout(const Duration(seconds: 12));
+    } on TimeoutException {
+      logWarn('working_ack_wait', 'Timed out waiting for working-ack playback');
+      _completeWorkingAckPlayback();
+    }
+  }
+
+  /// One-shot progress line while AO is still in flight. Does not complete the
+  /// turn; [PlaybackEnded] for this speak is ignored for follow-up while
+  /// `directAgentInFlight` remains true.
+  Future<void> _speakWorkingAck(String turnId) async {
+    if (_workingAckSpokenTurnId == turnId) return;
+    if (!machine.context.directAgentInFlight) return;
+    if (machine.state is! Responding) return;
+    if (machine.context.turnId != turnId) return;
+
+    final line = _phraseFor(
+      PhraseCategory.working,
+      fallback: 'Working on that — it might take a minute.',
+    );
+    _workingAckSpokenTurnId = turnId;
+    _workingAckPlayback = Completer<void>();
+    logInfo('working_ack', 'Speaking progress ack', data: {
+      'turn_id': turnId,
+      'text': line,
+    });
+    try {
+      machine.context.playing = true;
+      final ttsSpan = Span('tts_total');
+      final path = await tts.synthesizeToFile(line);
+      _lastTtsTotal = Duration(milliseconds: ttsSpan.elapsedMs);
+      ttsSpan.close();
+      if (!machine.context.directAgentInFlight ||
+          machine.context.turnId != turnId) {
+        _completeWorkingAckPlayback();
+        return;
+      }
+      _noteSpeakDuration(path: path, text: line);
+      final audioUrl = audioServer.registerFile(path);
+      _beginSpeakWatchdog();
+      _broadcastPhase('speaking', detail: line);
+      _broadcastKiosk(
+        Envelope.create(
+          type: 'speak',
+          turnId: turnId,
+          data: {
+            'text': line,
+            'audioUrl': audioUrl,
+            ..._kioskSpeakAudioFlags(),
+          },
+        ),
+      );
+      unawaited(_maybePlayLocal(audioUrl));
+      _rememberSpoken(line);
+    } catch (e) {
+      logWarn('working_ack_failed', e.toString(), data: {'turn_id': turnId});
+      machine.context.playing = false;
+      _completeWorkingAckPlayback();
     }
   }
 
@@ -1487,6 +1648,101 @@ class AttentionCoordinator {
       );
     } catch (e) {
       logWarn('memory_record_failed', e.toString());
+    }
+  }
+
+  /// Log any spoken COMSTAR line into rolling conversation memory.
+  ///
+  /// [userText] may be empty for unsolicited lines (greeter, sleep-wake).
+  void _rememberSpoken(String spoken, {String userText = ''}) {
+    final text = spoken.trim();
+    if (text.isEmpty) return;
+    unawaited(
+      _rememberExchange(userText: userText, assistantText: text),
+    );
+  }
+
+  /// Frigate visitor history / last-seen via Ada vision MCP HTTP — not AO/qwen.
+  /// Qwen invents names from conversation memory (e.g. Adna ← Zlatko times).
+  Future<bool> _tryVisionVisitIntent(String text, String turnId) async {
+    final intent = parseVisionVisitIntent(text);
+    if (intent == null) return false;
+    if (!VisionMcpClient.isConfigured) {
+      // Fall through to AO vision_comstar (flaky tool calling).
+      return false;
+    }
+
+    _armWorkingAck(
+      turnId: turnId,
+      mcpProviders: const ['vision_comstar'],
+      utterance: text,
+    );
+    final client = VisionMcpClient();
+    try {
+      final String? hint;
+      switch (intent.kind) {
+        case VisionVisitIntentKind.whoVisited:
+          hint = await client.whoVisitedSpoken(
+            camera: intent.camera,
+            since: intent.since,
+          );
+        case VisionVisitIntentKind.personLastSeen:
+          final name = intent.personName?.trim() ?? '';
+          if (name.isEmpty) {
+            _cancelWorkingAckTimer();
+            return false;
+          }
+          hint = await client.personLastSeenSpoken(
+            name: name,
+            since: intent.since,
+            camera: intent.camera.isEmpty ? null : intent.camera,
+          );
+      }
+      _cancelWorkingAckTimer();
+      if (hint == null || hint.trim().isEmpty) {
+        logWarn('vision_visit_intent', 'vision tool empty', data: {
+          'turn_id': turnId,
+          'kind': intent.kind.name,
+          'camera': intent.camera,
+          'since': intent.since,
+          'name': intent.personName,
+        });
+        return false;
+      }
+      var spoken = clipSpokenHint(hint);
+      final ackSpoken = _workingAckSpokenTurnId == turnId;
+      if (ackSpoken) {
+        await _awaitWorkingAckPlayback();
+        final preface = _phraseFor(
+          PhraseCategory.resultReady,
+          fallback: 'I have what you asked for.',
+        );
+        spoken = prefixResultReady(spoken, preface: preface);
+      }
+      logInfo('vision_visit_ok', 'Answered from vision MCP', data: {
+        'turn_id': turnId,
+        'kind': intent.kind.name,
+        'camera': intent.camera,
+        'since': intent.since,
+        'name': intent.personName,
+        'chars': spoken.length,
+        'working_ack': ackSpoken,
+        'preview': spoken.length > 160 ? '${spoken.substring(0, 160)}…' : spoken,
+      });
+      await _speakText(spoken, turnId, rememberUserText: text);
+      return true;
+    } catch (e) {
+      _cancelWorkingAckTimer();
+      logWarn('vision_visit_failed', e.toString(), data: {
+        'turn_id': turnId,
+        'kind': intent.kind.name,
+        'camera': intent.camera,
+        'since': intent.since,
+        'name': intent.personName,
+      });
+      return false;
+    } finally {
+      client.close();
     }
   }
 
@@ -2031,14 +2287,8 @@ class AttentionCoordinator {
     _noteSpeakDuration(path: path, text: spoken);
     final audioUrl = audioServer.registerFile(path);
     handle(ResponseReady(spoken, audioUrl));
-    if (rememberUserText != null) {
-      unawaited(
-        _rememberExchange(
-          userText: rememberUserText,
-          assistantText: spoken,
-        ),
-      );
-    }
+    // Always log assistant speech so follow-ups like "which button?" have context.
+    _rememberSpoken(spoken, userText: rememberUserText ?? '');
   }
 
   /// Greeter-style announce while Engaged (pairing outcome after the turn).
@@ -2075,6 +2325,7 @@ class AttentionCoordinator {
         ),
       );
       unawaited(_maybePlayLocal(audioUrl));
+      _rememberSpoken(spoken);
     } catch (e) {
       logWarn('google_announce', e.toString());
       machine.context.playing = false;
@@ -2084,7 +2335,7 @@ class AttentionCoordinator {
     }
   }
 
-  /// Sleep / volume without AO MCP (tunnelled client.terminal hangs tool load).
+  /// Sleep / volume / self-care without AO MCP.
   Future<bool> _tryTerminalIntent(String text, String turnId) async {
     final intent = parseTerminalIntent(text);
     if (intent == null) return false;
@@ -2125,6 +2376,37 @@ class AttentionCoordinator {
         spoken = result['ok'] == true
             ? 'Volume set to ${result['percent']} percent.'
             : 'I could not set the volume.';
+      case TerminalIntentKind.healthStatus:
+        result = Map<String, dynamic>.from(healthStatus());
+        spoken = _spokenHealthSummary(result);
+      case TerminalIntentKind.healSelf:
+        if (session.guest) {
+          result = {'ok': false, 'error': 'guest_denied'};
+          spoken =
+              "I can't restart, reboot, or heal while you're a guest. Ask a known person.";
+          break;
+        }
+        // Hold Responding (mic off) through progress + heal + final reply.
+        // Do not use ResponseReady for the checking line — that clears
+        // directAgentInFlight and opens follow-up before the answer exists.
+        final heal = await _runHealSelfHeld(text: text, turnId: turnId);
+        result = heal;
+        spoken = heal['spoken']?.toString() ??
+            'I could not complete that self-care action.';
+      case TerminalIntentKind.restartSelf:
+      case TerminalIntentKind.restartAudio:
+      case TerminalIntentKind.restartKiosk:
+      case TerminalIntentKind.rebootHost:
+        if (session.guest) {
+          result = {'ok': false, 'error': 'guest_denied'};
+          spoken =
+              "I can't restart, reboot, or heal while you're a guest. Ask a known person.";
+          break;
+        }
+        final outcome = await _runSelfCareAction(intent.kind);
+        result = outcome;
+        spoken = outcome['spoken']?.toString() ??
+            'I could not complete that self-care action.';
     }
 
     logInfo('terminal_intent', 'Handled device control locally', data: {
@@ -2133,14 +2415,341 @@ class AttentionCoordinator {
       'result': result,
     });
 
-    final ttsSpan = Span('tts_total');
-    final path = await tts.synthesizeToFile(spoken);
-    _lastTtsTotal = Duration(milliseconds: ttsSpan.elapsedMs);
-    ttsSpan.close();
-    _noteSpeakDuration(path: path, text: spoken);
-    final audioUrl = audioServer.registerFile(path);
-    handle(ResponseReady(spoken, audioUrl));
-    unawaited(_rememberExchange(userText: text, assistantText: spoken));
+    final deferDestructive = !session.guest &&
+        result['ok'] == true &&
+        (intent.kind == TerminalIntentKind.restartSelf ||
+            intent.kind == TerminalIntentKind.rebootHost);
+
+    _armPlaybackWait();
+    try {
+      final ttsSpan = Span('tts_total');
+      final path = await tts.synthesizeToFile(spoken);
+      _lastTtsTotal = Duration(milliseconds: ttsSpan.elapsedMs);
+      ttsSpan.close();
+      _noteSpeakDuration(path: path, text: spoken);
+      final audioUrl = audioServer.registerFile(path);
+      handle(ResponseReady(spoken, audioUrl));
+      unawaited(_rememberExchange(userText: text, assistantText: spoken));
+    } catch (e) {
+      logWarn('terminal_intent_speak_failed', e.toString(), data: {
+        'turn_id': turnId,
+        'kind': intent.kind.name,
+      });
+      await _speakFallback(
+        spoken.trim().isEmpty
+            ? 'I finished that, but could not speak the result.'
+            : spoken,
+        turnId,
+      );
+    }
+
+    // Always finish the spoken line before restart/reboot so TTS is not cut off.
+    if (deferDestructive) {
+      await _awaitPlayback();
+      if (intent.kind == TerminalIntentKind.restartSelf) {
+        await _restartUnit('bridge');
+      } else if (intent.kind == TerminalIntentKind.rebootHost) {
+        await _rebootHost();
+      }
+    }
+    return true;
+  }
+
+  void _armPlaybackWait() {
+    _playbackWait = Completer<void>();
+  }
+
+  void _signalPlaybackDone() {
+    final c = _playbackWait;
+    if (c != null && !c.isCompleted) c.complete();
+  }
+
+  Future<void> _awaitPlayback() async {
+    final c = _playbackWait;
+    if (c == null || c.isCompleted) return;
+    final playMs = _lastSpeakDurationMs > 0 ? _lastSpeakDurationMs : 3000;
+    try {
+      await c.future.timeout(Duration(milliseconds: playMs + 5000));
+    } on TimeoutException {
+      logWarn('speak_await_timeout', 'Timed out waiting for speak.ended');
+      _signalPlaybackDone();
+    }
+  }
+
+  String _spokenHealthSummary(Map<String, dynamic> h) {
+    final state = h['state']?.toString() ?? 'unknown';
+    final kiosk = h['kiosk_connected'] == true ? 'up' : 'down';
+    final audio = h['audio_connected'] == true ? 'up' : 'down';
+    final reach = h['reach_active'] == true ? 'connected' : 'down';
+    final sleeping = h['sleeping'] == true ? ' I am in sleep mode.' : '';
+    final who = h['userid']?.toString();
+    final whoBit = (who != null && who.isNotEmpty)
+        ? ' I currently know you as $who.'
+        : ' I do not have a recognized person right now.';
+    return 'I am in $state. Kiosk is $kiosk, audio is $audio, '
+        'and Reach is $reach.$sleeping$whoBit';
+  }
+
+  Future<Map<String, dynamic>> _runSelfCareAction(TerminalIntentKind kind) async {
+    switch (kind) {
+      case TerminalIntentKind.restartSelf:
+        return {
+          'ok': true,
+          'unit': 'bridge',
+          'spoken':
+              'Okay — restarting my bridge now. I will be quiet for a few seconds.',
+        };
+      case TerminalIntentKind.rebootHost:
+        return {
+          'ok': true,
+          'spoken':
+              'Okay — rebooting the whole terminal now. I will be offline until I come back up.',
+        };
+      case TerminalIntentKind.restartAudio:
+        final ok = await _restartUnit('audio');
+        return {
+          'ok': ok,
+          'unit': 'audio',
+          'spoken': ok
+              ? 'Okay, I restarted the audio service.'
+              : 'I could not restart audio.',
+        };
+      case TerminalIntentKind.restartKiosk:
+        final ok = await _restartUnit('kiosk');
+        return {
+          'ok': ok,
+          'unit': 'kiosk',
+          'spoken': ok
+              ? 'Okay, I restarted the kiosk display.'
+              : 'I could not restart the kiosk.',
+        };
+      case TerminalIntentKind.healSelf:
+        return _runHealWithSummary();
+      default:
+        return {'ok': false, 'spoken': 'I do not know that self-care action.'};
+    }
+  }
+
+  Future<bool> _restartUnit(String key) async {
+    final unit = resolveAdminUnit(key);
+    if (unit == null || unit == 'all') return false;
+    try {
+      final r = await Process.run('systemctl', ['--user', 'restart', unit]);
+      logInfo('self_care_restart', 'Restarted unit', data: {
+        'unit': unit,
+        'code': r.exitCode,
+      });
+      return r.exitCode == 0;
+    } catch (e) {
+      logWarn('self_care_restart_failed', e.toString(), data: {'unit': key});
+      return false;
+    }
+  }
+
+  Future<bool> _rebootHost() async {
+    try {
+      logWarn('self_care_reboot', 'Host reboot requested via voice');
+      final r = await Process.run('sudo', ['/sbin/reboot']);
+      return r.exitCode == 0;
+    } catch (e) {
+      logWarn('self_care_reboot_failed', e.toString());
+      return false;
+    }
+  }
+
+  /// Progress line while [directAgentInFlight] stays true — does not complete
+  /// the turn or open follow-up (same half-duplex hold as AO working-ack).
+  Future<void> _speakHoldingLine(String line, String turnId) async {
+    _armPlaybackWait();
+    try {
+      machine.context.playing = true;
+      machine.context.followUpListening = false;
+      machine.context.followUpOpen = false;
+      _followUpGen++;
+      _followUpTimer?.cancel();
+      _followUpTimer = null;
+      _sendAudio(Envelope.create(type: 'listen.stop'));
+      if (machine.context.halfDuplex) {
+        machine.context.wakeEnabled = false;
+        _syncAudioWakeGate();
+      }
+      final ttsSpan = Span('tts_total');
+      final path = await tts.synthesizeToFile(line);
+      _lastTtsTotal = Duration(milliseconds: ttsSpan.elapsedMs);
+      ttsSpan.close();
+      _noteSpeakDuration(path: path, text: line);
+      final audioUrl = audioServer.registerFile(path);
+      _beginSpeakWatchdog();
+      _broadcastPhase('speaking', detail: line);
+      _broadcastKiosk(
+        Envelope.create(
+          type: 'speak',
+          turnId: turnId,
+          data: {
+            'text': line,
+            'audioUrl': audioUrl,
+            ..._kioskSpeakAudioFlags(),
+          },
+        ),
+      );
+      unawaited(_maybePlayLocal(audioUrl));
+    } catch (e) {
+      logWarn('holding_speak_failed', e.toString(), data: {'turn_id': turnId});
+      machine.context.playing = false;
+      _signalPlaybackDone();
+    }
+  }
+
+  /// Heal self: speak "checking…", keep mic off, always return a spoken result.
+  Future<Map<String, dynamic>> _runHealSelfHeld({
+    required String text,
+    required String turnId,
+  }) async {
+    machine.context.directAgentInFlight = true;
+    machine.context.respondingStartedAtMs = clock.nowMs;
+    _broadcastKiosk(
+      Envelope.create(type: 'thinking', data: {'active': true}),
+    );
+    _broadcastPhase('thinking', detail: 'Checking systems…');
+
+    const checking =
+        'Okay — checking my systems now. I will tell you what I find.';
+    await _speakHoldingLine(checking, turnId);
+    _rememberSpoken(checking, userText: text);
+    await _awaitPlayback();
+
+    // Still holding — refresh timeout so Tick does not SpeakFallback mid-heal.
+    machine.context.directAgentInFlight = true;
+    machine.context.respondingStartedAtMs = clock.nowMs;
+    _broadcastKiosk(
+      Envelope.create(type: 'thinking', data: {'active': true}),
+    );
+    _broadcastPhase('thinking', detail: 'Checking systems…');
+
+    try {
+      return await _runHealWithSummary();
+    } catch (e) {
+      logWarn('self_care_heal_failed', e.toString());
+      return {
+        'ok': false,
+        'spoken':
+            'I ran into a problem while checking my systems. Try asking for my health status.',
+      };
+    }
+  }
+
+  Future<Map<String, dynamic>> _runHealWithSummary() async {
+    final candidates = <String>[
+      if (Platform.environment['COMSTAR_HEALTH_SCRIPT']?.trim().isNotEmpty ==
+          true)
+        Platform.environment['COMSTAR_HEALTH_SCRIPT']!.trim(),
+      if (Platform.environment['COMSTAR_ROOT']?.trim().isNotEmpty == true)
+        p.join(
+          Platform.environment['COMSTAR_ROOT']!.trim(),
+          'scripts',
+          'comstar_health.sh',
+        ),
+      '/opt/comstar/src/scripts/comstar_health.sh',
+    ];
+    String? path;
+    for (final c in candidates) {
+      if (c.isNotEmpty && File(c).existsSync()) {
+        path = c;
+        break;
+      }
+    }
+    if (path == null) {
+      return {
+        'ok': false,
+        'spoken': 'I could not find my health heal script.',
+      };
+    }
+
+    try {
+      final r = await Process.run(
+        'bash',
+        [path],
+        environment: {
+          ...Platform.environment,
+          'COMSTAR_HEALTH_HEAL': '1',
+        },
+      ).timeout(const Duration(seconds: 90));
+      final out = '${r.stdout}\n${r.stderr}';
+      logInfo('self_care_heal', 'Heal finished', data: {
+        'code': r.exitCode,
+        'chars': out.length,
+      });
+      return {'ok': true, 'spoken': summarizeHealOutput(out), 'exit': r.exitCode};
+    } on TimeoutException {
+      return {
+        'ok': false,
+        'spoken':
+            'My health check took too long and timed out. Try asking for my health status.',
+      };
+    } catch (e) {
+      logWarn('self_care_heal_failed', e.toString());
+      return {
+        'ok': false,
+        'spoken': 'I could not run my health heal.',
+      };
+    }
+  }
+
+  /// Who-am-I / recognize-me — force CPAI pass and speak identity.
+  Future<bool> _tryIdentityIntent(String text, String turnId) async {
+    final intent = parseIdentityIntent(text);
+    if (intent == null) return false;
+
+    final beforeUid = machine.context.cachedUserid;
+
+    if (intent.kind == IdentityIntentKind.recognizeMe ||
+        beforeUid == null ||
+        beforeUid == 'guest') {
+      _visionPoller?.identity.requestReidentify();
+      final id = _visionPoller?.identity;
+      if (id != null) id.continuousRecognize = true;
+      _visionPoller?.setTargetFps(config.vision.engagedFps);
+
+      for (var i = 0; i < 40; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        final uid = machine.context.cachedUserid;
+        if (uid != null && uid.isNotEmpty && uid != 'guest') {
+          // Prefer a fresh resolve after we cleared the vote cache.
+          if (intent.kind == IdentityIntentKind.recognizeMe && i < 5) {
+            continue;
+          }
+          break;
+        }
+      }
+    }
+
+    final uid = machine.context.cachedUserid;
+    final name = machine.context.cachedDisplayName ?? uid;
+
+    late final String spoken;
+    if (uid == null || uid.isEmpty) {
+      spoken =
+          "I cannot see a face I know yet. Stand in front of me and say recognize me again.";
+    } else if (uid == 'guest' || session.guest) {
+      spoken =
+          "I see you, but I do not recognize you as a household member. You are in guest mode.";
+    } else if (intent.kind == IdentityIntentKind.recognizeMe) {
+      spoken = name != null && name != uid
+          ? 'Okay — I recognize you as $name.'
+          : 'Okay — I recognize you as $uid.';
+    } else {
+      spoken = name != null && name != uid
+          ? 'You are $name.'
+          : 'You are $uid.';
+    }
+
+    logInfo('identity_intent', 'Answered identity locally', data: {
+      'turn_id': turnId,
+      'kind': intent.kind.name,
+      'userid': uid,
+      'before': beforeUid,
+    });
+    await _speakText(spoken, turnId, rememberUserText: text);
     return true;
   }
 
@@ -2250,6 +2859,7 @@ class AttentionCoordinator {
         ),
       );
       unawaited(_maybePlayLocal(audioUrl));
+      _rememberSpoken(greeting);
     } catch (e) {
       logWarn('greeter_failed', e.toString(), data: {'userid': userid});
       machine.context.playing = false;
@@ -2315,6 +2925,7 @@ class AttentionCoordinator {
         ),
       );
       unawaited(_maybePlayLocal(audioUrl));
+      _rememberSpoken(line);
     } catch (e) {
       logWarn('sleep_wake_phrase_failed', e.toString());
       machine.context.playing = false;
@@ -2417,6 +3028,13 @@ class AttentionCoordinator {
   }
 
   Future<void> _speakFallback(String line, String turnId) async {
+    // Clear in-flight / thinking so PlaybackEnded can leave Responding.
+    // Otherwise a failed AO turn speaks the sorry line but stays stuck in
+    // Responding with the thinking HUD forever.
+    machine.context.directAgentInFlight = false;
+    _broadcastKiosk(
+      Envelope.create(type: 'thinking', data: {'active': false}),
+    );
     // Speak directly — do not route through ResponseReady. Orchestration
     // timeout may already have left Responding → Engaged, which previously
     // dropped ResponseReady and left the user with silence.
@@ -2443,6 +3061,7 @@ class AttentionCoordinator {
         ),
       );
       unawaited(_maybePlayLocal(audioUrl));
+      _rememberSpoken(line);
     }
   }
 
@@ -2492,8 +3111,18 @@ class AttentionCoordinator {
         });
         // Synthetic speak.ended if kiosk absent so follow-up can open.
         if (!ws.hasRole('kiosk')) {
+          final holdingReply = machine.state is Responding &&
+              machine.context.directAgentInFlight;
           _cancelSpeakWatchdog();
           handle(const PlaybackEnded());
+          _signalPlaybackDone();
+          if (holdingReply) {
+            _completeWorkingAckPlayback();
+            _broadcastKiosk(
+              Envelope.create(type: 'thinking', data: {'active': true}),
+            );
+            _broadcastPhase('thinking', detail: 'Working…');
+          }
         }
         return;
       }
@@ -2509,8 +3138,18 @@ class AttentionCoordinator {
           'kiosk': ws.hasRole('kiosk'),
         });
         if (!ws.hasRole('kiosk')) {
+          final holdingReply = machine.state is Responding &&
+              machine.context.directAgentInFlight;
           _cancelSpeakWatchdog();
           handle(const PlaybackEnded());
+          _signalPlaybackDone();
+          if (holdingReply) {
+            _completeWorkingAckPlayback();
+            _broadcastKiosk(
+              Envelope.create(type: 'thinking', data: {'active': true}),
+            );
+            _broadcastPhase('thinking', detail: 'Working…');
+          }
         }
         return;
       }

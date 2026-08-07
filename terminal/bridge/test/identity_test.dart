@@ -73,13 +73,24 @@ void main() {
     test('unknown userid resets votes and returns unknown', () {
       identity.recordMatch('zlatko', 0.9);
       identity.recordMatch('zlatko', 0.9);
-      final unknown = identity.recordUnknown();
+      final unknown = identity.recordUnknown(softIfResolved: false);
       expect(unknown, isA<IdentityVoteUnknown>());
       expect(identity.isResolved, isFalse);
 
       identity.recordMatch('zlatko', 0.9);
       identity.recordMatch('zlatko', 0.9);
       expect(identity.isResolved, isFalse);
+    });
+
+    test('soft unknown keeps resolved identity', () {
+      identity.continuousRecognize = true;
+      identity.recordMatch('zlatko', 0.9);
+      identity.recordMatch('zlatko', 0.9);
+      identity.recordMatch('zlatko', 0.9);
+      expect(identity.isResolved, isTrue);
+      final soft = identity.recordUnknown(softIfResolved: true);
+      expect(soft, isA<IdentityVotePending>());
+      expect(identity.isResolved, isTrue);
     });
 
     test('low confidence match keeps vote progress', () {

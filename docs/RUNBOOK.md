@@ -300,6 +300,7 @@ under `docs/` / BASELINES.
 | Dev inject | `POST /admin/inject` `WakeWord` with `{"score":0.99}` |
 | Sleep verify | After candidate wake while sleeping, STT must look like wake/engage. Same-utterance residual (`hey comstar what's up`) runs as the turn; wake-only still opens follow-up listen. |
 | Idle auto-sleep | `attention.idle_sleep_seconds` (default 600, `0` off) — silent sleep after no interaction; spoken “go to sleep” still gets a sleep-ack. |
+| Working ack | `attention.working_ack_ms` (default 4500, `0` off) + `working_ack_on_tools` — spoken “working on it” only for slow **tool/query** turns (not chit-chat); final reply framed with `result_ready` if ack played. |
 
 ---
 

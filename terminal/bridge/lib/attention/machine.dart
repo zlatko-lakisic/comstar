@@ -201,7 +201,15 @@ class AttentionMachine {
       case VisionDegraded():
         effects.add(SetVisionFps(context.config.vision.ambientFps));
       case VisionRecovered():
-        break;
+        // Engaged FPS also gates continuousRecognize in the coordinator.
+        // Restore it after CPAI recovers so identity TTL keeps refreshing.
+        if (context.personPresent &&
+            (context.state is Noticed ||
+                context.state is Engaged ||
+                context.state is Listening ||
+                context.state is Responding)) {
+          effects.add(SetVisionFps(context.config.vision.engagedFps));
+        }
       default:
         break;
     }
@@ -420,6 +428,30 @@ class AttentionMachine {
           effects.add(const SetThinking(true));
           effects.add(CallDirectAgent(text, context.turnId!));
         }
+      case ResponseReady(:final text, :final audioUrl):
+        // Late reply while a false listen opened (e.g. heal progress raced
+        // follow-up). Drop capture and speak so the answer is never lost.
+        effects.add(const StopListening());
+        context.sttPending = false;
+        context.followUpListening = false;
+        context.followUpOpen = false;
+        context.state = const Responding();
+        context.respondingStartedAtMs = context.clock.nowMs;
+        context.directAgentInFlight = false;
+        context.playing = true;
+        context.turnId ??= _uuid.v4();
+        if (context.halfDuplex) {
+          context.wakeEnabled = false;
+          effects.add(const EnableWake(false));
+        }
+        effects.add(
+          Speak(
+            text: text,
+            audioUrl: audioUrl,
+            turnId: context.turnId!,
+            mood: resolveSpeakMood(text),
+          ),
+        );
       case Tick():
         final elapsedMs =
             context.clock.nowMs - context.listeningStartedAtMs;
@@ -460,6 +492,11 @@ class AttentionMachine {
         }
       case PlaybackEnded():
         context.playing = false;
+        // Working-ack TTS can finish while AO is still in flight — stay in
+        // Responding and do not open follow-up until the final reply speaks.
+        if (context.directAgentInFlight) {
+          break;
+        }
         context.followUpOpen = true;
         context.followUpOpenedAtMs = context.clock.nowMs;
         _leaveRespondingToEngaged(effects);

@@ -94,6 +94,8 @@ class ComstarConfig {
     'stranger_mode',
     'timezone',
     'idle_sleep_seconds',
+    'working_ack_ms',
+    'working_ack_on_tools',
   };
 
   static const _directoryKeys = {
@@ -327,6 +329,12 @@ class ComstarConfig {
       idleSleepSeconds: map.containsKey('idle_sleep_seconds')
           ? _requireInt(map, 'idle_sleep_seconds', 'attention')
           : 600,
+      workingAckMs: map.containsKey('working_ack_ms')
+          ? _requireInt(map, 'working_ack_ms', 'attention')
+          : 4500,
+      workingAckOnTools: map.containsKey('working_ack_on_tools')
+          ? _requireBool(map, 'working_ack_on_tools', 'attention')
+          : true,
     );
   }
 
@@ -482,6 +490,12 @@ class ComstarConfig {
       attention.idleSleepSeconds,
       0,
       86400,
+    );
+    _rangeInt(
+      'attention.working_ack_ms',
+      attention.workingAckMs,
+      0,
+      60000,
     );
 
     const renderModes = {'local', 'streamed'};
@@ -714,6 +728,8 @@ class AttentionConfig {
     required this.strangerMode,
     this.timezone = '',
     this.idleSleepSeconds = 600,
+    this.workingAckMs = 4500,
+    this.workingAckOnTools = true,
   });
 
   final bool faceAttentionTrigger;
@@ -725,6 +741,14 @@ class AttentionConfig {
 
   /// Seconds without interaction before silent auto-sleep. `0` disables.
   final int idleSleepSeconds;
+
+  /// After this many ms waiting on AO, speak a one-shot "working on it" line.
+  /// `0` disables. Default 4500.
+  final int workingAckMs;
+
+  /// When true, only arm when `mcpProvidersForVoice` is non-empty. Either way,
+  /// the utterance must look like tool/query work (not conversational acks).
+  final bool workingAckOnTools;
 }
 
 class DirectoryConfig {

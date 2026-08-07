@@ -31,6 +31,11 @@ void main() {
       expect(isActionableUtterance('What time is it?'), isTrue);
       expect(isActionableUtterance("What's up?"), isTrue);
       expect(isActionableUtterance('How are you?'), isTrue);
+      // Short follow-ups after unsolicited COMSTAR lines (e.g. sleep-wake).
+      expect(isActionableUtterance('which button'), isTrue);
+      expect(isActionableUtterance('Which button?'), isTrue);
+      expect(isActionableUtterance('what color'), isTrue);
+      expect(isActionableUtterance('why not'), isTrue);
     });
 
     test('allows conversational replies to check-ins', () {

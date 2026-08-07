@@ -1,5 +1,6 @@
 import 'package:comstar_bridge/terminal_intent.dart';
 import 'package:comstar_bridge/clock_intent.dart';
+import 'package:comstar_bridge/identity_intent.dart';
 import 'package:comstar_bridge/social_intent.dart';
 
 /// Whether [text] looks like a real voice prompt worth sending to AO.
@@ -21,6 +22,7 @@ bool isActionableUtterance(String text) {
   if (lower.isEmpty) return false;
 
   if (parseTerminalIntent(collapsed) != null) return true;
+  if (parseIdentityIntent(collapsed) != null) return true;
   if (parseClockIntent(collapsed) != null) return true;
   if (parseSocialIntent(collapsed) != null) return true;
 
@@ -53,7 +55,7 @@ bool isActionableUtterance(String text) {
   };
   if (fragments.contains(lower)) return false;
 
-  // Clear questions.
+  // Clear questions — allow short follow-ups ("which button", "what color").
   if (collapsed.contains('?')) return words.length >= 2;
   const questionStarts = {
     'what',
@@ -79,7 +81,7 @@ bool isActionableUtterance(String text) {
     'should',
     'may',
   };
-  if (questionStarts.contains(words.first) && words.length >= 3) return true;
+  if (questionStarts.contains(words.first) && words.length >= 2) return true;
 
   // Imperative / assistant prompts.
   const commandStarts = {

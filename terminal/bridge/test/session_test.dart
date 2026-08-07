@@ -229,6 +229,46 @@ void main() {
       expect(fake.lastMcpIds, equals(['client.google_workspace']));
     });
 
+    test('directory lookup utterance uses ldap_directory MCP', () async {
+      fake.fakeRegisteredMcpIds = const [
+        'home_assistant',
+        'ldap_directory',
+        'vision_comstar',
+      ];
+      await session.open(userid: 'zlatko.lakisic', guest: false);
+      expect(
+        session.mcpProvidersForVoice(
+          utterance: 'Look up user zlatko.lakisic in the directory',
+        ),
+        equals(['ldap_directory']),
+      );
+    });
+
+    test('front door camera utterance uses vision_comstar MCP', () async {
+      fake.fakeRegisteredMcpIds = const [
+        'home_assistant',
+        'ldap_directory',
+        'vision_comstar',
+      ];
+      await session.open(userid: 'zlatko.lakisic', guest: false);
+      expect(
+        session.mcpProvidersForVoice(
+          utterance: "Who is at the front door?",
+        ),
+        equals(['vision_comstar']),
+      );
+      expect(
+        session.mcpProvidersForVoice(
+          utterance: 'Who was in my driveway today?',
+        ),
+        equals(['vision_comstar']),
+      );
+      expect(
+        session.mcpProvidersForVoice(utterance: "Who's home?"),
+        equals(['home_assistant']),
+      );
+    });
+
     test('guest MCP list excludes google workspace and terminal', () async {
       fake.fakeRegisteredMcpIds = const [
         'client.google_workspace',

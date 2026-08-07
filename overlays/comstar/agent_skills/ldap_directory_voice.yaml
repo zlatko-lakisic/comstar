@@ -1,0 +1,24 @@
+id: ldap_directory_voice
+description: >
+  FreeIPA / COMSTAR person directory via ldap_directory MCP (Ada).
+capabilities: >
+  lookup_user by uid; list_comstar_users when comstarPerson is enrolled.
+good_for: look up user, directory, ldap, freeipa, who is enrolled
+planner_hint: >
+  Attach for directory questions. Never use for session identity (Pi face →
+  directory sidecar).
+user_goal_keywords:
+  - look up user
+  - directory
+  - ldap
+  - freeipa
+  - who is enrolled
+  - userid
+
+content:
+  file: ldap_directory_voice/instructions.md
+
+inject:
+  target: backstory
+  heading: "## LDAP directory (voice)"
+  max_chars: 1200

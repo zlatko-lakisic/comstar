@@ -171,7 +171,8 @@ class VisionPoller {
     );
 
     if (!best.isKnown) {
-      final vote = identity.recordUnknown();
+      // Soft-unknown while already resolved keeps hallway identity sticky.
+      final vote = identity.recordUnknown(softIfResolved: true);
       if (vote is IdentityVoteUnknown) {
         _emit(const VisionFaceUnknown());
       }

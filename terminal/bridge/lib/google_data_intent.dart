@@ -28,11 +28,13 @@ GoogleDataIntent? parseGoogleDataIntent(String text) {
 
   // Today / schedule before "list calendars" — "what's on my calendar" is today.
   if (RegExp(
-        r'\b(calendar|schedule|meetings?|appointments?)\b|'
+        r'\b(calendar|schedule|meetings?|appointments?|planned)\b|'
         r'\bon my (google )?calendar\b|'
         r'\bwhat.*(today|tonight|this (morning|afternoon|evening))\b.*\b'
-        r'(calendar|schedule|meetings?)\b|'
-        r'\b(calendar|schedule|meetings?).*\b(today|tonight)\b',
+        r'(calendar|schedule|meetings?|planned)\b|'
+        r'\b(calendar|schedule|meetings?|planned).*\b(today|tonight)\b|'
+        r'\bwhat do we have (planned|today|tonight)\b|'
+        r'\bwhat.*(planned|on) (for )?today\b',
       ).hasMatch(t)) {
     // Exception: explicit multi-calendar listing.
     if (RegExp(

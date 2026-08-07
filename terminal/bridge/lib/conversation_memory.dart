@@ -423,6 +423,9 @@ class ConversationMemory {
         parts.add(
           'Prior conversation with this resident across COMSTAR terminals '
           '(oldest first). Use it for continuity; do not recite it unless asked.\n'
+          'If the current request is a short follow-up (e.g. "which one?", '
+          '"which button?", "why?", "and then?"), answer in the context of the '
+          'most recent assistant line above — treat it as the same conversation.\n'
           '$block',
         );
       }

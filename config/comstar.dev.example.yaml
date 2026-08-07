@@ -38,6 +38,8 @@ attention:
   stranger_mode: restricted
   timezone: America/New_York
   idle_sleep_seconds: 600
+  working_ack_ms: 4500
+  working_ack_on_tools: true
 
 # Directory optional in Mac bring-up; require:false = fail-open to faceId.
 presence:

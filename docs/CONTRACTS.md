@@ -85,7 +85,7 @@ ignored, never fatal — this is how we ship kiosk and bridge independently.
 | `speak` | `{text, audioUrl, visemes?, mood?}` | Render this utterance. `audioUrl` is a loopback HTTP URL served by the bridge. |
 | `speak.cancel` | `{}` | Barge-in or timeout. Stop immediately, return to idle. |
 | `listening` | `{active, level?}` | Show/hide listening indicator; `level` 0–1 for a mic meter. |
-| `thinking` | `{active}` | Orchestration in flight. Kiosk shows a subtle working state. |
+| `thinking` | `{active}` | Orchestration in flight. Kiosk shows a subtle working state. Optional bridge UX: after `attention.working_ack_ms` (default 4500; `0` off) while AO is still in flight — only when `attention.working_ack_on_tools` (default true) sees a non-empty `mcpProvidersForVoice` **and** the utterance looks like real tool/query work (lights, calendar, lookup, camera, etc.) — the bridge may speak a one-shot phrase-bank `working` line without completing the turn; if that ack played, the final AO reply is prefixed with `result_ready`. Casual continuity (“okay, good to know”) never arms. No new WS types. |
 | `pairing.qr` | `{active, phase?, url?, userCode?, qrSvg?}` | Show/hide Google OAuth device-code QR. `phase` is `awaiting` (user must approve), `verifying` (tokens received, tools starting), or `idle`. Same attempt as the spoken user code. `active:false` clears the overlay. |
 | `error` | `{code, message}` | Display a non-fatal error affordance. |
 | `config` | `{avatarUrl, mood, cameraPose}` | Sent once on connect. |
@@ -361,6 +361,11 @@ get none. Shared across terminals via `memory.url` →
 `scripts/comstar_memory_server.py` (SQLite FTS for facts). This is COMSTAR-owned
 RAG-lite — not AO `memory` MCP (still unavailable on this Ada host).
 
+Every spoken COMSTAR line (AO replies, local intents, greeter, sleep-wake
+phrases, working acks, announces) is appended as an `assistant` turn — including
+unsolicited lines with no matching user text — so short follow-ups (“which
+button?”) resolve against the last thing COMSTAR said.
+
 ---
 
 ## 5. MCP tools exposed by COMSTAR
@@ -377,14 +382,31 @@ sessions (ADR 0005). Overlay should set `guest_allowed: false`.
 
 ### Hosted, server-side (`mcp/vision_mcp/`)
 
-Wraps CodeProject.AI. Runs on the AI server, registered as a plain HTTP MCP — **not**
-through the reverse tunnel, because it is co-located with the daemon.
+Wraps CodeProject.AI **and** Frigate event history. Runs on the AI server,
+registered as a plain HTTP MCP — **not** through the reverse tunnel, because it
+is co-located with the daemon.
 
 | tool | args | returns |
 |---|---|---|
 | `who_is_present` | `{}` | `{people: [{userid, confidence}], count}` |
 | `describe_view` | `{}` | `{objects: [{label, confidence}]}` |
 | `check_camera` | `{}` | `{ok, lastFrameAgeMs}` |
+| `list_person_visits` | `{camera?, since?, until?, limit?}` | `{visits:[{id, start, end, camera, label, name?, score, has_snapshot}], count}` — `name` from Frigate `sub_label`; defaults `camera=driveway`, `since=today` (local midnight via `COMSTAR_TZ`) |
+| `describe_visit` | `{event_id}` | `{ok, name?, description}` — named visits skip LLM; unknowns use HA `llmvision.image_analyzer` (gpt-4o-mini) on the Frigate snapshot |
+| `who_visited` | `{camera?, since?, max_unknown?}` | Voice summary `{recognized:[{name, times[]}], unknown:[{when, description}], spoken_hint}` — caps unknown LLM describes (default 5; `max_unknown` may lower) |
+| `person_last_seen` | `{name, since?, camera?}` | Latest Frigate `sub_label` match for [name] across cameras (default lookback `30d`). `{found, matched_name, last:{camera,when,id}, spoken_hint}` — **never invent**; empty → spoken “have not seen…” |
+
+Live tools (`who_is_present` / `describe_view`) use the configured frame URL (often
+`front_door` latest). History tools query Frigate `GET /api/events` and must be
+used for “who was in the driveway today” — do not use live face recognize for
+historical visitor questions.
+
+**Voice path (Pi):** historical visitor questions and **“when was X last seen”**
+are answered **bridge-local** via HTTP to Ada `COMSTAR_VISION_MCP_URL`
+(`who_visited` / `person_last_seen` → speak `spoken_hint`). Do not let AO/qwen
+answer last-seen from conversation memory (it will mis-attribute times to the
+wrong person). Live camera questions still go through AO + `vision_comstar`.
+Realtime check: `scripts/vision_visit_e2e.sh` / `dart run tool/vision_visit_e2e.dart`.
 
 ### Tunnelled, Pi-local (`mcp/terminal_mcp/`)
 
@@ -407,7 +429,19 @@ Reachable only from the Pi, exposed to the orchestrator over
 Bridge loopback HTTP (127.0.0.1:8776) backs sleep/volume/avatar: `POST /control/sleep`,
 `GET|POST /control/volume`, `GET|POST /control/avatar` (live `bloom`/`fps`/`scale`/`emblem`
 → bridge pushes `avatar.options` to the kiosk). Guest sessions must **not** register
-`client.terminal`.
+`client.terminal`. Sleep / volume / clock / **identity who-am-I** / **self-care**
+(health report, restart whitelisted units, run `comstar-health` heal) are handled
+**bridge-local** before AO (`terminal_intent` / `identity_intent`) — same rationale
+as sleep/volume (tunnel MCP hangs tool load). Destructive voice actions
+(**restart bridge**, **host reboot**) speak the full ack and wait for
+`speak.ended` before executing. Guests cannot restart/reboot/heal.
+
+**Heal hold:** `heal yourself` speaks a progress line (“checking my systems…”)
+while staying in `Responding` with `directAgentInFlight` so follow-up listen
+stays off. That progress speak must **not** go through `ResponseReady` (which
+would clear in-flight and open the mic). After the heal script finishes (or
+hits its timeout / failure), the bridge always speaks a result line via the
+normal terminal-intent reply path.
 
 **Avatar load governor (optional, default on):** bridge samples host CPU with the
 health sparkline (~2 s). When EMA CPU ≥ `COMSTAR_AVATAR_CPU_STRESS` (default 75),
@@ -436,7 +470,7 @@ session overlay as `client.google_workspace` (`tunnel://session-mcp/google_works
 | MCP definition | `mcp_providers/google_workspace.yaml` (tunnel bootstrap) |
 | Agent allowlist | `voice_responder.yaml` → `client.google_workspace` + skills |
 | Bootstrap | `ComstarMcpBootstrap` reads overlay MCP YAML → `extraMcps` |
-| Tokens | `~/.local/share/comstar/google/<userid>.json` (or `COMSTAR_DATA_DIR`) |
+| Tokens | `~/.local/share/comstar/google/<userid>.json` (or `COMSTAR_DATA_DIR`). Reads accept faceId **or** FreeIPA uid (`zlatko` ↔ `zlatko.lakisic`) so directory resolve does not orphan an earlier pairing. |
 | Client secrets | env `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` (never commit) |
 
 See `overlays/comstar/README.md`. Guests never get Google MCP ids and cannot start
@@ -484,6 +518,8 @@ See `config/comstar.example.yaml` for the annotated version. Validation rules:
 | `attention.stranger_mode` | enum: restricted \| greet \| ignore |
 | `attention.timezone` | optional spoken TZ label (IANA or human); clock uses Pi system time |
 | `attention.idle_sleep_seconds` | 0–86400; `0` disables; silent auto-sleep after idle (default 600) |
+| `attention.working_ack_ms` | 0–60000; ms before spoken progress ack while AO in flight; `0` disables (default 4500) |
+| `attention.working_ack_on_tools` | bool; when true, also require non-empty `mcpProvidersForVoice` (default true). Either way, utterance must look like tool/query work — not chit-chat. |
 | `avatar.render` | enum: local \| streamed |
 | `directory.enabled` | bool |
 | `directory.sidecar_url` | non-empty when `enabled` |
@@ -588,6 +624,10 @@ While engaged, vision may keep recognizing at a reduced rate. The machine tracks
 | noticed | FaceUnknown | stranger_mode = greet | engaged | open guest session, restricted overlay |
 | noticed | FaceUnknown | stranger_mode = restricted | noticed | no session; wake word still armed |
 | noticed | PersonAbsent | absent ≥ 3 frames | ambient | drop poll to ambient_fps |
+| engaged / listening / responding | VisionRecovered | person still present | (same) | restore `engaged_fps` + continuous recognize |
+| engaged | FaceUnknown (intermittent) | person still present + identity cached | engaged | soft: do not clear resolved identity |
+| engaged / listening / responding | TranscriptReady | identity / who-am-I / recognize-me intent | responding | force re-recognize; speak name or guest |
+| engaged / listening / responding | TranscriptReady | health / restart / heal / reboot self-care intent | responding | bridge-local; heal holds mic off through progress+script then speaks result; await TTS before restart/reboot |
 | engaged | WakeWord | — | listening | `listen.start`, disable wake (half-duplex) |
 | engaged | SpeechStart | follow-up window open OR (face_attention_trigger AND gaze) | listening | `listen.start` |
 | engaged | Tick | idle > identity_ttl AND absent | ambient | `SessionBridge.stop()` |
@@ -615,7 +655,10 @@ While engaged, vision may keep recognizing at a reduced rate. The machine tracks
 3. At most one in-flight `directAgent` call at any time.
 4. `turn_id` is non-null **iff** state ∈ {listening, responding}.
 5. Identity cache TTL is refreshed only by a positive `FaceRecognized`, never by
-   `PersonDetected` alone.
+   `PersonDetected` alone. While a person remains present and continuous
+   recognize is on, intermittent CPAI "unknown" must not wipe a resolved
+   identity (soft-unknown). `VisionRecovered` must restore engaged FPS when
+   still in noticed/engaged/listening/responding with a person present.
 6. No transition takes longer than 50 ms of wall clock inside the state machine
    itself — all I/O is dispatched, never awaited, inside a transition.
 7. In `sleeping`, vision and VAD events are no-ops; only `WakeWord` exits.
