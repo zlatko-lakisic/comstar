@@ -17,6 +17,7 @@ import 'package:comstar_bridge/log.dart';
 import 'package:comstar_bridge/session.dart';
 import 'package:comstar_bridge/speech_routing.dart';
 import 'package:comstar_bridge/stt.dart';
+import 'package:comstar_bridge/systemd_watchdog.dart';
 import 'package:comstar_bridge/tts.dart';
 import 'package:comstar_bridge/vision/camera.dart';
 import 'package:comstar_bridge/vision/cpai_client.dart';
@@ -105,6 +106,11 @@ Future<void> main(List<String> arguments) async {
     },
   );
   await ws.start();
+
+  final watchdog = SystemdWatchdog();
+  // Notify early so Type=notify does not race AO/session bring-up (M9.3).
+  await watchdog.ready();
+  watchdog.startWatchdog();
 
   final fallbackDir = Directory('$repoRoot/assets/fallback');
   coordinator = AttentionCoordinator(
@@ -226,6 +232,7 @@ Future<void> main(List<String> arguments) async {
     stopping = true;
     logInfo('shutdown', 'SIGTERM received, draining');
     healthTimer.cancel();
+    await watchdog.stop();
     await coordinator?.googleDesktop.stop();
     await admin.stop();
     await coordinator?.stop();

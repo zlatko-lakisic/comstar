@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 import 'dart:typed_data';
 
+import 'package:comstar_bridge/backoff.dart';
 import 'package:comstar_bridge/config.dart';
 import 'package:comstar_bridge/log.dart';
 import 'package:comstar_bridge/vision/models.dart';
@@ -14,15 +16,23 @@ class CpaiClient {
     http.Client? httpClient,
     this.detectionTimeout = const Duration(milliseconds: 2000),
     this.recognizeTimeout = const Duration(milliseconds: 3000),
-  }) : _http = httpClient ?? http.Client();
+    DateTime Function()? clock,
+    Random? random,
+  })  : _http = httpClient ?? http.Client(),
+        _clock = clock ?? DateTime.now,
+        _random = random;
 
   final VisionConfig config;
   final http.Client _http;
   final Duration detectionTimeout;
   final Duration recognizeTimeout;
+  final DateTime Function() _clock;
+  final Random? _random;
 
   int _consecutiveFailures = 0;
   bool _degraded = false;
+  int _probeAttempt = 0;
+  DateTime? _nextProbeAt;
 
   final _degradedController = StreamController<bool>.broadcast();
 
@@ -32,7 +42,14 @@ class CpaiClient {
 
   Uri get _baseUri => Uri.parse(config.codeprojectUrl);
 
+  bool get _inProbeCooldown {
+    final until = _nextProbeAt;
+    if (!_degraded || until == null) return false;
+    return _clock().isBefore(until);
+  }
+
   Future<List<Detection>> detectPerson(Uint8List frame) async {
+    if (_inProbeCooldown) return const [];
     try {
       final uri = _baseUri.replace(path: config.detectionEndpoint);
       final request = http.MultipartRequest('POST', uri)
@@ -61,6 +78,7 @@ class CpaiClient {
   }
 
   Future<List<FaceMatch>> recognizeFace(Uint8List frame) async {
+    if (_inProbeCooldown) return const [];
     try {
       final uri = _baseUri.replace(path: config.recognizeEndpoint);
       final request = http.MultipartRequest('POST', uri)
@@ -100,17 +118,38 @@ class CpaiClient {
       'reason': reason,
       'consecutive': _consecutiveFailures,
     });
-    if (_consecutiveFailures >= 3 && !_degraded) {
+    if (_consecutiveFailures < 3) return;
+
+    if (!_degraded) {
       _degraded = true;
+      _probeAttempt = 0;
+      // Allow an immediate recovery probe; later failures back off (M9.2).
+      _nextProbeAt = _clock();
       _degradedController.add(true);
       logWarn('vision.degraded', 'Vision degraded after consecutive failures');
+      return;
     }
+
+    _probeAttempt++;
+    final delay = backoffDelay(
+      attempt: _probeAttempt,
+      base: const Duration(milliseconds: 250),
+      cap: const Duration(seconds: 5),
+      random: _random,
+    );
+    _nextProbeAt = _clock().add(delay);
+    logWarn('cpai_probe_backoff', 'Deferring CPAI probes', data: {
+      'delay_ms': delay.inMilliseconds,
+      'attempt': _probeAttempt,
+    });
   }
 
   void _recordSuccess() {
     final wasDegraded = _degraded;
     _consecutiveFailures = 0;
     _degraded = false;
+    _probeAttempt = 0;
+    _nextProbeAt = null;
     if (wasDegraded) {
       _degradedController.add(false);
       logInfo('vision.recovered', 'Vision recovered');

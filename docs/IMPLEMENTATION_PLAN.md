@@ -757,12 +757,15 @@ session, the hardware kill actually kills. **If a claim isn't true, change the c
 or change the README — don't leave the claim standing.**
 
 ### Exit criteria
-- [ ] 24 h unattended: zero crashes, zero manual interventions
-- [ ] ≤ 2 false wake accepts in 24 h
-- [ ] Memory flat within 5% over 24 h; fd count flat
-- [ ] Every failure-matrix row recovers automatically
-- [ ] Runbook is complete enough that you could follow it in six months
-- [ ] Privacy audit passes with no unverified claims
+- [x] Failure-matrix rows that are software-mockable recover automatically (2026-08-07); hardware rows on soak checklist
+- [x] Reconnect full-jitter backoff on kiosk/audio WS; AO reopen + CPAI probe backoff
+- [x] systemd MemoryMax/CPUQuota; bridge Type=notify + WatchdogSec
+- [ ] 24 h unattended: zero crashes, zero manual interventions *(soak wall-clock)*
+- [ ] ≤ 2 false wake accepts in 24 h *(soak; force-wake era)*
+- [ ] Memory flat within 5% over 24 h; fd count flat *(soak)*
+- [x] Runbook complete enough for six-month operator (latency, hardware kill, limits)
+- [x] Privacy audit: README claims match code (`COMSTAR_STT_ARCHIVE` opt-in)
+- [ ] M9.5 wake retune from soak *(blocked: ONNX untrained)*
 
 ---
 

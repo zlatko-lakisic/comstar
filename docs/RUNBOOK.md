@@ -217,8 +217,9 @@ Live path (what product accuracy means):
 mic → comstar-audio (VAD) → bridge PCM → Reach SpeechClient or HttpSttClient → transcript
 ```
 
-STT is **batch after VAD end**, not streaming. Debug WAV: `/tmp/comstar-last-utterance.wav`.
-Pi archive: `/opt/comstar/testdata/stt/live/`.
+STT is **batch after VAD end**, not streaming. Optional debug WAV
+(`/tmp/comstar-last-utterance.wav`, Pi `testdata/stt/live/`) only when
+`COMSTAR_STT_ARCHIVE=1`.
 
 ### Local / Mac STT server
 
@@ -302,6 +303,13 @@ under `docs/` / BASELINES.
 | Idle auto-sleep | `attention.idle_sleep_seconds` (default 600, `0` off) — silent sleep after no interaction; spoken “go to sleep” still gets a sleep-ack. |
 | Working ack | `attention.working_ack_ms` (default 4500, `0` off) + `working_ack_on_tools` — spoken “working on it” only for slow **tool/query** turns (not chit-chat); final reply framed with `result_ready` if ack played. |
 
+### M9.5 — Soak-driven retune (blocked)
+
+Until `hey_comstar.onnx` ships, soak false-accept counts inform **force-wake**
+knobs only (`COMSTAR_FORCE_WAKE_RMS`, refractory). Do not treat force-wake as the
+M4 ROC gate. After ONNX train + `make wake-sweep`, retune from soak journals
+(`docs/TESTING.md` §T5b).
+
 ---
 
 ## 5. Admin console + event injection
@@ -349,18 +357,49 @@ make deploy
 
 ---
 
+## 6b. Latency report
+
+Bridge emits closed spans as structured logs (`evt` / `Span` helper). Standard names:
+
+| Span | Meaning |
+|---|---|
+| `wake_to_listen` | wake accept → listen open |
+| `stt` | utterance → transcript |
+| `orchestration` | transcript → reply text |
+| `tts_first` | reply → first audio |
+| `tts_total` | full TTS |
+| `avatar_start` | speak → avatar motion |
+| `turn_total` | end-to-end turn |
+
+```bash
+# Recent spans from the Pi journal
+journalctl --user -u comstar-bridge --since '1h ago' -o cat \
+  | jq -c 'select(.evt=="span" or .data.name != null)' 2>/dev/null \
+  | head -40
+
+# Or grep the span name field in JSON lines
+journalctl --user -u comstar-bridge --since '1h ago' | grep -E 'wake_to_listen|"stt"|orchestration|tts_first|turn_total'
+```
+
+Admin heal / health UI also surfaces recent turn timing when the console is open
+(`make admin`). Target Phase 1 walk-up: spoken answer **&lt; 15s** (`turn_total`).
+
+---
+
 ## 7. Privacy kill switch
 
 COMSTAR is designed for local-first operation:
 
 - **Vision:** frames go to CodeProject.AI on the LAN only; no cloud upload in Phase 1.
+  COMSTAR does not write camera frames to disk.
 - **Audio:** wake/VAD stay on-Pi; utterance PCM goes to the STT in use — Ada sidecars
   when Reach `speechClient` is set, else `COMSTAR_STT_URL` (often local `127.0.0.1:8090`).
-  Ring buffer is in-memory only (never written to disk by default). Live archives under
-  `/opt/comstar/testdata/stt/live/` are optional debug captures.
+  Ring buffer is in-memory only. **Optional** debug archives
+  (`/tmp/comstar-last-utterance.wav`, `/opt/comstar/testdata/stt/live/`) require
+  `COMSTAR_STT_ARCHIVE=1` on the STT process — default **off** (M9.7).
 - **Orchestration:** AO Reach on the LAN; guest/restricted mode limits MCP tools.
 
-**Immediate stop:**
+### Software stop (not a guest promise)
 
 ```bash
 systemctl --user stop comstar-bridge comstar-audio comstar-kiosk comstar-stt comstar-tts
@@ -372,11 +411,31 @@ systemctl --user stop comstar-bridge comstar-audio comstar-kiosk comstar-stt com
 systemctl --user disable comstar-bridge comstar-audio comstar-kiosk comstar-stt comstar-tts
 ```
 
+### Hardware kill (guest-facing)
+
+Software stop is **not** sufficient as a privacy promise to a guest:
+
+1. **Mic mute** — use the webcam/array hardware mute LED when present, or unplug the mic USB.
+2. **Camera** — cover/unplug `/dev/video0` (LED off).
+3. **Power** — unplug the Pi / HDMI panel for a hard stop.
+
 **Network isolation:** unplug Ethernet / disable Wi-Fi on the Pi to confirm offline
 fallback lines still play (M6 exit criterion).
 
 Production configs must ship with `dev.bind_lan: false`. LAN WebSocket bind requires
 all three gates: `COMSTAR_ENV=dev`, `comstar.dev.yaml`, and non-empty `dev.lan_token`.
+
+---
+
+## 7b. systemd resource limits (M9.3)
+
+User units under `deploy/systemd/` ship with `MemoryMax` / `CPUQuota`. The bridge
+uses `Type=notify` + `WatchdogSec=60` and sends `systemd-notify` heartbeats.
+After deploy, confirm:
+
+```bash
+systemctl --user show comstar-bridge -p MemoryMax -p CPUQuota -p WatchdogUSec -p Type
+```
 
 ---
 
@@ -405,7 +464,7 @@ make logs            # merged journal tail (when configured)
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| Empty / junk STT | STT down, wrong engine, or short utterance | Check Ada speech `/health` or `systemctl --user status comstar-stt`; `/tmp/comstar-last-utterance.wav`; raise finalize threshold |
+| Empty / junk STT | STT down, wrong engine, or short utterance | Check Ada speech `/health` or `systemctl --user status comstar-stt`; with `COMSTAR_STT_ARCHIVE=1`, inspect `/tmp/comstar-last-utterance.wav`; raise finalize threshold |
 | Fast speech cut early | VAD silence too aggressive | Raise `COMSTAR_VAD_SILENCE_MS` (e.g. 1200); hysteresis is in `terminal/audio/vad.py` |
 | Empty STT on Mac | `COMSTAR_STT_URL` unset or STT down | `make stt-dev`, export URL |
 | Wake never fires | Stub model / missing ONNX | Train ONNX, or `COMSTAR_FORCE_WAKE_SCORE=0.99`, or inject `WakeWord` on `:8781/admin/inject` |

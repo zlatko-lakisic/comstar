@@ -77,8 +77,9 @@ class BridgeClient:
                 break
 
             attempt += 1
-            delay = min(self.max_backoff, self.min_backoff * (2 ** (attempt - 1)))
-            delay += random.uniform(0, delay * 0.2)
+            # Full jitter: delay ~ U(0, min(cap, base * 2^(attempt-1)))
+            ceiling = min(self.max_backoff, self.min_backoff * (2 ** (attempt - 1)))
+            delay = random.uniform(0, ceiling)
             log_info("ws_reconnect", "Reconnecting after backoff", data={"delay_s": round(delay, 2)})
             try:
                 await asyncio.wait_for(self._stop.wait(), timeout=delay)

@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:comstar_bridge/config.dart';
 import 'package:comstar_bridge/vision/cpai_client.dart';
 import 'package:test/test.dart';
@@ -132,5 +134,48 @@ void main() {
       await Future<void>.delayed(Duration.zero);
       expect(degradedEvents, [true, false]);
     });
+
+    test('degraded probe cooldown skips requests until due', () async {
+      var now = DateTime.utc(2026, 8, 7, 12, 0, 0);
+      await server.stop();
+      server = FakeCpaiServer(
+        detectionFixture: const <String, dynamic>{'success': false},
+        detectionStatusCode: 500,
+      );
+      await server.start();
+      client.dispose();
+      // Fixed RNG: nextInt always returns ceiling → max delay each time.
+      client = CpaiClient(
+        config: _visionConfig(server.baseUri.toString()),
+        clock: () => now,
+        random: _MaxRandom(),
+      );
+
+      await client.detectPerson(fakeJpegFrame());
+      await client.detectPerson(fakeJpegFrame());
+      await client.detectPerson(fakeJpegFrame());
+      expect(client.isDegraded, isTrue);
+
+      // Fourth failure while degraded schedules max backoff (500ms for attempt 1).
+      await client.detectPerson(fakeJpegFrame());
+      expect(client.isDegraded, isTrue);
+
+      now = now.add(const Duration(milliseconds: 100));
+      final skipped = await client.detectPerson(fakeJpegFrame());
+      expect(skipped, isEmpty);
+      expect(client.isDegraded, isTrue);
+    });
   });
+}
+
+/// Random that always returns the maximum of [nextInt]'s range.
+class _MaxRandom implements Random {
+  @override
+  int nextInt(int max) => max <= 0 ? 0 : max - 1;
+
+  @override
+  double nextDouble() => 1.0;
+
+  @override
+  bool nextBool() => true;
 }

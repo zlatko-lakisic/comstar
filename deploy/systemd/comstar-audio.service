@@ -33,6 +33,9 @@ Restart=on-failure
 RestartSec=5
 KillSignal=SIGTERM
 TimeoutStopSec=2
+# M9.3 resource limits
+MemoryMax=256M
+CPUQuota=80%
 
 [Install]
 WantedBy=default.target

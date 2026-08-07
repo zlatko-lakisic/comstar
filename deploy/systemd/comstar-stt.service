@@ -11,6 +11,11 @@ RestartSec=5
 Environment=COMSTAR_WHISPER_MODEL=tiny
 Environment=COMSTAR_WHISPER_BEAM=5
 Environment=OMP_NUM_THREADS=2
+# Opt-in utterance WAV archives (M9.7 privacy default: off)
+# Environment=COMSTAR_STT_ARCHIVE=1
+# M9.3 resource limits
+MemoryMax=512M
+CPUQuota=100%
 
 [Install]
 WantedBy=default.target

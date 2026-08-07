@@ -4,7 +4,9 @@ After=network-online.target sound.target
 Wants=network-online.target
 
 [Service]
-Type=simple
+Type=notify
+NotifyAccess=all
+WatchdogSec=60
 WorkingDirectory=/opt/comstar/src/terminal/bridge
 Environment=COMSTAR_CONFIG=/opt/comstar/src/config/comstar.yaml
 Environment=COMSTAR_CPAI_URL=http://10.0.10.16:32168
@@ -34,6 +36,10 @@ Restart=on-failure
 RestartSec=5
 KillSignal=SIGTERM
 TimeoutStopSec=5
+TimeoutStartSec=120
+# M9.3 resource limits (Pi 4B 4GB)
+MemoryMax=768M
+CPUQuota=200%
 
 [Install]
 WantedBy=default.target

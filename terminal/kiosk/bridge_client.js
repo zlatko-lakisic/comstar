@@ -92,8 +92,9 @@ export class BridgeClient {
 
   _scheduleReconnect() {
     if (this.closed) return;
+    // Full jitter: U(0, min(cap, base * 2^attempt))
     const capped = Math.min(BACKOFF_BASE_MS * 2 ** this.attempt, BACKOFF_MAX_MS);
-    const jittered = capped * (0.5 + Math.random() * 0.5);
+    const jittered = Math.random() * capped;
     this.attempt += 1;
     setTimeout(() => this._connect(), jittered);
   }

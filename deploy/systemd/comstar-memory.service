@@ -12,6 +12,9 @@ Environment=COMSTAR_MEMORY_DIR=%h/.local/share/comstar/conversation
 ExecStart=/usr/bin/python3 /opt/comstar/src/scripts/comstar_memory_server.py
 Restart=on-failure
 RestartSec=3
+# M9.3 resource limits
+MemoryMax=192M
+CPUQuota=40%
 
 [Install]
 WantedBy=default.target

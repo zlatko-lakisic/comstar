@@ -186,7 +186,12 @@ class SttHandler(BaseHTTPRequestHandler):
         self.load_model()
         assert self._recognizer is not None
 
-        Path("/tmp/comstar-last-utterance.wav").write_bytes(file_bytes)
+        if os.environ.get("COMSTAR_STT_ARCHIVE", "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+        ):
+            Path("/tmp/comstar-last-utterance.wav").write_bytes(file_bytes)
         tmp = Path("/tmp/comstar-stt-in.wav")
         tmp.write_bytes(file_bytes)
 

@@ -39,5 +39,5 @@ python3 -m unittest discover -s testdata/stt -p 'test_*.py'
 COMSTAR_STT_BENCH=1 python3 -m testdata.stt.bench_stt --trials 1 --require-live 10
 ```
 
-Pi live archives (optional): `/opt/comstar/testdata/stt/live/`.
-Debug utterance: `/tmp/comstar-last-utterance.wav`.
+Pi live archives (opt-in `COMSTAR_STT_ARCHIVE=1`): `/opt/comstar/testdata/stt/live/`.
+Debug utterance (same env): `/tmp/comstar-last-utterance.wav`.

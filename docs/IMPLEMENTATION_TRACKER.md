@@ -20,10 +20,10 @@
 
 | Field | Value |
 |---|---|
-| Active milestone | **Phase 2 Presence** — P2.0–P2.5 implemented 2026-08-05 |
-| Overall Phase 1 | ~80% (walk-up UAT done; wake/STT-labels/soak deferred) |
+| Active milestone | **M9 Hardening & soak** — software hardening landed 2026-08-07; 24h soak wall-clock open |
+| Overall Phase 1 | ~85% (M9 code/docs done; soak + wake ONNX still open) |
 | Overall Phase 2 | software path complete; hallway UAT / Ada MCP register open |
-| Last updated | 2026-08-06 |
+| Last updated | 2026-08-07 |
 | Board | `comstar-ai` Pi 4B 4GB @ `192.168.89.34` — SSH Host `comstar` |
 | Vision backend | CodeProject.AI `10.0.10.16:32168` — face `zlatko` enrolled |
 | AO Reach | `10.0.10.16:8765` — greeter + voice live; **Ada speech sidecars** in use |
@@ -36,7 +36,8 @@
 - Wake-word ONNX train + ROC (M4) — force-wake documented; no training data yet
 - Live STT **human** labels (M6) — 12 live fixtures pass circular auto-bench; GT review open
 - ~~Walk-up greet-by-name UAT (M8)~~ — **passed 2026-08-05** (operator sign-off)
-- 24 h soak (M9) — partial `20260805-025615` (~21.6h, salvaged `summary.json`); fresh soak restarted 2026-08-06
+- 24 h soak (M9.4) — running `20260807-141443` (started after hardening deploy); prior partial `20260805-025615` (~21.6h)
+- Wake retune (M9.5) — blocked on ONNX (force-wake documented in RUNBOOK §4 / TESTING §T5b)
 
 ### Open blockers / gaps
 
@@ -63,15 +64,15 @@
 | M6 | Voice round trip | 10h | `in_progress` | ~90% | Ada speech live; fixture accuracy UAT open |
 | M7 | Avatar & kiosk | 14h | `in_progress` | ~75% | SVG emblem + mood; GLB optional |
 | M8 | First contact | 10h | `in_progress` | ~80% | walk-up greet UAT passed 2026-08-05 |
-| M9 | Hardening & soak | 16h | `in_progress` | ~25% | soak started 2026-08-05; failure matrix scaffolded |
+| M9 | Hardening & soak | 16h | `in_progress` | ~80% | M9.1–M9.3/M9.6–M9.7 done 2026-08-07; M9.4 soak wall-clock; M9.5 blocked (wake ONNX) |
 
 ---
 
 ## Next concrete actions (human / hardware)
 
-1. Human-label `testdata/stt/live-bridge-*.json` transcripts; re-run `bench_stt --require-live 10`
-2. Record “hey comstar” + negatives → train `models/hey_comstar.onnx` + ROC
-3. Fresh soak running — read `summary.json` when complete; see salvaged `20260805-025615/summary.json`
+1. Let **24h soak** finish (`make soak`); read `summary.json` vs `docs/TESTING.md` §T5
+2. Human-label `testdata/stt/live-bridge-*.json` transcripts; re-run `bench_stt --require-live 10`
+3. Record “hey comstar” + negatives → train `models/hey_comstar.onnx` + ROC (unblocks M9.5)
 4. Hallway UAT: same-utterance wake, short replies, silent idle sleep, HDMI
 5. Register `ldap_mcp` + `vision_mcp` on Ada — blocked on Ada SSH + LDAP secrets + frame feed; handoff `docs/handoffs/ada-mcp-register.md`
 6. Optional: enable `COMSTAR_AEC=1` + monitor source for full duplex soak

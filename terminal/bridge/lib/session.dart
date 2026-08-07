@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:ao_reach/ao_reach.dart';
+import 'package:comstar_bridge/backoff.dart';
 import 'package:comstar_bridge/config.dart';
 import 'package:comstar_bridge/google/mcp_yaml.dart';
 import 'package:comstar_bridge/google/token_store.dart';
@@ -537,12 +538,29 @@ class ComstarSession {
 
   Future<void> _reopen({required String userid, required bool guest}) async {
     // Force a fresh start even if the adapter still looks half-alive.
-    try {
-      await _bridge.stop(clearRemote: true);
-    } catch (_) {}
-    _userid = null;
-    _guest = false;
-    await open(userid: userid, guest: guest);
+    // M9.2: retry with exponential full-jitter backoff (cap 5s, 4 attempts).
+    Object? lastErr;
+    for (var attempt = 0; attempt < 4; attempt++) {
+      try {
+        try {
+          await _bridge.stop(clearRemote: true);
+        } catch (_) {}
+        _userid = null;
+        _guest = false;
+        await open(userid: userid, guest: guest);
+        return;
+      } catch (e) {
+        lastErr = e;
+        logWarn('session_reopen_retry', e.toString(), data: {
+          'userid': userid,
+          'attempt': attempt + 1,
+        });
+        if (attempt >= 3) break;
+        final delay = backoffDelay(attempt: attempt);
+        await Future<void>.delayed(delay);
+      }
+    }
+    throw StateError('AO session reopen failed after retries: $lastErr');
   }
 
   void _armKeepAlive() {

@@ -122,16 +122,22 @@ class SttHandler(BaseHTTPRequestHandler):
         text = ""
         t0 = time.time()
         try:
-            Path("/tmp/comstar-last-utterance.wav").write_bytes(file_bytes)
-            try:
-                from datetime import datetime
+            # Privacy (M9.7): persist utterance WAV only when explicitly opted in.
+            if os.environ.get("COMSTAR_STT_ARCHIVE", "").strip().lower() in (
+                "1",
+                "true",
+                "yes",
+            ):
+                Path("/tmp/comstar-last-utterance.wav").write_bytes(file_bytes)
+                try:
+                    from datetime import datetime
 
-                live_dir = Path("/opt/comstar/testdata/stt/live")
-                live_dir.mkdir(parents=True, exist_ok=True)
-                stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
-                (live_dir / f"{stamp}.wav").write_bytes(file_bytes)
-            except Exception as archive_exc:  # noqa: BLE001
-                print(f"[stt] archive skip: {archive_exc}", file=sys.stderr)
+                    live_dir = Path("/opt/comstar/testdata/stt/live")
+                    live_dir.mkdir(parents=True, exist_ok=True)
+                    stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+                    (live_dir / f"{stamp}.wav").write_bytes(file_bytes)
+                except Exception as archive_exc:  # noqa: BLE001
+                    print(f"[stt] archive skip: {archive_exc}", file=sys.stderr)
             segments, info = self._model.transcribe(
                 str(tmp_path),
                 language="en",

@@ -15,6 +15,9 @@ Restart=on-failure
 RestartSec=5
 KillSignal=SIGTERM
 TimeoutStopSec=2
+# M9.3 — Chromium is heavy; cap before OOM-killer takes the session
+MemoryMax=1200M
+CPUQuota=200%
 
 [Install]
 WantedBy=default.target
