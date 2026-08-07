@@ -234,15 +234,16 @@ ignored, never fatal — this is how we ship kiosk and bridge independently.
 | `listening` | `{active, level?}` | Show/hide listening indicator; `level` 0–1 for a mic meter. |
 | `thinking` | `{active}` | Orchestration in flight. Kiosk shows a subtle working state. Optional bridge UX: after `attention.working_ack_ms` (default 4500; `0` off) while AO is still in flight — only when `attention.working_ack_on_tools` (default true) sees a non-empty `mcpProvidersForVoice` **and** the utterance looks like real tool/query work (lights, calendar, lookup, camera, etc.) — the bridge may speak a one-shot phrase-bank `working` line without completing the turn; if that ack played, the final AO reply is prefixed with `result_ready`. Casual continuity (“okay, good to know”) never arms. No new WS types. |
 | `pairing.qr` | `{active, phase?, url?, userCode?, qrSvg?}` | Show/hide Google OAuth device-code QR. `phase` is `awaiting` (user must approve), `verifying` (tokens received, tools starting), or `idle`. Same attempt as the spoken user code. `active:false` clears the overlay. |
+| `admin.qr` | `{active, url?, qrSvg?, ip?, iface?, port?}` | Debug / `COMSTAR_ENV=dev` only: small QR opening `http://<lan-ip>:8781/admin/?token=…` (token from admin token resolution). Prefer ethernet IPv4 over Wi‑Fi when both are up. `active:false` clears. Never log the token. |
 | `error` | `{code, message}` | Display a non-fatal error affordance. |
-| `config` | `{avatarUrl, mood, cameraPose}` | Sent once on connect. |
+| `config` | `{avatarUrl, mood, cameraPose, debugUi?}` | Sent once on connect. `debugUi` true when bridge `COMSTAR_ENV=dev`. |
 | `avatar.options` | `{bloom?, fps?, scale?, emblem?}` | Live avatar tuning (no kiosk restart). `bloom` SVG blur stdDeviation (`0` off); `fps` animation cap 8–60; `scale` emblem size; `emblem` preset name. Omitted fields unchanged. |
 
 ### Kiosk → Bridge
 
 | type | data | meaning |
 |---|---|---|
-| `ready` | `{avatarLoaded, webglVendor, fps}` | Sent when the avatar GLB has loaded. Bridge will not enter Engaged before this. |
+| `ready` | `{avatarLoaded, webglVendor, fps, debugUi?}` | Sent when the avatar GLB has loaded. Bridge will not enter Engaged before this. `debugUi` true when kiosk `?demo` / `?debug` (requests admin QR even outside `COMSTAR_ENV=dev`). |
 | `speak.started` | `{}` | First audio frame played. Bridge closes the `avatar_start` span here. |
 | `speak.ended` | `{}` | Playback complete. Bridge opens the follow-up window here, **not** when TTS finished generating. |
 | `span` | `{name, ms}` | Kiosk-side timing. |

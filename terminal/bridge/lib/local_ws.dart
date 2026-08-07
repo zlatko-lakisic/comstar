@@ -255,6 +255,7 @@ class LocalWs {
                 'avatarUrl': config.avatar.model,
                 'mood': 'neutral',
                 'cameraPose': 'front',
+                'debugUi': Platform.environment['COMSTAR_ENV'] == 'dev',
               },
             ).encode(),
           );
@@ -297,6 +298,8 @@ class LocalWs {
       'config',
       'avatar.options',
       'health',
+      'pairing.qr',
+      'admin.qr',
       'listen.start',
       'listen.stop',
       'wake.enable',

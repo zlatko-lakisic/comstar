@@ -115,6 +115,7 @@ Future<void> main(List<String> arguments) async {
   watchdog.startWatchdog();
 
   final fallbackDir = Directory('$repoRoot/assets/fallback');
+  final network = NetworkService();
   coordinator = AttentionCoordinator(
     config: config,
     ws: ws,
@@ -123,6 +124,7 @@ Future<void> main(List<String> arguments) async {
     tts: tts,
     audioServer: audioServer,
     fallbackAudioDir: fallbackDir.existsSync() ? fallbackDir.path : null,
+    network: network,
   );
 
   final visionEnabled = Platform.environment['COMSTAR_VISION'] == '1';
@@ -156,7 +158,6 @@ Future<void> main(List<String> arguments) async {
         '${config.orchestration.baseUrl.replaceAll(RegExp(r'/+$'), '')}/health',
   );
   await road.start();
-  final network = NetworkService();
 
   final adminDir = Directory('$repoRoot/terminal/admin');
   final hostMetrics = HostMetrics();

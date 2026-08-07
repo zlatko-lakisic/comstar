@@ -11,6 +11,41 @@ class NetworkService {
   final NmcliRunner _nm;
   String? lastError;
 
+  /// Prefer a connected ethernet IPv4, else Wi‑Fi. Ignores VPN/tun/loopback.
+  Future<({String? ip, String? device, String? type})> preferredLanIpv4() async {
+    final devices = await _listDevices();
+    Map<String, Object?>? pick(String type) {
+      for (final d in devices) {
+        if (d['type'] != type) continue;
+        if (d['state'] != 'connected') continue;
+        final ipv4 = d['ipv4'];
+        if (ipv4 is! Map) continue;
+        final addrs = ipv4['addresses'];
+        if (addrs is! List || addrs.isEmpty) continue;
+        final raw = addrs.first.toString();
+        final ip = raw.split('/').first.trim();
+        if (ip.isEmpty || ip.startsWith('127.')) continue;
+        return d;
+      }
+      return null;
+    }
+
+    final eth = pick('ethernet');
+    final wifi = pick('wifi');
+    final chosen = eth ?? wifi;
+    if (chosen == null) {
+      return (ip: null, device: null, type: null);
+    }
+    final ipv4 = chosen['ipv4'] as Map;
+    final addrs = ipv4['addresses'] as List;
+    final ip = addrs.first.toString().split('/').first.trim();
+    return (
+      ip: ip,
+      device: chosen['device']?.toString(),
+      type: chosen['type']?.toString(),
+    );
+  }
+
   Future<Map<String, Object?>> inspect({bool scan = false}) async {
     final nmOk = await _nm.available();
     if (!nmOk) {

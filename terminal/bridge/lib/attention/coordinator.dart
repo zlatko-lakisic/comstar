@@ -49,6 +49,7 @@ import 'package:comstar_bridge/vision_mcp_client.dart';
 import 'package:comstar_bridge/vision_visit_intent.dart';
 import 'package:comstar_bridge/wake_phrase.dart';
 import 'package:comstar_bridge/wav_duration.dart';
+import 'package:comstar_bridge/net/service.dart';
 import 'package:comstar_bridge/working_ack.dart';
 import 'package:comstar_bridge/vision/vision_poller.dart' as vision;
 import 'package:path/path.dart' as p;
@@ -71,6 +72,7 @@ class AttentionCoordinator {
     GoogleDesktopUpgrade? googleDesktopUpgrade,
     DirectoryResolver? directory,
     ConversationMemory? conversationMemory,
+    this.network,
   })  : clock = clock ?? SystemClock(),
         control = control ?? TerminalControl(),
         googleTokens = googleTokenStore ?? GoogleTokenStore(),
@@ -98,6 +100,7 @@ class AttentionCoordinator {
 
   final ComstarConfig config;
   final LocalWs ws;
+  final NetworkService? network;
   final ComstarSession session;
   final SttClient stt;
   final TtsEngine tts;
@@ -187,6 +190,8 @@ class AttentionCoordinator {
   var _sleepWakeVerifyInFlight = false;
   double _sleepWakeScore = 0.8;
   Timer? _sleepWakeTimer;
+  Timer? _adminQrTimer;
+  bool _kioskWantsAdminQr = false;
   var _sleepWakeRestartCount = 0;
   var _sleepWakeRestarting = false;
   var _announceTickCounter = 0;
@@ -1067,6 +1072,21 @@ class AttentionCoordinator {
         // Kiosk (re)connected — push current attention so sleep/listen HUD
         // and avatar opacity match the machine after a Chromium restart.
         _syncKioskAttention();
+        final debugUi = envelope.data['debugUi'] == true ||
+            Platform.environment['COMSTAR_ENV'] == 'dev';
+        _kioskWantsAdminQr = debugUi;
+        unawaited(_refreshAdminQr(force: true));
+        _adminQrTimer?.cancel();
+        if (debugUi) {
+          _adminQrTimer = Timer.periodic(
+            const Duration(seconds: 30),
+            (_) => unawaited(_refreshAdminQr()),
+          );
+        } else {
+          _broadcastKiosk(
+            Envelope.create(type: 'admin.qr', data: {'active': false}),
+          );
+        }
       case 'speak.started':
         final started = _speakStartedAt;
         if (started != null) {
@@ -3338,6 +3358,59 @@ class AttentionCoordinator {
       channel.sink.add(envelope.encode());
     } on Object catch (e) {
       logWarn('audio_send_failed', e.toString());
+    }
+  }
+
+  Future<void> _refreshAdminQr({bool force = false}) async {
+    if (!_kioskWantsAdminQr && !force) return;
+    if (!_kioskWantsAdminQr) {
+      _broadcastKiosk(
+        Envelope.create(type: 'admin.qr', data: {'active': false}),
+      );
+      return;
+    }
+    final token = config.adminAuthToken;
+    if (token.isEmpty) {
+      _broadcastKiosk(
+        Envelope.create(type: 'admin.qr', data: {'active': false}),
+      );
+      return;
+    }
+    final net = network;
+    if (net == null) return;
+    try {
+      final lan = await net.preferredLanIpv4();
+      final ip = lan.ip;
+      if (ip == null || ip.isEmpty) {
+        _broadcastKiosk(
+          Envelope.create(type: 'admin.qr', data: {'active': false}),
+        );
+        return;
+      }
+      const port = 8781;
+      final url =
+          'http://$ip:$port/admin/?token=${Uri.encodeQueryComponent(token)}';
+      _broadcastKiosk(
+        Envelope.create(
+          type: 'admin.qr',
+          data: {
+            'active': true,
+            'url': url,
+            'qrSvg': qrSvg(url, moduleSize: 4, quietZone: 2),
+            'ip': ip,
+            'iface': lan.device,
+            'type': lan.type,
+            'port': port,
+          },
+        ),
+      );
+      logInfo('admin_qr_push', 'Pushed admin QR to kiosk', data: {
+        'ip': ip,
+        'iface': lan.device,
+        'type': lan.type,
+      });
+    } on Object catch (e) {
+      logWarn('admin_qr_failed', e.toString());
     }
   }
 

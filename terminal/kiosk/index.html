@@ -252,6 +252,37 @@
     font-size: 0.85rem;
     color: rgba(180, 210, 240, 0.85);
   }
+  #admin-qr {
+    display: none;
+    position: fixed;
+    top: 4.1rem;
+    right: 0.65rem;
+    z-index: 25;
+    width: 5.5rem;
+    padding: 0.35rem;
+    border-radius: 0.4rem;
+    background: rgba(8, 18, 32, 0.88);
+    border: 1px solid rgba(127, 196, 255, 0.35);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+    pointer-events: none;
+    text-align: center;
+  }
+  #admin-qr.on { display: block; }
+  #admin-qr-svg {
+    width: 100%;
+    aspect-ratio: 1;
+    background: #f5f7fa;
+    border-radius: 0.25rem;
+    overflow: hidden;
+  }
+  #admin-qr-svg svg { width: 100%; height: 100%; display: block; }
+  #admin-qr-label {
+    margin-top: 0.25rem;
+    font: 500 0.55rem/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: 0.02em;
+    color: rgba(180, 210, 240, 0.85);
+    word-break: break-all;
+  }
   @keyframes phase-pulse {
     0%, 100% { transform: scale(1); opacity: 1; }
     50% { transform: scale(1.03); opacity: 0.88; }
@@ -300,6 +331,10 @@
   <div id="pairing-code"></div>
   <div id="pairing-hint">Scan or enter the code on your phone</div>
 </div>
+<div id="admin-qr" aria-hidden="true">
+  <div id="admin-qr-svg"></div>
+  <div id="admin-qr-label"></div>
+</div>
 <div id="chat" aria-live="polite">
   <div id="chat-log"></div>
 </div>
@@ -311,14 +346,36 @@ import { BridgeClient } from './bridge_client.js';
 
 const params = new URLSearchParams(location.search);
 const bridgeUrl = params.get('bridge') || 'ws://127.0.0.1:8777/kiosk';
-const demo = params.has('demo');
+const demo = params.has('demo') || params.has('debug');
+const debugUi = demo;
 
 const statusEl = document.getElementById('status');
 const faultEl = document.getElementById('fault');
 const phaseEl = document.getElementById('phase');
 const phaseLabel = phaseEl.querySelector('.label');
 const phaseDetail = phaseEl.querySelector('.detail');
+const adminQrEl = document.getElementById('admin-qr');
+const adminQrSvg = document.getElementById('admin-qr-svg');
+const adminQrLabel = document.getElementById('admin-qr-label');
 if (demo) statusEl.classList.add('on');
+
+function setAdminQr(d) {
+  if (!adminQrEl) return;
+  if (!d || !d.active || !d.qrSvg) {
+    adminQrEl.classList.remove('on');
+    adminQrEl.setAttribute('aria-hidden', 'true');
+    if (adminQrSvg) adminQrSvg.innerHTML = '';
+    if (adminQrLabel) adminQrLabel.textContent = '';
+    return;
+  }
+  if (adminQrSvg) adminQrSvg.innerHTML = d.qrSvg;
+  if (adminQrLabel) {
+    const bits = [d.ip, d.iface].filter(Boolean);
+    adminQrLabel.textContent = bits.length ? bits.join(' · ') : 'admin';
+  }
+  adminQrEl.classList.add('on');
+  adminQrEl.setAttribute('aria-hidden', 'false');
+}
 
 const PHASE_LABELS = {
   idle: 'Ready',
@@ -397,6 +454,7 @@ function sendReady() {
     avatarLoaded: !!avatar,
     webglVendor: s.webglVendor,
     fps: s.fps,
+    debugUi,
   });
 }
 
@@ -412,6 +470,14 @@ bridge = new BridgeClient(bridgeUrl, {
 
   config(d) {
     if (d.mood && avatar) avatar.setState(d.mood);
+    // Bridge COMSTAR_ENV=dev → show process HUD + accept admin QR without ?demo.
+    if (d.debugUi) {
+      statusEl.classList.add('on');
+    }
+  },
+
+  'admin.qr'(d) {
+    setAdminQr(d);
   },
 
   'avatar.options'(d) {
