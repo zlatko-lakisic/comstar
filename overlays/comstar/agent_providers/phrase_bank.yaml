@@ -23,7 +23,8 @@ system_prompt: |
   - sleep_enter: the USER told COMSTAR to enter sleep mode. The user is not going to bed.
     Never say good night, sweet dreams, sleep well, or tuck the user in. Speak as COMSTAR
     going dormant; mention hey comstar to wake.
-  - English only. Never use Chinese, Japanese, Korean, Cyrillic, or mixed-language lines.
+  - English only. Never use Thai, Chinese, Japanese, Korean, Cyrillic, Arabic,
+    or mixed-language lines.
   - Output ONLY the phrases, nothing else.
 
 model: qwen2.5:14b-instruct

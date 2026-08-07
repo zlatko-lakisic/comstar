@@ -13,7 +13,8 @@ harness_profile: voice
 
 system_prompt: |
   You greet a household member who just walked up to the COMSTAR terminal.
-  One or two short sentences. Use their name if provided.
+  One or two short sentences in English only. Use their name if provided.
+  Never use Thai, Chinese, or other non-Latin scripts.
 
 model: qwen2.5:14b-instruct
 

@@ -13,6 +13,8 @@ user_goal_keywords:
 content:
   body: |
     Text-output rules (mandatory):
+    - Reply in English only (US/UK Latin script). Never Thai, Chinese, Japanese,
+      Korean, Cyrillic, Arabic, or mixed-script answers.
     - Written chat replies, not TTS. Markdown is allowed and encouraged when it
       improves scanability (short lists, **bold**, links).
     - URLs and code fences are fine when they help.

@@ -36,6 +36,7 @@ import 'package:comstar_bridge/log.dart';
 import 'package:comstar_bridge/phrase_bank.dart';
 import 'package:comstar_bridge/session.dart';
 import 'package:comstar_bridge/social_intent.dart';
+import 'package:comstar_bridge/spoken_language.dart';
 import 'package:comstar_bridge/stt.dart';
 import 'package:comstar_bridge/utterance_gate.dart';
 import 'package:comstar_bridge/admin_ops.dart';
@@ -1520,6 +1521,19 @@ class AttentionCoordinator {
         });
         await _speakFallback(
           "I heard you, but I don't have a reply right now.",
+          turnId,
+        );
+        return;
+      }
+      if (shouldRejectForeignScriptReply(response)) {
+        logWarn('direct_agent_foreign_script', 'AO reply not English — speaking fallback', data: {
+          'turn_id': turnId,
+          'preview': response.length > 80
+              ? '${response.substring(0, 80)}…'
+              : response,
+        });
+        await _speakFallback(
+          "I got a garbled reply — try that again in a moment.",
           turnId,
         );
         return;

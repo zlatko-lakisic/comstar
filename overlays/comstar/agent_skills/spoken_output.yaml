@@ -13,6 +13,9 @@ user_goal_keywords:
 content:
   body: |
     Spoken-output rules (mandatory):
+    - Reply in English only (US/UK Latin script). Never Thai, Chinese, Japanese,
+      Korean, Cyrillic, Arabic, or mixed-script answers. If you drift, rewrite
+      the whole reply in English before responding.
     - Plain conversational sentences only.
     - No markdown, no bullet lists, no numbered lists.
     - No URLs, no code blocks, no special formatting.
