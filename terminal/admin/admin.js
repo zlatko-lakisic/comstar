@@ -6,6 +6,7 @@ import { createLogs } from './components/logs.js';
 import { createActions } from './components/actions.js';
 import { createInject } from './components/inject.js';
 import { createRoad } from './components/road.js';
+import { createNetwork } from './components/network.js';
 
 const params = new URLSearchParams(location.search);
 let token = params.get('token') || sessionStorage.getItem('comstar_lan_token') || '';
@@ -36,11 +37,14 @@ const els = {
   opsPanel: document.getElementById('opsPanel'),
   actionsRoot: document.getElementById('actionsRoot'),
   roadRoot: document.getElementById('roadRoot'),
+  networkRoot: document.getElementById('networkRoot'),
   actionsPane: document.getElementById('actionsPane'),
   roadPane: document.getElementById('roadPane'),
+  networkPane: document.getElementById('networkPane'),
   logsPane: document.getElementById('logsPane'),
   tabActions: document.getElementById('tabActions'),
   tabRoad: document.getElementById('tabRoad'),
+  tabNetwork: document.getElementById('tabNetwork'),
   tabLogs: document.getElementById('tabLogs'),
   roadTabDot: document.getElementById('roadTabDot'),
   injectRoot: document.getElementById('injectRoot'),
@@ -95,6 +99,7 @@ function selectTab(name) {
   const tabs = [
     { name: 'actions', tab: els.tabActions, pane: els.actionsPane },
     { name: 'road', tab: els.tabRoad, pane: els.roadPane },
+    { name: 'network', tab: els.tabNetwork, pane: els.networkPane },
     { name: 'logs', tab: els.tabLogs, pane: els.logsPane },
   ];
   const active = tabs.some((t) => t.name === name) ? name : 'actions';
@@ -116,10 +121,13 @@ function selectTab(name) {
 
 els.tabActions?.addEventListener('click', () => selectTab('actions'));
 els.tabRoad?.addEventListener('click', () => selectTab('road'));
+els.tabNetwork?.addEventListener('click', () => selectTab('network'));
 els.tabLogs?.addEventListener('click', () => selectTab('logs'));
 
 const savedTab = sessionStorage.getItem('comstar_ops_tab');
-selectTab(['actions', 'road', 'logs'].includes(savedTab) ? savedTab : 'actions');
+selectTab(
+  ['actions', 'road', 'network', 'logs'].includes(savedTab) ? savedTab : 'actions',
+);
 
 const rail = createRailEmblem(els.railEmblem);
 const health = createHealth(els.healthGrid, els.metricsRow);
@@ -131,6 +139,7 @@ const road = createRoad(els.roadRoot, {
   api,
   onStatus: setRoadTabDot,
 });
+const network = createNetwork(els.networkRoot, { api });
 const logs = createLogs(els.logsRoot, els.logsControls, {
   apiUrl: api.url,
   authHeaders: api.authHeaders,

@@ -61,6 +61,7 @@ never require the admin token.
 | `/admin/api/sleep` | POST | token if LAN-bound | `{action: enter\|exit}` |
 | `/admin/api/announce` | GET/POST | token if LAN-bound | Announce queue inspect / inject / force gate (M10) |
 | `/admin/api/road` | GET/POST | token if LAN-bound | Road VPN status / configure / connect (ADR 0011) |
+| `/admin/api/network` | GET/POST | token if LAN-bound | Host Wi‑Fi + IPv4 (DHCP/static) via nmcli (ADR 0012) |
 | `/admin/inject` | POST | token if LAN-bound | Attention event inject; **403 unless `COMSTAR_ENV=dev`** |
 | `/oauth/google/*` | * | none | Desktop OAuth start/callback/resend |
 
@@ -140,6 +141,73 @@ Saved credentials are returned in `secrets` so the admin form can re-fill after 
 is only for an encrypted client private key. `username`/`password` are the PPP
 secret (MikroTik `/ppp secret`); they override an embedded `<auth-user-pass>` block.
 `set_secrets.l2tp`: `{ "gateway", "user", "password", "psk", "ipsec_enabled": true }`
+
+#### Host network (`GET/POST /admin/api/network`) — SPEC
+
+Operator control of **Wi‑Fi** and **IPv4** on ethernet/wlan via NetworkManager
+(`nmcli`, same sudoers as Road VPN). Does **not** manage Road VPN profiles
+(`comstar-ovpn` / `comstar-l2tp`). See ADR 0012.
+
+**GET** (`?scan=1` optional Wi‑Fi rescan):
+
+```json
+{
+  "ok": true,
+  "wifi_radio": true,
+  "nmcli_ok": true,
+  "devices": [
+    {
+      "device": "end0",
+      "type": "ethernet",
+      "state": "connected",
+      "connection": "Wired connection 1",
+      "mac": "aa:bb:cc:dd:ee:ff",
+      "ipv4": {
+        "method": "auto",
+        "addresses": ["192.168.89.34/24"],
+        "gateway": "192.168.89.1",
+        "dns": ["192.168.89.1"]
+      },
+      "wifi": null
+    },
+    {
+      "device": "wlan0",
+      "type": "wifi",
+      "state": "disconnected",
+      "connection": null,
+      "mac": "…",
+      "ipv4": {
+        "method": "auto",
+        "addresses": [],
+        "gateway": null,
+        "dns": []
+      },
+      "wifi": { "ssid": null, "signal": null }
+    }
+  ],
+  "wifi_networks": [
+    { "ssid": "Example", "signal": 70, "security": "WPA2", "in_use": false }
+  ],
+  "saved_wifi": ["Example"],
+  "last_error": null
+}
+```
+
+`ipv4.method`: `auto` (DHCP) | `manual` | `other` (link-local / ignored / unknown).
+
+**POST** body `{ "action": "<name>", ... }`:
+
+| action | Body fields | Meaning |
+|---|---|---|
+| `wifi_radio` | `enabled` bool | `nmcli radio wifi on\|off` |
+| `wifi_scan` | — | Rescan; returns updated `wifi_networks` |
+| `wifi_connect` | `ssid`, optional `password`, optional `hidden` | Connect / create Wi‑Fi profile (password never logged) |
+| `wifi_disconnect` | optional `device` (default first wifi) | Disconnect Wi‑Fi device |
+| `wifi_forget` | `ssid` or `connection` | Delete saved Wi‑Fi connection |
+| `ipv4_set` | `device`, `method`=`auto`\|`manual`, for manual: `address`, `prefix` (1–32), optional `gateway`, `dns` (string or list) | Set IPv4 on the active (or primary) connection for that device, then `connection up` |
+
+IPv4 fields are validated (dotted quad / CIDR prefix). Wrong static config can
+lock out LAN admin — operator responsibility.
 
 Restart units are whitelisted (`comstar-*.service` only). Loopback:
 `ssh -L 8781:127.0.0.1:8781 comstar` → `http://127.0.0.1:8781/admin/`. LAN:

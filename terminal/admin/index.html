@@ -70,6 +70,7 @@
                   <span class="tab__vpn-dot" id="roadTabDot"></span>
                 </span>
               </button>
+              <button type="button" class="tab" role="tab" aria-selected="false" data-tab="network" id="tabNetwork">Network</button>
               <button type="button" class="tab" role="tab" aria-selected="false" data-tab="logs" id="tabLogs">Logs</button>
             </div>
             <span class="freshness mono" id="opsFresh">—</span>
@@ -80,6 +81,9 @@
             </div>
             <div class="tab-pane" id="roadPane" role="tabpanel" data-pane="road" hidden>
               <div id="roadRoot"></div>
+            </div>
+            <div class="tab-pane" id="networkPane" role="tabpanel" data-pane="network" hidden>
+              <div id="networkRoot"></div>
             </div>
             <div class="tab-pane tab-pane--logs" id="logsPane" role="tabpanel" data-pane="logs" hidden>
               <div class="logs-pane-head">

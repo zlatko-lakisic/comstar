@@ -381,6 +381,13 @@ Runtime + secrets: `GET/POST /admin/api/road` under
 
 Set `COMSTAR_ROAD_NMCLI_SUDO=0` to force plain `nmcli` (user connections only).
 
+### Host network (Wi‑Fi + IPv4)
+
+Admin **Network** tab (`GET/POST /admin/api/network`, ADR 0012) uses the same
+`nmcli` sudoers as Road VPN. Scan/join Wi‑Fi, toggle radio, set DHCP or static
+IPv4 on ethernet/wlan. Wrong static settings can lock out LAN access — keep
+serial/SSH as a backup.
+
 ---
 
 ## 6. Rollback

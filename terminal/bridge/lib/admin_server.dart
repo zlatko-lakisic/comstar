@@ -15,6 +15,7 @@ import 'package:comstar_bridge/host_metrics.dart';
 import 'package:comstar_bridge/house_presence.dart';
 import 'package:comstar_bridge/log.dart';
 import 'package:comstar_bridge/admin_ops.dart';
+import 'package:comstar_bridge/net/service.dart';
 import 'package:comstar_bridge/road/service.dart';
 
 /// Always-on admin + shared public HTTP on :8781.
@@ -32,6 +33,7 @@ class AdminServer {
     this.oauth,
     this.kioskRoot,
     this.road,
+    this.network,
     this.port = 8781,
     this.httpClientFactory,
     Future<Process> Function(String executable, List<String> arguments)?
@@ -46,6 +48,7 @@ class AdminServer {
   final GoogleDesktopUpgrade? oauth;
   final String? kioskRoot;
   final RoadService? road;
+  final NetworkService? network;
   final int port;
 
   /// Injectable for tests.
@@ -235,6 +238,16 @@ class AdminServer {
 
       if (request.method == 'POST' && adminPath == '/admin/api/road') {
         await _handleRoadPost(request);
+        return;
+      }
+
+      if (request.method == 'GET' && adminPath == '/admin/api/network') {
+        await _handleNetworkGet(request);
+        return;
+      }
+
+      if (request.method == 'POST' && adminPath == '/admin/api/network') {
+        await _handleNetworkPost(request);
         return;
       }
 
@@ -499,6 +512,35 @@ class AdminServer {
       return;
     }
     await _writeJson(request, 200, await svc.inspect());
+  }
+
+  Future<void> _handleNetworkGet(HttpRequest request) async {
+    final svc = network;
+    if (svc == null) {
+      await _writeJson(request, 503, {'ok': false, 'error': 'network_unavailable'});
+      return;
+    }
+    final scan = request.uri.queryParameters['scan'] == '1' ||
+        request.uri.queryParameters['scan'] == 'true';
+    await _writeJson(request, 200, await svc.inspect(scan: scan));
+  }
+
+  Future<void> _handleNetworkPost(HttpRequest request) async {
+    final svc = network;
+    if (svc == null) {
+      await _writeJson(request, 503, {'ok': false, 'error': 'network_unavailable'});
+      return;
+    }
+    final body = await _readJson(request);
+    try {
+      final result = await svc.handleAction(body);
+      final code = result['ok'] == true ? 200 : 502;
+      await _writeJson(request, code, result);
+    } on ArgumentError catch (e) {
+      await _writeJson(request, 400, {'ok': false, 'error': e.message});
+    } on StateError catch (e) {
+      await _writeJson(request, 502, {'ok': false, 'error': e.message});
+    }
   }
 
   Future<void> _handleRoadPost(HttpRequest request) async {

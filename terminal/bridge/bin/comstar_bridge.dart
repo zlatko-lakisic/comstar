@@ -15,6 +15,7 @@ import 'package:comstar_bridge/http_audio_server.dart';
 import 'package:comstar_bridge/local_ws.dart';
 import 'package:comstar_bridge/log.dart';
 import 'package:comstar_bridge/session.dart';
+import 'package:comstar_bridge/net/service.dart';
 import 'package:comstar_bridge/road/service.dart';
 import 'package:comstar_bridge/speech_routing.dart';
 import 'package:comstar_bridge/stt.dart';
@@ -155,6 +156,7 @@ Future<void> main(List<String> arguments) async {
         '${config.orchestration.baseUrl.replaceAll(RegExp(r'/+$'), '')}/health',
   );
   await road.start();
+  final network = NetworkService();
 
   final adminDir = Directory('$repoRoot/terminal/admin');
   final hostMetrics = HostMetrics();
@@ -169,6 +171,7 @@ Future<void> main(List<String> arguments) async {
     oauth: coordinator.googleDesktop,
     kioskRoot: kioskDir.existsSync() ? kioskDir.path : null,
     road: road,
+    network: network,
   );
   await admin.start();
   await coordinator.googleDesktop.start(sharedServer: true);
