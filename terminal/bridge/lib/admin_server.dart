@@ -324,6 +324,9 @@ class AdminServer {
           'vpn_active': r['vpn_active'],
           'active_protocol': r['active_protocol'],
           'protocol': r['protocol'],
+          'monitor_state': r['monitor_state'],
+          'health_ok': r['health_ok'],
+          'prereqs_ok': r['prereqs_ok'],
           'last_error': r['last_error'],
         };
       } on Object {
@@ -525,6 +528,19 @@ class AdminServer {
             'applied': apply,
           });
           return;
+        case 'initialize':
+          final result = await svc.initialize(body);
+          final code = result['ok'] == true ? 200 : 502;
+          await _writeJson(request, code, result);
+          return;
+        case 'prereqs':
+          final report = await svc.prerequisites(force: true);
+          await _writeJson(request, 200, {
+            'ok': report.ok,
+            'action': action,
+            ...report.toJson(),
+          });
+          return;
         case 'reconcile':
           final result = await svc.reconcile();
           await _writeJson(request, 200, {'ok': true, 'action': action, ...result});
@@ -543,7 +559,8 @@ class AdminServer {
           await _writeJson(request, 400, {
             'ok': false,
             'error': 'invalid_action',
-            'hint': 'configure|set_secrets|reconcile|connect|disconnect',
+            'hint':
+                'configure|set_secrets|initialize|prereqs|reconcile|connect|disconnect',
           });
       }
     } on ArgumentError catch (e) {

@@ -29,15 +29,18 @@ const els = {
   railKv: document.getElementById('railKv'),
   railFresh: document.getElementById('railFresh'),
   healthFresh: document.getElementById('healthFresh'),
-  actionsFresh: document.getElementById('actionsFresh'),
+  opsFresh: document.getElementById('opsFresh'),
   healthGrid: document.getElementById('healthGrid'),
   metricsRow: document.getElementById('metricsRow'),
   healthPanel: document.getElementById('healthPanel'),
-  actionsPanel: document.getElementById('actionsPanel'),
+  opsPanel: document.getElementById('opsPanel'),
   actionsRoot: document.getElementById('actionsRoot'),
-  roadFresh: document.getElementById('roadFresh'),
-  roadPanel: document.getElementById('roadPanel'),
   roadRoot: document.getElementById('roadRoot'),
+  actionsPane: document.getElementById('actionsPane'),
+  roadPane: document.getElementById('roadPane'),
+  tabActions: document.getElementById('tabActions'),
+  tabRoad: document.getElementById('tabRoad'),
+  roadTabDot: document.getElementById('roadTabDot'),
   injectRoot: document.getElementById('injectRoot'),
   logsControls: document.getElementById('logsControls'),
   logsRoot: document.getElementById('logsRoot'),
@@ -73,13 +76,52 @@ const api = createApi({
   onUnauthorized: () => showGate('unauthorized'),
 });
 
+function setRoadTabDot({ enabled, link } = {}) {
+  const dot = els.roadTabDot;
+  if (!dot) return;
+  dot.classList.remove('is-off', 'is-down', 'is-connecting', 'is-up');
+  if (!enabled) {
+    dot.classList.add('is-off');
+    return;
+  }
+  if (link === 'connected') dot.classList.add('is-up');
+  else if (link === 'connecting') dot.classList.add('is-connecting');
+  else dot.classList.add('is-down');
+}
+
+function selectTab(name) {
+  const isActions = name === 'actions';
+  els.tabActions.classList.toggle('is-active', isActions);
+  els.tabRoad.classList.toggle('is-active', !isActions);
+  els.tabActions.setAttribute('aria-selected', isActions ? 'true' : 'false');
+  els.tabRoad.setAttribute('aria-selected', isActions ? 'false' : 'true');
+  els.actionsPane.hidden = !isActions;
+  els.roadPane.hidden = isActions;
+  els.actionsPane.classList.toggle('is-active', isActions);
+  els.roadPane.classList.toggle('is-active', !isActions);
+  try {
+    sessionStorage.setItem('comstar_ops_tab', name);
+  } catch {
+    // ignore
+  }
+}
+
+els.tabActions?.addEventListener('click', () => selectTab('actions'));
+els.tabRoad?.addEventListener('click', () => selectTab('road'));
+
+const savedTab = sessionStorage.getItem('comstar_ops_tab');
+selectTab(savedTab === 'road' ? 'road' : 'actions');
+
 const rail = createRailEmblem(els.railEmblem);
 const health = createHealth(els.healthGrid, els.metricsRow);
 createActions(els.actionsRoot, els.modalRoot, {
   api,
   onDanger: () => rail.setUnreachable(),
 });
-createRoad(els.roadRoot, { api });
+const road = createRoad(els.roadRoot, {
+  api,
+  onStatus: setRoadTabDot,
+});
 const logs = createLogs(els.logsRoot, els.logsControls, {
   apiUrl: api.url,
   authHeaders: api.authHeaders,
@@ -172,13 +214,16 @@ async function tick(force) {
     renderRail(status, emblemName);
     health.render(status);
 
-    [els.healthPanel, els.actionsPanel, els.roadPanel].forEach((p) => {
+    if (status.road) {
+      road.applyStatusSnippet(status.road);
+    }
+
+    [els.healthPanel, els.opsPanel].forEach((p) => {
       p.classList.remove('is-stale', 'is-nocontact');
     });
     setFreshness(els.railFresh, 0.4, false);
     setFreshness(els.healthFresh, 0.4, false);
-    setFreshness(els.actionsFresh, 0.4, false);
-    setFreshness(els.roadFresh, 0.4, false);
+    setFreshness(els.opsFresh, 0.4, false);
 
     showApp();
     schedule(document.hidden ? 15000 : 2000);
@@ -193,13 +238,12 @@ async function tick(force) {
     els.railState.textContent = 'NO CONTACT';
     els.railState.classList.add('is-dim');
     els.liveDot.classList.add(api.misses >= 2 ? 'is-dead' : 'is-miss');
-    [els.healthPanel, els.actionsPanel, els.roadPanel].forEach((p) => {
+    [els.healthPanel, els.opsPanel].forEach((p) => {
       p.classList.add(age > 10 ? 'is-nocontact' : 'is-stale');
     });
     setFreshness(els.railFresh, age, true);
     setFreshness(els.healthFresh, age, true);
-    setFreshness(els.actionsFresh, age, true);
-    setFreshness(els.roadFresh, age, true);
+    setFreshness(els.opsFresh, age, true);
     schedule(api.nextBackoffMs());
   }
 }

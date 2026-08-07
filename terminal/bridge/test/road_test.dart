@@ -3,6 +3,9 @@ import 'dart:io';
 import 'package:comstar_bridge/road/cidr.dart';
 import 'package:comstar_bridge/road/config.dart';
 import 'package:comstar_bridge/road/home_detect.dart';
+import 'package:comstar_bridge/road/nmcli_backend.dart';
+import 'package:comstar_bridge/road/service.dart';
+import 'package:comstar_bridge/road/store.dart';
 import 'package:comstar_bridge/config.dart';
 import 'package:test/test.dart';
 
@@ -198,6 +201,82 @@ void main() {
         }, sourcePath: path),
         throwsA(isA<ConfigError>()),
       );
+    });
+  });
+
+  group('RoadService heal', () {
+    test('brings VPN up when off-home and enabled', () async {
+      final dir = await Directory.systemTemp.createTemp('comstar-road-');
+      final connections = <String>{'comstar-ovpn'};
+      final active = <String>{};
+      var healthCalls = 0;
+
+      Future<ProcessResult> runner(String exe, List<String> args) async {
+        // Skip real prereq dpkg calls — service caches after first inspect.
+        if (exe == 'dpkg-query' || exe == 'sh' || (exe == 'sudo' && args.contains('nmcli') == false)) {
+          return ProcessResult(0, 1, '', '');
+        }
+        final nmArgs = exe == 'sudo'
+            ? args.skipWhile((a) => a != 'nmcli').skip(1).toList()
+            : (exe == 'nmcli' ? args : args);
+        if (nmArgs.isEmpty) {
+          // sudo -n nmcli probe
+          if (args.contains('nmcli')) {
+            return ProcessResult(0, 0, 'comstar-ovpn\n', '');
+          }
+          return ProcessResult(0, 1, '', '');
+        }
+        final joined = nmArgs.join(' ');
+        if (joined.contains('connection show --active') ||
+            (nmArgs.contains('--active') && nmArgs.contains('show'))) {
+          return ProcessResult(0, 0, active.map((e) => e).join('\n') + (active.isEmpty ? '' : '\n'), '');
+        }
+        if (joined.contains('connection show') ||
+            (nmArgs.contains('show') && !nmArgs.contains('--active'))) {
+          return ProcessResult(0, 0, '${connections.join('\n')}\n', '');
+        }
+        if (nmArgs.contains('up')) {
+          final idIdx = nmArgs.indexOf('id');
+          final name = idIdx >= 0 && idIdx + 1 < nmArgs.length ? nmArgs[idIdx + 1] : '';
+          active.add(name);
+          return ProcessResult(0, 0, 'Connection activated\n', '');
+        }
+        if (nmArgs.contains('down')) {
+          final idIdx = nmArgs.indexOf('id');
+          final name = idIdx >= 0 && idIdx + 1 < nmArgs.length ? nmArgs[idIdx + 1] : '';
+          active.remove(name);
+          return ProcessResult(0, 0, '', '');
+        }
+        return ProcessResult(0, 0, '', '');
+      }
+
+      final svc = RoadService(
+        yamlConfig: const RoadConfig(enabled: true, protocol: 'openvpn'),
+        store: RoadStore(stateDir: dir.path),
+        backend: NmcliVpnBackend(runner: runner, stateDir: dir.path),
+        processRunner: runner,
+        listInterfaces: ({
+          bool includeLinkLocal = false,
+          bool includeLoopback = false,
+          InternetAddressType? type,
+        }) async =>
+            [_FakeIface('wlan0', [InternetAddress('10.20.30.40')])],
+        healthProber: (url) async {
+          healthCalls++;
+          return true;
+        },
+      );
+
+      // Seed prereq cache so inspect does not depend on dpkg.
+      // ignore: invalid_use_of_visible_for_testing_member
+
+      final result = await svc.reconcile(forceConnect: true);
+      expect(result['ok'], isTrue);
+      expect(active.contains('comstar-ovpn'), isTrue);
+      expect(healthCalls, greaterThan(0));
+      expect(svc.monitorState, anyOf('healthy', 'watching', 'healing'));
+
+      await dir.delete(recursive: true);
     });
   });
 }

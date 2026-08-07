@@ -113,6 +113,8 @@ road:
     - 192.168.89.0/24
     - 192.168.90.0/24
     - 172.16.90.0/24
-  check_interval_seconds: 30
+  check_interval_seconds: 30              # monitor tick when enabled
+  heal_backoff_max_seconds: 300
+  health_url: ""                          # empty → orchestration base_url/health
   openvpn_connection: comstar-ovpn        # NetworkManager connection name
   l2tp_connection: comstar-l2tp

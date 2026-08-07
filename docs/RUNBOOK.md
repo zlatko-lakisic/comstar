@@ -339,10 +339,29 @@ live logs are on `/api/*` (see `docs/CONTRACTS.md` admin console).
 
 ### Road VPN (phone-home)
 
-When the Pi is **not** on a home subnet, the bridge can bring up a NetworkManager
-VPN so Ada/HA remain reachable. See ADR 0011 and admin **Road VPN** panel.
+When the Pi is **not** on a home subnet, the bridge brings up a NetworkManager
+VPN and **keeps it healthy** (probe + heal). See ADR 0011 and admin **Road VPN**.
 
-Default home CIDRs: `192.168.89.0/24`, `192.168.90.0/24`, `172.16.90.0/24`.
+**1. Install packages once on the Pi**
+
+```bash
+make road-vpn
+# or: ssh comstar 'sudo bash /opt/comstar/src/scripts/install-road-vpn.sh'
+```
+
+Installs `network-manager-openvpn`, `network-manager-l2tp`, strongswan, and
+sudoers for passwordless `nmcli`.
+
+**2. Admin setup**
+
+Open Road VPN panel → confirm prerequisites → paste OpenVPN and/or L2TP
+credentials → **Initialize VPN** (creates NM profile, enables monitor, connects).
+
+**3. Monitor**
+
+With **Enable health monitor** on and off-home: periodic reconcile keeps the
+tunnel up, probes `health_url` (default Ada AO `/health`), and heals (bounce /
+reconnect) with backoff on failure. At home the COMSTAR VPN is torn down.
 
 ```yaml
 road:
@@ -352,30 +371,15 @@ road:
     - 192.168.89.0/24
     - 192.168.90.0/24
     - 172.16.90.0/24
+  health_url: ""             # empty → orchestration base_url/health
   openvpn_connection: comstar-ovpn
   l2tp_connection: comstar-l2tp
 ```
 
-Runtime toggles + credentials: `GET/POST /admin/api/road` (secrets write-only;
-stored under `~/.local/share/comstar/road/`).
-
-**Pi packages (pick what you use):**
-
-```bash
-sudo apt install -y network-manager-openvpn network-manager-l2tp strongswan
-```
-
-**Sudoers** (system NM connections; bridge runs as user). Install once:
-
-```bash
-# /etc/sudoers.d/comstar-road — visudo -cf before relying on it
-md-admin ALL=(root) NOPASSWD: /usr/bin/nmcli
-```
+Runtime + secrets: `GET/POST /admin/api/road` under
+`~/.local/share/comstar/road/`.
 
 Set `COMSTAR_ROAD_NMCLI_SUDO=0` to force plain `nmcli` (user connections only).
-
-At home the reconciler brings **COMSTAR** VPN connections down so LAN routing
-wins. On the road with `enabled: true` it brings the selected protocol up.
 
 ---
 

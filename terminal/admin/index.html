@@ -60,20 +60,27 @@
           <div class="metrics-row" id="metricsRow"></div>
         </section>
 
-        <section class="panel" id="actionsPanel">
-          <div class="panel__head">
-            <h2>Actions</h2>
-            <span class="freshness mono" id="actionsFresh">—</span>
+        <section class="panel" id="opsPanel">
+          <div class="panel__head panel__head--tabs">
+            <div class="tabs" role="tablist" aria-label="Operations">
+              <button type="button" class="tab is-active" role="tab" aria-selected="true" data-tab="actions" id="tabActions">Actions</button>
+              <button type="button" class="tab" role="tab" aria-selected="false" data-tab="road" id="tabRoad">
+                Road VPN
+                <span class="tab__vpn-pill" id="roadTabPill" title="VPN status" aria-hidden="true">
+                  <span class="tab__vpn-dot" id="roadTabDot"></span>
+                </span>
+              </button>
+            </div>
+            <span class="freshness mono" id="opsFresh">—</span>
           </div>
-          <div id="actionsRoot"></div>
-        </section>
-
-        <section class="panel" id="roadPanel">
-          <div class="panel__head">
-            <h2>Road VPN</h2>
-            <span class="freshness mono" id="roadFresh">—</span>
+          <div class="tab-panels">
+            <div class="tab-pane is-active" id="actionsPane" role="tabpanel" data-pane="actions">
+              <div id="actionsRoot"></div>
+            </div>
+            <div class="tab-pane" id="roadPane" role="tabpanel" data-pane="road" hidden>
+              <div id="roadRoot"></div>
+            </div>
           </div>
-          <div id="roadRoot"></div>
         </section>
 
         <section class="panel panel--inject" id="injectPanel" hidden>

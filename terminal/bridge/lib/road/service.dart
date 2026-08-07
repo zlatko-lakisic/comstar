@@ -1,31 +1,44 @@
-/// Periodic home detection + VPN phone-home reconciler.
+/// Periodic home detection + VPN phone-home monitor / heal.
 library;
 
 import 'dart:async';
+import 'dart:io';
+import 'dart:math';
 
 import 'package:comstar_bridge/log.dart';
 import 'package:comstar_bridge/road/config.dart';
 import 'package:comstar_bridge/road/home_detect.dart';
 import 'package:comstar_bridge/road/nmcli_backend.dart';
+import 'package:comstar_bridge/road/prereqs.dart';
 import 'package:comstar_bridge/road/store.dart';
+
+typedef HealthProber = Future<bool> Function(String url);
 
 class RoadService {
   RoadService({
     required RoadConfig yamlConfig,
+    this.defaultHealthUrl = '',
     RoadStore? store,
     NmcliVpnBackend? backend,
     InterfaceLister? listInterfaces,
+    HealthProber? healthProber,
+    ProcessRunner? processRunner,
   })  : _yaml = yamlConfig,
         store = store ?? RoadStore(),
         backend = backend ?? NmcliVpnBackend(),
-        _listInterfaces = listInterfaces {
+        _listInterfaces = listInterfaces,
+        _healthProber = healthProber ?? _defaultHealthProbe,
+        _processRunner = processRunner ?? Process.run {
     this.backend.stateDir ??= this.store.stateDir;
   }
 
   final RoadConfig _yaml;
+  final String defaultHealthUrl;
   final RoadStore store;
   final NmcliVpnBackend backend;
   final InterfaceLister? _listInterfaces;
+  final HealthProber _healthProber;
+  final ProcessRunner _processRunner;
 
   RoadConfig _effective = const RoadConfig();
   Timer? _timer;
@@ -36,18 +49,39 @@ class RoadService {
   String? lastActiveProtocol;
   bool _reconciling = false;
 
+  // Health / heal state
+  bool? healthOk;
+  int? lastHealthTs;
+  int healCount = 0;
+  int consecutiveFailures = 0;
+  int? lastHealTs;
+  int? nextHealEarliestTs;
+  String monitorState = 'idle'; // idle | watching | healing | healthy | degraded
+
+  RoadPrereqReport? _cachedPrereqs;
+  int? _prereqsCachedAt;
+
   RoadConfig get config => _effective;
+
+  String get resolvedHealthUrl {
+    final u = _effective.healthUrl.trim();
+    if (u.isNotEmpty) return u;
+    final d = defaultHealthUrl.trim();
+    if (d.isNotEmpty) return d;
+    return 'http://10.0.10.16:8765/health';
+  }
 
   Future<void> start() async {
     await store.ensureDir();
     _effective = await store.loadEffective(_yaml);
     backend.stateDir ??= store.stateDir;
 
-    logInfo('road_started', 'Road VPN reconciler started', data: {
+    logInfo('road_started', 'Road VPN monitor started', data: {
       'enabled': _effective.enabled,
       'protocol': _effective.protocol,
       'home_cidrs': _effective.homeCidrs,
       'interval_s': _effective.checkIntervalSeconds,
+      'health_url': resolvedHealthUrl,
     });
     await reconcile();
     _armTimer();
@@ -64,6 +98,20 @@ class RoadService {
     _timer = Timer.periodic(Duration(seconds: secs), (_) {
       unawaited(reconcile());
     });
+  }
+
+  Future<RoadPrereqReport> prerequisites({bool force = false}) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (!force &&
+        _cachedPrereqs != null &&
+        _prereqsCachedAt != null &&
+        now - _prereqsCachedAt! < 60000) {
+      return _cachedPrereqs!;
+    }
+    final report = await checkRoadPrereqs(runner: _processRunner);
+    _cachedPrereqs = report;
+    _prereqsCachedAt = now;
+    return report;
   }
 
   Future<Map<String, Object?>> inspect() async {
@@ -93,10 +141,12 @@ class RoadService {
 
     final secretsOvpn = await store.hasOpenVpnSecrets();
     final secretsL2tp = await store.hasL2tpSecrets();
+    final prereq = await prerequisites();
 
     return {
       'ok': true,
       ..._effective.toJson(),
+      'health_url_resolved': resolvedHealthUrl,
       'at_home': home.atHome,
       'matched_addrs': home.matchedAddrs,
       'all_addrs': home.allAddrs,
@@ -105,6 +155,17 @@ class RoadService {
       'active_protocol': activeProto,
       'openvpn_configured': ovpnExists || secretsOvpn,
       'l2tp_configured': l2tpExists || secretsL2tp,
+      'openvpn_profile_present': ovpnExists,
+      'l2tp_profile_present': l2tpExists,
+      'prereqs_ok': prereq.ok,
+      'prereqs': prereq.toJson(),
+      'health_ok': healthOk,
+      'last_health_ts': lastHealthTs,
+      'heal_count': healCount,
+      'consecutive_failures': consecutiveFailures,
+      'last_heal_ts': lastHealTs,
+      'next_heal_earliest_ts': nextHealEarliestTs,
+      'monitor_state': monitorState,
       'last_error': lastError,
       'last_reconcile_ts': lastReconcileTs,
     };
@@ -128,6 +189,13 @@ class RoadService {
         throw ArgumentError('check_interval_seconds must be 5–3600');
       }
     }
+    final backoff = patch['heal_backoff_max_seconds'];
+    if (backoff != null) {
+      final n = backoff is int ? backoff : int.tryParse('$backoff');
+      if (n == null || n < 30 || n > 3600) {
+        throw ArgumentError('heal_backoff_max_seconds must be 30–3600');
+      }
+    }
     final base = await store.loadEffective(_yaml);
     _effective = RoadConfig.fromJson(patch, base: base);
     await store.saveRuntime(_effective);
@@ -135,6 +203,7 @@ class RoadService {
     logInfo('road_configured', 'Road runtime updated', data: {
       'enabled': _effective.enabled,
       'protocol': _effective.protocol,
+      'monitor': _effective.enabled ? 'on' : 'off',
     });
     return _effective;
   }
@@ -188,6 +257,67 @@ class RoadService {
     lastError = null;
   }
 
+  /// One-shot setup: optional secrets → enable monitor → connect (force).
+  Future<Map<String, Object?>> initialize(Map<String, dynamic> body) async {
+    final prereq = await prerequisites();
+    if (!prereq.ok) {
+      return {
+        'ok': false,
+        'action': 'initialize',
+        'error': 'prereqs_missing',
+        'prereqs': prereq.toJson(),
+      };
+    }
+
+    final cfgPatch = <String, dynamic>{
+      if (body['protocol'] != null) 'protocol': body['protocol'],
+      if (body['home_cidrs'] != null) 'home_cidrs': body['home_cidrs'],
+      if (body['openvpn_connection'] != null)
+        'openvpn_connection': body['openvpn_connection'],
+      if (body['l2tp_connection'] != null)
+        'l2tp_connection': body['l2tp_connection'],
+      if (body['health_url'] != null) 'health_url': body['health_url'],
+      if (body['check_interval_seconds'] != null)
+        'check_interval_seconds': body['check_interval_seconds'],
+      'enabled': true,
+    };
+    await configure(cfgPatch);
+
+    if (body['openvpn'] is Map || body['l2tp'] is Map) {
+      await setSecrets(body, apply: true);
+    }
+
+    // Ensure a profile exists for the selected protocol.
+    final proto = _effective.protocol == 'auto'
+        ? ((await backend.connectionExists(_effective.openvpnConnection))
+            ? 'openvpn'
+            : 'l2tp')
+        : _effective.protocol;
+    final name = proto == 'l2tp'
+        ? _effective.l2tpConnection
+        : _effective.openvpnConnection;
+    if (!await backend.connectionExists(name)) {
+      lastError = 'profile_missing_after_init';
+      return {
+        'ok': false,
+        'action': 'initialize',
+        'error': lastError,
+        'hint': 'Apply OpenVPN (.ovpn) or L2TP credentials, then Initialize again',
+      };
+    }
+
+    consecutiveFailures = 0;
+    nextHealEarliestTs = null;
+    final connectResult = await reconcile(forceConnect: true);
+    final snap = await inspect();
+    return {
+      'ok': connectResult['ok'] == true,
+      'action': 'initialize',
+      'connect': connectResult,
+      ...snap,
+    };
+  }
+
   Future<Map<String, Object?>> reconcile({bool forceConnect = false}) async {
     if (_reconciling) {
       return {'ok': true, 'skipped': 'in_progress'};
@@ -202,8 +332,12 @@ class RoadService {
 
       if (atHome && !forceConnect) {
         await _downBoth();
+        healthOk = null;
+        consecutiveFailures = 0;
+        nextHealEarliestTs = null;
+        monitorState = 'idle';
         lastError = null;
-        logInfo('road_reconcile', 'At home — VPN down', data: {
+        logInfo('road_reconcile', 'At home — VPN down, monitor idle', data: {
           'matched': snap['matched_addrs'],
         });
         return {
@@ -213,74 +347,216 @@ class RoadService {
           'vpn_active': false,
           'active_connection': null,
           'active_protocol': null,
+          'monitor_state': monitorState,
         };
       }
 
       if (!_effective.enabled && !forceConnect) {
+        monitorState = 'idle';
         logInfo('road_reconcile', 'Road VPN disabled', data: {'at_home': atHome});
-        return {'ok': true, 'action': 'disabled', ...snap};
+        return {'ok': true, 'action': 'disabled', ...snap, 'monitor_state': monitorState};
       }
 
+      monitorState = 'watching';
+
+      // --- Health path when tunnel appears up ---
       if (vpnActive && !forceConnect) {
-        return {'ok': true, 'action': 'already_up', ...snap};
+        final healthy = await _probeHealth();
+        if (healthy) {
+          consecutiveFailures = 0;
+          nextHealEarliestTs = null;
+          monitorState = 'healthy';
+          lastError = null;
+          return {
+            'ok': true,
+            'action': 'healthy',
+            ...snap,
+            'health_ok': true,
+            'monitor_state': monitorState,
+          };
+        }
+        // Tunnel up but unreachable home — heal (bounce).
+        return await _heal(
+          reason: 'health_failed',
+          bounce: true,
+          snap: snap,
+        );
       }
 
-      final protocol = await _resolveProtocol();
-      if (protocol == null) {
-        lastError = 'no_vpn_configured';
-        logWarn('road_reconcile', 'Off-home but no VPN profile configured');
-        return {
-          'ok': false,
-          'action': 'no_profile',
-          'error': lastError,
-          ...snap,
-        };
-      }
-      final name = protocol == 'openvpn'
+      // --- VPN down while enabled / force ---
+      return await _heal(
+        reason: vpnActive ? 'force_reconnect' : 'vpn_down',
+        bounce: vpnActive,
+        snap: snap,
+        force: forceConnect,
+      );
+    } finally {
+      _reconciling = false;
+    }
+  }
+
+  Future<Map<String, Object?>> _heal({
+    required String reason,
+    required bool bounce,
+    required Map<String, Object?> snap,
+    bool force = false,
+  }) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (!force &&
+        nextHealEarliestTs != null &&
+        now < nextHealEarliestTs!) {
+      monitorState = 'degraded';
+      return {
+        'ok': false,
+        'action': 'heal_backoff',
+        'reason': reason,
+        'next_heal_earliest_ts': nextHealEarliestTs,
+        ...snap,
+        'monitor_state': monitorState,
+        'health_ok': healthOk,
+      };
+    }
+
+    monitorState = 'healing';
+    final protocol = await _resolveProtocol();
+    if (protocol == null) {
+      lastError = 'no_vpn_configured';
+      consecutiveFailures++;
+      _scheduleBackoff();
+      logWarn('road_heal', 'Heal skipped — no VPN profile', data: {
+        'reason': reason,
+      });
+      monitorState = 'degraded';
+      return {
+        'ok': false,
+        'action': 'no_profile',
+        'error': lastError,
+        'reason': reason,
+        ...snap,
+        'monitor_state': monitorState,
+      };
+    }
+
+    final name = protocol == 'openvpn'
+        ? _effective.openvpnConnection
+        : _effective.l2tpConnection;
+
+    if (bounce) {
+      await backend.down(name);
+      await Future<void>.delayed(const Duration(seconds: 2));
+    }
+
+    var up = await backend.up(name);
+    var usedProto = protocol;
+    var usedName = name;
+
+    if (!up.ok && _effective.protocol == 'auto') {
+      final alt = protocol == 'openvpn' ? 'l2tp' : 'openvpn';
+      final altName = alt == 'openvpn'
           ? _effective.openvpnConnection
           : _effective.l2tpConnection;
-      final up = await backend.up(name);
-      if (!up.ok) {
-        lastError = up.stderr.isNotEmpty ? up.stderr : up.message;
-        if (_effective.protocol == 'auto') {
-          final alt = protocol == 'openvpn' ? 'l2tp' : 'openvpn';
-          final altName = alt == 'openvpn'
-              ? _effective.openvpnConnection
-              : _effective.l2tpConnection;
-          if (await backend.connectionExists(altName)) {
-            final up2 = await backend.up(altName);
-            if (up2.ok) {
-              lastError = null;
-              lastActiveConnection = altName;
-              lastActiveProtocol = alt;
-              return {
-                'ok': true,
-                'action': 'connected',
-                'protocol': alt,
-                'connection': altName,
-                'fallback': true,
-              };
-            }
-          }
+      if (await backend.connectionExists(altName)) {
+        up = await backend.up(altName);
+        if (up.ok) {
+          usedProto = alt;
+          usedName = altName;
         }
-        return {'ok': false, 'action': 'connect_failed', 'error': lastError};
       }
+    }
+
+    lastHealTs = now;
+    healCount++;
+
+    if (!up.ok) {
+      lastError = up.stderr.isNotEmpty ? up.stderr : up.message;
+      consecutiveFailures++;
+      _scheduleBackoff();
+      monitorState = 'degraded';
+      logWarn('road_heal', 'VPN heal failed', data: {
+        'reason': reason,
+        'connection': usedName,
+        'failures': consecutiveFailures,
+        'error': lastError,
+      });
+      return {
+        'ok': false,
+        'action': 'heal_failed',
+        'reason': reason,
+        'error': lastError,
+        'monitor_state': monitorState,
+      };
+    }
+
+    lastActiveConnection = usedName;
+    lastActiveProtocol = usedProto;
+
+    // Brief settle, then health probe.
+    await Future<void>.delayed(const Duration(seconds: 2));
+    final healthy = await _probeHealth();
+    if (healthy) {
+      consecutiveFailures = 0;
+      nextHealEarliestTs = null;
       lastError = null;
-      lastActiveConnection = name;
-      lastActiveProtocol = protocol;
-      logInfo('road_reconcile', 'VPN connected', data: {
-        'protocol': protocol,
-        'connection': name,
-        'force': forceConnect,
+      monitorState = 'healthy';
+      logInfo('road_heal', 'VPN healed', data: {
+        'reason': reason,
+        'protocol': usedProto,
+        'connection': usedName,
+        'heal_count': healCount,
       });
       return {
         'ok': true,
-        'action': 'connected',
-        'protocol': protocol,
-        'connection': name,
+        'action': 'healed',
+        'reason': reason,
+        'protocol': usedProto,
+        'connection': usedName,
+        'health_ok': true,
+        'monitor_state': monitorState,
       };
-    } finally {
-      _reconciling = false;
+    }
+
+    consecutiveFailures++;
+    _scheduleBackoff();
+    monitorState = 'degraded';
+    lastError = 'health_failed_after_up';
+    logWarn('road_heal', 'VPN up but health probe failed', data: {
+      'reason': reason,
+      'url': resolvedHealthUrl,
+      'failures': consecutiveFailures,
+    });
+    return {
+      'ok': false,
+      'action': 'heal_unhealthy',
+      'reason': reason,
+      'connection': usedName,
+      'health_ok': false,
+      'monitor_state': monitorState,
+      'error': lastError,
+    };
+  }
+
+  void _scheduleBackoff() {
+    final maxSec = _effective.healBackoffMaxSeconds.clamp(30, 3600);
+    final exp = min(consecutiveFailures, 6);
+    final base = min(maxSec, 5 * (1 << (exp <= 0 ? 0 : exp - 1)));
+    final jitter = Random().nextInt(max(1, base ~/ 5));
+    final delaySec = min(maxSec, base + jitter);
+    nextHealEarliestTs =
+        DateTime.now().millisecondsSinceEpoch + delaySec * 1000;
+  }
+
+  Future<bool> _probeHealth() async {
+    final url = resolvedHealthUrl;
+    try {
+      final ok = await _healthProber(url);
+      healthOk = ok;
+      lastHealthTs = DateTime.now().millisecondsSinceEpoch;
+      return ok;
+    } on Object catch (e) {
+      healthOk = false;
+      lastHealthTs = DateTime.now().millisecondsSinceEpoch;
+      lastError = 'health_probe_error: $e';
+      return false;
     }
   }
 
@@ -295,6 +571,8 @@ class RoadService {
       }
       await configure({'protocol': protocol});
     }
+    consecutiveFailures = 0;
+    nextHealEarliestTs = null;
     return reconcile(forceConnect: force);
   }
 
@@ -302,8 +580,10 @@ class RoadService {
     await _downBoth();
     lastActiveConnection = null;
     lastActiveProtocol = null;
+    healthOk = null;
+    monitorState = _effective.enabled ? 'watching' : 'idle';
     lastError = null;
-    return {'ok': true, 'action': 'disconnected'};
+    return {'ok': true, 'action': 'disconnected', 'monitor_state': monitorState};
   }
 
   Future<void> _downBoth() async {
@@ -322,5 +602,21 @@ class RoadService {
     if (hasOvpn) return 'openvpn';
     if (hasL2tp) return 'l2tp';
     return null;
+  }
+}
+
+Future<bool> _defaultHealthProbe(String url) async {
+  final client = HttpClient();
+  try {
+    client.connectionTimeout = const Duration(seconds: 4);
+    final uri = Uri.parse(url);
+    final req = await client.getUrl(uri).timeout(const Duration(seconds: 4));
+    final resp = await req.close().timeout(const Duration(seconds: 6));
+    await resp.drain<void>();
+    return resp.statusCode >= 200 && resp.statusCode < 500;
+  } on Object {
+    return false;
+  } finally {
+    client.close(force: true);
   }
 }

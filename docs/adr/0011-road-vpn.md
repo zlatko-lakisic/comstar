@@ -25,17 +25,19 @@ console, with automatic bring-up when off-home.
 3. **Protocols:** `openvpn` | `l2tp` | `auto` (prefer OpenVPN connection if
    present, else L2TP). Admin can force connect/disconnect and edit runtime
    knobs without rewriting `comstar.yaml`.
-4. **When off-home and `road.enabled`:** ensure the selected VPN is up.
-   **When at home:** bring the COMSTAR VPN connections down (leave other
-   VPNs alone).
-5. **Admin API** `GET/POST /admin/api/road` — status, configure, secrets
-   (write-only), reconcile, connect, disconnect. Secrets never echoed on GET.
+4. **When off-home and `road.enabled`:** monitor the tunnel; probe `health_url`
+   (default Ada AO `/health`); heal (reconnect / bounce) on drop or probe
+   failure with exponential backoff. **When at home:** bring COMSTAR VPN
+   connections down (leave other VPNs alone).
+5. **Admin:** setup UI → prerequisites → credentials → **Initialize** (enable +
+   connect). Ongoing control via `GET/POST /admin/api/road`. Secrets never
+   echoed on GET.
+6. **Host packages:** `scripts/install-road-vpn.sh` / `make road-vpn`.
 
 ## Consequences
 
-- Pi needs `network-manager-openvpn` and/or `network-manager-l2tp` (+ strongswan)
-  packages and a sudoers allow for non-interactive `nmcli` when connections
-  are system-wide.
-- Ada / home gateway must expose the chosen VPN endpoint.
+- Pi needs NM OpenVPN and/or L2TP plugins + sudoers for non-interactive `nmcli`.
+- Ada / home gateway must expose the chosen VPN endpoint **and** an HTTP health
+  target reachable over the tunnel.
 - Travel Wi‑Fi captive portals are out of scope; operator must get internet
   before phone-home can succeed.

@@ -69,6 +69,13 @@ never require the admin token.
 Phone-home when the Pi has **no** local IPv4 in `road.home_cidrs`. Control plane
 is NetworkManager connection names (OpenVPN and/or L2TP). See ADR 0011.
 
+**Host install (once):** `make road-vpn` → `scripts/install-road-vpn.sh`
+(packages + sudoers for `nmcli`).
+
+When `enabled: true` and off-home, the bridge **monitors** the tunnel and
+**heals** on drop or failed health probe (HTTP to `health_url`, default
+orchestration `/health`) with exponential backoff.
+
 **GET** returns (no secrets):
 
 ```json
@@ -77,6 +84,8 @@ is NetworkManager connection names (OpenVPN and/or L2TP). See ADR 0011.
   "enabled": false,
   "protocol": "openvpn",
   "home_cidrs": ["192.168.89.0/24", "192.168.90.0/24", "172.16.90.0/24"],
+  "health_url": "",
+  "health_url_resolved": "http://10.0.10.16:8765/health",
   "at_home": true,
   "matched_addrs": ["192.168.89.34"],
   "vpn_active": false,
@@ -86,19 +95,31 @@ is NetworkManager connection names (OpenVPN and/or L2TP). See ADR 0011.
   "l2tp_connection": "comstar-l2tp",
   "openvpn_configured": false,
   "l2tp_configured": false,
+  "openvpn_profile_present": false,
+  "l2tp_profile_present": false,
+  "prereqs_ok": true,
+  "prereqs": { "ok": true, "checks": {} },
+  "monitor_state": "idle",
+  "health_ok": null,
+  "heal_count": 0,
+  "consecutive_failures": 0,
   "check_interval_seconds": 30,
   "last_error": null,
   "last_reconcile_ts": null
 }
 ```
 
+`monitor_state`: `idle` | `watching` | `healing` | `healthy` | `degraded`.
+
 **POST** body `{ "action": "<name>", ... }`:
 
 | action | Body fields | Meaning |
 |---|---|---|
-| `configure` | `enabled`, `protocol`, `home_cidrs`, `openvpn_connection`, `l2tp_connection`, `check_interval_seconds` | Persist runtime overlay (merge); does not rewrite yaml |
-| `set_secrets` | `openvpn` and/or `l2tp` objects | Write secrets file (0600); optionally apply NM profiles; never returned on GET |
-| `reconcile` | — | One detect → up/down cycle |
+| `prereqs` | — | Re-check packages / sudo nmcli |
+| `configure` | `enabled`, `protocol`, `home_cidrs`, `health_url`, connection names, intervals | Persist runtime overlay |
+| `set_secrets` | `openvpn` and/or `l2tp` objects | Write secrets (0600); apply NM profiles; never returned on GET |
+| `initialize` | configure fields + optional secrets | Apply profile, set `enabled: true`, force connect, start monitor |
+| `reconcile` | — | One monitor tick (detect → health → heal) |
 | `connect` | optional `protocol`, `force` | Bring VPN up (`force` ignores at-home) |
 | `disconnect` | — | Bring COMSTAR VPN connections down |
 

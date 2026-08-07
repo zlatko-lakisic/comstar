@@ -1,4 +1,4 @@
-.PHONY: doctor bridge-dev kiosk-dev audio-sync deploy logs test stt-dev verify-cpai ao-hello site-dev site-build admin console pi-session plymouth soak
+.PHONY: doctor bridge-dev kiosk-dev audio-sync deploy logs test stt-dev verify-cpai ao-hello site-dev site-build admin console pi-session plymouth soak road-vpn
 
 ROOT := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 REMOTE ?= comstar
@@ -31,6 +31,9 @@ pi-session:
 
 plymouth:
 	@ssh "$(REMOTE)" "sudo bash $(REMOTE_DIR)/scripts/install-plymouth-comstar.sh"
+
+road-vpn:
+	@ssh "$(REMOTE)" "sudo bash $(REMOTE_DIR)/scripts/install-road-vpn.sh"
 
 logs:
 	@ssh "$(REMOTE)" 'journalctl --user -u comstar-bridge -u comstar-audio -u comstar-kiosk -n 80 --no-pager'

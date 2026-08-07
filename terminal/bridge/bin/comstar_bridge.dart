@@ -149,7 +149,11 @@ Future<void> main(List<String> arguments) async {
 
   await coordinator.start(visionPoller: visionPoller);
 
-  final road = RoadService(yamlConfig: config.road);
+  final road = RoadService(
+    yamlConfig: config.road,
+    defaultHealthUrl:
+        '${config.orchestration.baseUrl.replaceAll(RegExp(r'/+$'), '')}/health',
+  );
   await road.start();
 
   final adminDir = Directory('$repoRoot/terminal/admin');

@@ -162,6 +162,8 @@ class ComstarConfig {
     'check_interval_seconds',
     'openvpn_connection',
     'l2tp_connection',
+    'health_url',
+    'heal_backoff_max_seconds',
   };
 
   static ComstarConfig loadFile(String path) {
@@ -527,6 +529,8 @@ class ComstarConfig {
       checkIntervalSeconds: map['check_interval_seconds'] as int? ?? 30,
       openvpnConnection: map['openvpn_connection']?.toString() ?? 'comstar-ovpn',
       l2tpConnection: map['l2tp_connection']?.toString() ?? 'comstar-l2tp',
+      healthUrl: map['health_url']?.toString() ?? '',
+      healBackoffMaxSeconds: map['heal_backoff_max_seconds'] as int? ?? 300,
     );
   }
 
@@ -540,6 +544,12 @@ class ComstarConfig {
       'road.check_interval_seconds',
       road.checkIntervalSeconds,
       5,
+      3600,
+    );
+    _rangeInt(
+      'road.heal_backoff_max_seconds',
+      road.healBackoffMaxSeconds,
+      30,
       3600,
     );
     if (road.homeCidrs.isEmpty) {
