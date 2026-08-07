@@ -41,6 +41,14 @@ const faqs = [
     a: 'BattleTech. This is a personal, non-commercial project. “ComStar” and the ComStar starburst are BattleTech IP (Topps / Catalyst Game Labs), used affectionately.',
   },
   {
+    q: 'What if the Pi has no network?',
+    a: 'It brings up a temporary open Wi-Fi hotspot named after the device, hands out addresses around 10.87.65.1, and shows a QR on the screen for the ops console. Join the hotspot, then scan. The admin token still gates the UI. Turn the hotspot off with an environment flag when you do not want it.',
+  },
+  {
+    q: 'How does it authenticate to the AI server?',
+    a: 'On the production LAN path, orchestration uses HTTPS with a client certificate enrolled once from the ops console (or a one-time CLI enroll). Certificates live on the device and are never committed to git. Speech services on the same host remain ordinary LAN HTTP.',
+  },
+  {
     q: 'Can I buy one?',
     a: 'No. It is a build. The parts list and getting-started guide are free and ungated.',
   },
