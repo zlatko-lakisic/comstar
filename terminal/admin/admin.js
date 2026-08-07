@@ -7,6 +7,7 @@ import { createActions } from './components/actions.js';
 import { createInject } from './components/inject.js';
 import { createRoad } from './components/road.js';
 import { createNetwork } from './components/network.js';
+import { createAoMtls } from './components/ao_mtls.js';
 
 const params = new URLSearchParams(location.search);
 let token = params.get('token') || sessionStorage.getItem('comstar_lan_token') || '';
@@ -38,13 +39,16 @@ const els = {
   actionsRoot: document.getElementById('actionsRoot'),
   roadRoot: document.getElementById('roadRoot'),
   networkRoot: document.getElementById('networkRoot'),
+  aoMtlsRoot: document.getElementById('aoMtlsRoot'),
   actionsPane: document.getElementById('actionsPane'),
   roadPane: document.getElementById('roadPane'),
   networkPane: document.getElementById('networkPane'),
+  aoPane: document.getElementById('aoPane'),
   logsPane: document.getElementById('logsPane'),
   tabActions: document.getElementById('tabActions'),
   tabRoad: document.getElementById('tabRoad'),
   tabNetwork: document.getElementById('tabNetwork'),
+  tabAo: document.getElementById('tabAo'),
   tabLogs: document.getElementById('tabLogs'),
   roadTabDot: document.getElementById('roadTabDot'),
   injectRoot: document.getElementById('injectRoot'),
@@ -100,6 +104,7 @@ function selectTab(name) {
     { name: 'actions', tab: els.tabActions, pane: els.actionsPane },
     { name: 'road', tab: els.tabRoad, pane: els.roadPane },
     { name: 'network', tab: els.tabNetwork, pane: els.networkPane },
+    { name: 'ao', tab: els.tabAo, pane: els.aoPane },
     { name: 'logs', tab: els.tabLogs, pane: els.logsPane },
   ];
   const active = tabs.some((t) => t.name === name) ? name : 'actions';
@@ -118,11 +123,13 @@ function selectTab(name) {
     // ignore
   }
   if (active === 'network') network?.onShow?.();
+  if (active === 'ao') aoMtls?.onShow?.();
 }
 
 els.tabActions?.addEventListener('click', () => selectTab('actions'));
 els.tabRoad?.addEventListener('click', () => selectTab('road'));
 els.tabNetwork?.addEventListener('click', () => selectTab('network'));
+els.tabAo?.addEventListener('click', () => selectTab('ao'));
 els.tabLogs?.addEventListener('click', () => selectTab('logs'));
 
 const rail = createRailEmblem(els.railEmblem);
@@ -136,6 +143,7 @@ const road = createRoad(els.roadRoot, {
   onStatus: setRoadTabDot,
 });
 const network = createNetwork(els.networkRoot, { api });
+const aoMtls = createAoMtls(els.aoMtlsRoot, { api });
 const logs = createLogs(els.logsRoot, els.logsControls, {
   apiUrl: api.url,
   authHeaders: api.authHeaders,
@@ -144,7 +152,7 @@ const logs = createLogs(els.logsRoot, els.logsControls, {
 
 const savedTab = sessionStorage.getItem('comstar_ops_tab');
 selectTab(
-  ['actions', 'road', 'network', 'logs'].includes(savedTab) ? savedTab : 'actions',
+  ['actions', 'road', 'network', 'ao', 'logs'].includes(savedTab) ? savedTab : 'actions',
 );
 
 els.gateToken.value = token;

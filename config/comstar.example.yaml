@@ -3,10 +3,16 @@
 
 orchestration:
   base_url: http://10.0.10.16:8765          # AO daemon WebSocket/HTTP base
-  token: ""                                  # x-warpgate-token (set in real config, never commit)
+  token: ""                                  # x-warpgate-token (optional / transitional)
   ttl_seconds: 86400                         # overlay TTL (AO max); refresh before expiry
   timeout_seconds: 15                        # 5–60 per CONTRACTS §7
   overlay_root: ./overlays/comstar
+  # Ada HTTPS + client certs (ADR 0013). When enabled, base_url must be https://…
+  # mtls:
+  #   enabled: true
+  #   material_dir: ""                       # default ~/.local/share/comstar/ao-mtls
+  #   client_name: comstar-ai
+  #   trust_enrollment_ca: true              # TOFU on first enroll
 
 vision:
   codeproject_url: http://10.0.10.16:32168

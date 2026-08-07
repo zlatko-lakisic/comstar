@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:ao_reach/ao_reach.dart';
 import 'package:comstar_bridge/config.dart';
 import 'package:comstar_bridge/session.dart';
@@ -162,7 +164,158 @@ void main() {
       expect(fake.lastConfig!.headers['x-agentic-user-name'], 'zlatko');
       expect(fake.lastConfig!.headers['x-agentic-session-id'], 'comstar-zlatko');
       expect(fake.lastConfig!.headers['x-warpgate-token'], 'test-token');
+      expect(fake.lastConfig!.mtls, isNull);
       expect(fake.lastOverlay, './overlays/comstar');
+    });
+
+    test('open with mtls.enabled fails when material missing', () async {
+      final dir = Directory.systemTemp.createTempSync('comstar-mtls-missing-');
+      addTearDown(() {
+        try {
+          dir.deleteSync(recursive: true);
+        } on Object {
+          // ignore
+        }
+      });
+      final cfg = ComstarConfig.loadMap(
+        {
+          'orchestration': {
+            'base_url': 'https://10.0.10.16:8765',
+            'token': '',
+            'ttl_seconds': 3600,
+            'timeout_seconds': 15,
+            'overlay_root': './overlays/comstar',
+            'mtls': {
+              'enabled': true,
+              'material_dir': dir.path,
+            },
+          },
+          'vision': {
+            'codeproject_url': 'http://127.0.0.1:32168',
+            'detection_endpoint': '/v1/vision/detection',
+            'recognize_endpoint': '/v1/vision/face/recognize',
+            'ambient_fps': 1,
+            'engaged_fps': 3,
+            'person_confidence': 0.6,
+            'face_confidence': 0.55,
+            'recognize_votes': 3,
+            'identity_ttl_seconds': 300,
+          },
+          'audio': {
+            'wakeword_model': './models/hey_comstar.onnx',
+            'wakeword_threshold': 0.55,
+            'vad_silence_ms': 700,
+            'max_utterance_seconds': 15,
+            'followup_window_seconds': 10,
+            'duplex': 'half',
+          },
+          'avatar': {
+            'render': 'local',
+            'model': './assets/comstar.glb',
+            'tts': 'piper',
+            'piper_voice': 'en_US-ryan-high',
+          },
+          'attention': {
+            'face_attention_trigger': false,
+            'stranger_mode': 'restricted',
+          },
+          'directory': {
+            'enabled': false,
+            'sidecar_url': '',
+            'require': true,
+            'cache_ttl_seconds': 600,
+            'timeout_ms': 1500,
+          },
+          'dev': {
+            'bind_lan': false,
+            'lan_token': '',
+          },
+        },
+        sourcePath: 'test-mtls.yaml',
+      );
+      final mtlsSession = ComstarSession(config: cfg, bridge: fake);
+      expect(
+        () => mtlsSession.open(userid: 'zlatko', guest: false),
+        throwsA(isA<StateError>().having(
+          (e) => e.message,
+          'message',
+          contains('material missing'),
+        )),
+      );
+    });
+
+    test('open with mtls.enabled passes ReachMtlsConfig when material present',
+        () async {
+      final dir = Directory.systemTemp.createTempSync('comstar-mtls-ok-');
+      addTearDown(() {
+        try {
+          dir.deleteSync(recursive: true);
+        } on Object {
+          // ignore
+        }
+      });
+      File('${dir.path}/cert.pem').writeAsStringSync('CERT');
+      File('${dir.path}/key.pem').writeAsStringSync('KEY');
+      File('${dir.path}/ca.pem').writeAsStringSync('CA');
+      final cfg = ComstarConfig.loadMap(
+        {
+          'orchestration': {
+            'base_url': 'https://10.0.10.16:8765',
+            'token': '',
+            'ttl_seconds': 3600,
+            'timeout_seconds': 15,
+            'overlay_root': './overlays/comstar',
+            'mtls': {
+              'enabled': true,
+              'material_dir': dir.path,
+            },
+          },
+          'vision': {
+            'codeproject_url': 'http://127.0.0.1:32168',
+            'detection_endpoint': '/v1/vision/detection',
+            'recognize_endpoint': '/v1/vision/face/recognize',
+            'ambient_fps': 1,
+            'engaged_fps': 3,
+            'person_confidence': 0.6,
+            'face_confidence': 0.55,
+            'recognize_votes': 3,
+            'identity_ttl_seconds': 300,
+          },
+          'audio': {
+            'wakeword_model': './models/hey_comstar.onnx',
+            'wakeword_threshold': 0.55,
+            'vad_silence_ms': 700,
+            'max_utterance_seconds': 15,
+            'followup_window_seconds': 10,
+            'duplex': 'half',
+          },
+          'avatar': {
+            'render': 'local',
+            'model': './assets/comstar.glb',
+            'tts': 'piper',
+            'piper_voice': 'en_US-ryan-high',
+          },
+          'attention': {
+            'face_attention_trigger': false,
+            'stranger_mode': 'restricted',
+          },
+          'directory': {
+            'enabled': false,
+            'sidecar_url': '',
+            'require': true,
+            'cache_ttl_seconds': 600,
+            'timeout_ms': 1500,
+          },
+          'dev': {
+            'bind_lan': false,
+            'lan_token': '',
+          },
+        },
+        sourcePath: 'test-mtls.yaml',
+      );
+      final mtlsSession = ComstarSession(config: cfg, bridge: fake);
+      await mtlsSession.open(userid: 'zlatko', guest: false);
+      expect(fake.lastConfig!.mtls?.materialDir, dir.path);
     });
 
     test('guest session uses guest header', () async {

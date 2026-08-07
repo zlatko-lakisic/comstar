@@ -7,6 +7,9 @@ orchestration:
   ttl_seconds: 3600
   timeout_seconds: 15
   overlay_root: ./overlays/comstar
+  # mtls:
+  #   enabled: true
+  #   client_name: comstar-dev
 
 vision:
   codeproject_url: http://10.0.10.16:32168

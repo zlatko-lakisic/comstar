@@ -67,6 +67,14 @@ class ComstarConfig {
     'ttl_seconds',
     'timeout_seconds',
     'overlay_root',
+    'mtls',
+  };
+
+  static const _orchestrationMtlsKeys = {
+    'enabled',
+    'material_dir',
+    'client_name',
+    'trust_enrollment_ca',
   };
 
   static const _visionKeys = {
@@ -313,13 +321,42 @@ class ComstarConfig {
 
   static OrchestrationConfig _parseOrchestration(Map<String, dynamic> map) {
     _assertKnownKeys(map.keys, _orchestrationKeys, 'orchestration');
+    final mtlsRaw = map['mtls'];
+    final mtls = mtlsRaw == null
+        ? const OrchestrationMtlsConfig()
+        : _parseOrchestrationMtls(
+            Map<String, dynamic>.from(mtlsRaw as Map),
+          );
+    final baseUrl = _requireString(map, 'base_url', 'orchestration');
+    if (mtls.enabled) {
+      final uri = Uri.tryParse(baseUrl.replaceAll(RegExp(r'/+$'), ''));
+      if (uri == null || uri.scheme != 'https') {
+        throw ConfigError(
+          'orchestration.mtls.enabled requires orchestration.base_url '
+          'to be https://… (got $baseUrl)',
+        );
+      }
+    }
     return OrchestrationConfig(
-      baseUrl: _requireString(map, 'base_url', 'orchestration'),
+      baseUrl: baseUrl,
       token: _optionalString(map, 'token') ?? '',
       ttlSeconds: _requireInt(map, 'ttl_seconds', 'orchestration'),
       timeoutSeconds:
           _requireInt(map, 'timeout_seconds', 'orchestration'),
       overlayRoot: _requireString(map, 'overlay_root', 'orchestration'),
+      mtls: mtls,
+    );
+  }
+
+  static OrchestrationMtlsConfig _parseOrchestrationMtls(
+    Map<String, dynamic> map,
+  ) {
+    _assertKnownKeys(map.keys, _orchestrationMtlsKeys, 'orchestration.mtls');
+    return OrchestrationMtlsConfig(
+      enabled: _optionalBool(map, 'enabled') ?? false,
+      materialDir: _optionalString(map, 'material_dir') ?? '',
+      clientName: _optionalString(map, 'client_name') ?? '',
+      trustEnrollmentCa: _optionalBool(map, 'trust_enrollment_ca') ?? true,
     );
   }
 
@@ -781,6 +818,38 @@ class ComstarConfig {
     if (value is bool) return value;
     throw ConfigError('$section.$key must be a boolean');
   }
+
+  static bool? _optionalBool(Map<String, dynamic> map, String key) {
+    final value = map[key];
+    if (value == null) return null;
+    if (value is bool) return value;
+    throw ConfigError('$key must be a boolean');
+  }
+}
+
+class OrchestrationMtlsConfig {
+  const OrchestrationMtlsConfig({
+    this.enabled = false,
+    this.materialDir = '',
+    this.clientName = '',
+    this.trustEnrollmentCa = true,
+  });
+
+  final bool enabled;
+  final String materialDir;
+  final String clientName;
+  final bool trustEnrollmentCa;
+
+  /// Default `~/.local/share/comstar/ao-mtls` when [materialDir] is empty.
+  String resolvedMaterialDir() {
+    final trimmed = materialDir.trim();
+    if (trimmed.isNotEmpty) return trimmed;
+    final home = Platform.environment['HOME']?.trim() ?? '';
+    if (home.isEmpty) {
+      return p.join('.local', 'share', 'comstar', 'ao-mtls');
+    }
+    return p.join(home, '.local', 'share', 'comstar', 'ao-mtls');
+  }
 }
 
 class OrchestrationConfig {
@@ -790,6 +859,7 @@ class OrchestrationConfig {
     required this.ttlSeconds,
     required this.timeoutSeconds,
     required this.overlayRoot,
+    this.mtls = const OrchestrationMtlsConfig(),
   });
 
   final String baseUrl;
@@ -797,6 +867,7 @@ class OrchestrationConfig {
   final int ttlSeconds;
   final int timeoutSeconds;
   final String overlayRoot;
+  final OrchestrationMtlsConfig mtls;
 }
 
 class VisionConfig {

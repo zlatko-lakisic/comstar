@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:ao_reach/ao_reach.dart';
+import 'package:comstar_bridge/ao_mtls/service.dart';
 import 'package:comstar_bridge/backoff.dart';
 import 'package:comstar_bridge/config.dart';
 import 'package:comstar_bridge/google/mcp_yaml.dart';
@@ -398,9 +399,23 @@ class ComstarSession {
       headers['x-warpgate-token'] = config.orchestration.token;
     }
 
+    ReachMtlsConfig? mtls;
+    final mtlsCfg = config.orchestration.mtls;
+    if (mtlsCfg.enabled) {
+      final dir = mtlsCfg.resolvedMaterialDir();
+      if (!AoMtlsService.materialPresent(dir)) {
+        throw StateError(
+          'AO mTLS enabled but material missing at $dir — '
+          'pair via Admin AO pairing or make ao-mtls-enroll',
+        );
+      }
+      mtls = ReachMtlsConfig(materialDir: dir);
+    }
+
     logInfo('session_open', 'Opening AO session', data: {
       'userid': userid,
       'guest': guest,
+      'mtls': mtls != null,
     });
 
     await _bridge.start(
@@ -412,6 +427,7 @@ class ComstarSession {
         speechToken: speechTokenFromEnv(),
         speechSttBaseUrlOverride: speechSttOverrideFromEnv(),
         speechTtsBaseUrlOverride: speechTtsOverrideFromEnv(),
+        mtls: mtls,
       ),
       overlayRoot: config.orchestration.overlayRoot,
       mcpBootstrap: _mcpBootstrap,

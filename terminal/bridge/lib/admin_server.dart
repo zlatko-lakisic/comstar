@@ -15,6 +15,7 @@ import 'package:comstar_bridge/host_metrics.dart';
 import 'package:comstar_bridge/house_presence.dart';
 import 'package:comstar_bridge/log.dart';
 import 'package:comstar_bridge/admin_ops.dart';
+import 'package:comstar_bridge/ao_mtls/service.dart';
 import 'package:comstar_bridge/net/service.dart';
 import 'package:comstar_bridge/road/service.dart';
 
@@ -34,6 +35,7 @@ class AdminServer {
     this.kioskRoot,
     this.road,
     this.network,
+    this.aoMtls,
     this.port = 8781,
     this.httpClientFactory,
     Future<Process> Function(String executable, List<String> arguments)?
@@ -49,6 +51,7 @@ class AdminServer {
   final String? kioskRoot;
   final RoadService? road;
   final NetworkService? network;
+  final AoMtlsService? aoMtls;
   final int port;
 
   /// Injectable for tests.
@@ -248,6 +251,16 @@ class AdminServer {
 
       if (request.method == 'POST' && adminPath == '/admin/api/network') {
         await _handleNetworkPost(request);
+        return;
+      }
+
+      if (request.method == 'GET' && adminPath == '/admin/api/ao_mtls') {
+        await _handleAoMtlsGet(request);
+        return;
+      }
+
+      if (request.method == 'POST' && adminPath == '/admin/api/ao_mtls') {
+        await _handleAoMtlsPost(request);
         return;
       }
 
@@ -540,6 +553,35 @@ class AdminServer {
       await _writeJson(request, 400, {'ok': false, 'error': e.message});
     } on StateError catch (e) {
       await _writeJson(request, 502, {'ok': false, 'error': e.message});
+    }
+  }
+
+  Future<void> _handleAoMtlsGet(HttpRequest request) async {
+    final svc = aoMtls;
+    if (svc == null) {
+      await _writeJson(request, 503, {'ok': false, 'error': 'ao_mtls_unavailable'});
+      return;
+    }
+    await _writeJson(request, 200, await svc.inspect());
+  }
+
+  Future<void> _handleAoMtlsPost(HttpRequest request) async {
+    final svc = aoMtls;
+    if (svc == null) {
+      await _writeJson(request, 503, {'ok': false, 'error': 'ao_mtls_unavailable'});
+      return;
+    }
+    final body = await _readJson(request);
+    try {
+      final result = await svc.handleAction(body);
+      final code = result['ok'] == true ? 200 : 502;
+      await _writeJson(request, code, result);
+    } on ArgumentError catch (e) {
+      await _writeJson(request, 400, {'ok': false, 'error': e.message});
+    } on StateError catch (e) {
+      await _writeJson(request, 502, {'ok': false, 'error': e.message});
+    } on Object catch (e) {
+      await _writeJson(request, 502, {'ok': false, 'error': e.toString()});
     }
   }
 

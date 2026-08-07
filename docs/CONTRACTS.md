@@ -62,6 +62,7 @@ never require the admin token.
 | `/admin/api/announce` | GET/POST | token if LAN-bound | Announce queue inspect / inject / force gate (M10) |
 | `/admin/api/road` | GET/POST | token if LAN-bound | Road VPN status / configure / connect (ADR 0011) |
 | `/admin/api/network` | GET/POST | token if LAN-bound | Host Wi‑Fi + IPv4 (DHCP/static) via nmcli (ADR 0012) |
+| `/admin/api/ao_mtls` | GET/POST | token if LAN-bound | AO Reach mTLS pairing status / enroll / clear (ADR 0013) |
 | `/admin/inject` | POST | token if LAN-bound | Attention event inject; **403 unless `COMSTAR_ENV=dev`** |
 | `/oauth/google/*` | * | none | Desktop OAuth start/callback/resend |
 
@@ -208,6 +209,42 @@ Operator control of **Wi‑Fi** and **IPv4** on ethernet/wlan via NetworkManager
 
 IPv4 fields are validated (dotted quad / CIDR prefix). Wrong static config can
 lock out LAN admin — operator responsibility.
+
+#### AO mTLS pairing (`GET/POST /admin/api/ao_mtls`) — SPEC
+
+One-time client cert enrollment against Ada AO (ADR 0013). Material under
+`~/.local/share/comstar/ao-mtls/` (or `orchestration.mtls.material_dir`).
+Requires `openssl` on PATH. Does **not** restart the bridge — session open
+picks up material on the next `open()`.
+
+**GET:**
+
+```json
+{
+  "ok": true,
+  "enabled": true,
+  "base_url": "https://10.0.10.16:8765",
+  "material_dir": "/home/md-admin/.local/share/comstar/ao-mtls",
+  "paired": true,
+  "client_name": "comstar-ai",
+  "subject": "/CN=comstar-ai",
+  "expires_at": 1780000000.0,
+  "enrolled_at": "2026-08-07T20:00:00.000Z",
+  "openssl_ok": true,
+  "last_error": null
+}
+```
+
+**POST** body `{ "action": "<name>", ... }`:
+
+| action | Body fields | Meaning |
+|---|---|---|
+| `enroll` | `enroll_token` (required), optional `client_name` | Redeem Ada mint-token; write PEMs + `meta.json` |
+| `clear` | — | Delete local PEMs / meta (does not revoke on Ada) |
+| `probe` | — | `GET {base_url}/health` with client cert; reports HTTP status |
+
+Enroll tokens are one-time and never logged. `enroll` uses TOFU
+(`trustEnrollmentCa`) unless CA PEM is already on disk.
 
 Restart units are whitelisted (`comstar-*.service` only). Loopback:
 `ssh -L 8781:127.0.0.1:8781 comstar` → `http://127.0.0.1:8781/admin/`. LAN:
@@ -405,13 +442,19 @@ Rules:
 
 ## 4. Bridge → AO via `ao_reach`
 
-**Status:** VERIFIED — AO v1.27.4 at `http://10.0.10.16:8765` with overlay +
-MCP tunnel confirmed 2026-08-02 (`spike/reach_hello.dart` returns Hello).
-COMSTAR overlays live-tested the same day: greeter ~0.85s (“Welcome, Zlatko!”),
-voice_responder ~1.0s. Host MCP catalog ids: `fetch_url`, `filesystem_local`,
-`home_assistant`, `media_audio_transcribe`, `media_understand`,
-`media_video_analyze`. Do **not** request `memory` / `time` / `math` / `vision`
-on this host — AO rejects the turn.
+**Status:** VERIFIED — Reach `v0.4.1` / AO ≥ 1.29. Ada serves **HTTPS + client
+certs** on `:8765` (direct, not Warpgate). Historical cleartext checks used
+`http://10.0.10.16:8765` (AO v1.27.4, 2026-08-02). Host MCP catalog ids:
+`fetch_url`, `filesystem_local`, `home_assistant`, `media_audio_transcribe`,
+`media_understand`, `media_video_analyze`. Do **not** request `memory` / `time` /
+`math` / `vision` on this host — AO rejects the turn.
+
+**mTLS (AO ≥ 1.29 / Reach ≥ 0.4):** when `orchestration.mtls.enabled` is true,
+`base_url` must be `https://…` and session open passes
+`ReachMtlsConfig(materialDir: …)`. Material from Admin **AO pairing** or
+`make ao-mtls-enroll` (ADR 0013). Fail closed if enabled but PEMs missing.
+`orchestration.token` (`x-warpgate-token`) is optional / transitional for
+non-mTLS hosts.
 
 **Speech (AO ≥ 1.28 / Reach ≥ 0.2):** when `hello.speech.enabled` is true,
 `SessionBridge.speechClient` is non-null. STT/TTS then use OpenAI-compatible HTTP
@@ -420,6 +463,7 @@ over LAN to those URLs — same trust boundary as CPAI/AO. Do **not** ferry PCM 
 the Reach WebSocket or route turns through the planner solely for STT.
 When `speechClient == null` (older AO, speech disabled, or session not started),
 fall back to `COMSTAR_STT_URL` / `COMSTAR_TTS_URL` (local Pi or Mac bring-up).
+Speech sidecars remain cleartext HTTP (out of mTLS scope).
 
 ### Connection
 
@@ -428,14 +472,19 @@ final bridge = SessionBridge();
 
 await bridge.start(
   config: ReachConnectionConfig(
-    baseUrl: cfg.orchestration.baseUrl,
+    baseUrl: cfg.orchestration.baseUrl, // https://… when mtls.enabled
     headers: {
       // identity.userid = FreeIPA uid after directory resolve (or faceId pass-through)
       'x-agentic-user-name': identity.userid,
       'x-agentic-session-id': 'comstar-${identity.userid}',
-      'x-warpgate-token': cfg.orchestration.token,
+      // optional / transitional (non-mTLS / Warpgate):
+      if (cfg.orchestration.token.isNotEmpty)
+        'x-warpgate-token': cfg.orchestration.token,
     },
     ttlSeconds: cfg.orchestration.ttlSeconds,
+    mtls: cfg.orchestration.mtls.enabled
+        ? ReachMtlsConfig(materialDir: cfg.orchestration.mtls.resolvedMaterialDir())
+        : null,
     // Optional when Ada sets AGENTIC_SPEECH_TOKEN:
     // speechToken: Platform.environment['COMSTAR_SPEECH_TOKEN'],
   ),
@@ -697,6 +746,10 @@ See `config/comstar.example.yaml` for the annotated version. Validation rules:
 | `audio.vad_silence_ms` | 300 ≤ x ≤ 2000 |
 | `audio.followup_window_seconds` | 0 ≤ x ≤ 30 |
 | `orchestration.timeout_seconds` | 5 ≤ x ≤ 60 |
+| `orchestration.mtls.enabled` | when true, `base_url` must be `https://…` |
+| `orchestration.mtls.material_dir` | optional; default `~/.local/share/comstar/ao-mtls` |
+| `orchestration.mtls.client_name` | optional CN for enroll (default hostname) |
+| `orchestration.mtls.trust_enrollment_ca` | default true (TOFU on first enroll) |
 | `attention.stranger_mode` | enum: restricted \| greet \| ignore |
 | `attention.timezone` | optional spoken TZ label (IANA or human); clock uses Pi system time |
 | `attention.idle_sleep_seconds` | 0–86400; `0` disables; silent auto-sleep after idle (default 600) |

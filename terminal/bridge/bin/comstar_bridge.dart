@@ -7,6 +7,7 @@ import 'package:comstar_bridge/attention/clock.dart';
 import 'package:comstar_bridge/attention/coordinator.dart';
 import 'package:comstar_bridge/avatar_load_governor.dart';
 import 'package:comstar_bridge/admin_server.dart';
+import 'package:comstar_bridge/ao_mtls/service.dart';
 import 'package:comstar_bridge/config.dart';
 import 'package:comstar_bridge/envelope.dart';
 import 'package:comstar_bridge/env_sources.dart';
@@ -159,6 +160,8 @@ Future<void> main(List<String> arguments) async {
   );
   await road.start();
 
+  final aoMtls = AoMtlsService(config: config);
+
   final adminDir = Directory('$repoRoot/terminal/admin');
   final hostMetrics = HostMetrics();
   await hostMetrics.sample(); // prime /proc/stat delta
@@ -173,6 +176,7 @@ Future<void> main(List<String> arguments) async {
     kioskRoot: kioskDir.existsSync() ? kioskDir.path : null,
     road: road,
     network: network,
+    aoMtls: aoMtls,
   );
   await admin.start();
   await coordinator.googleDesktop.start(sharedServer: true);

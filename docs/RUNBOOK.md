@@ -381,6 +381,44 @@ Runtime + secrets: `GET/POST /admin/api/road` under
 
 Set `COMSTAR_ROAD_NMCLI_SUDO=0` to force plain `nmcli` (user connections only).
 
+### AO mTLS pairing (Ada)
+
+Ada AO ≥ 1.29 requires **HTTPS + client certificates** on `:8765` (direct, not
+Warpgate). See ADR 0013. Speech sidecars stay cleartext.
+
+**1. Config** (on the Pi `config/comstar.yaml`):
+
+```yaml
+orchestration:
+  base_url: https://10.0.10.16:8765
+  token: ""                    # Warpgate optional / unused under mTLS
+  mtls:
+    enabled: true
+    client_name: comstar-ai    # optional CN
+    # material_dir: ""         # default ~/.local/share/comstar/ao-mtls
+```
+
+**2. Mint a one-time token on Ada**
+
+```bash
+python -m orchestration.serve.mtls mint-token --client-name comstar-ai
+```
+
+**3. Enroll on the Pi** (either):
+
+- Admin → **AO pairing** → paste token → Enroll / re-pair
+- Headless: `make ao-mtls-enroll TOKEN=… CONFIG=config/comstar.yaml`
+
+Requires `openssl` on PATH. Material: `cert.pem` / `key.pem` / `ca.pem` +
+`meta.json` under the material dir (never commit).
+
+**4. Verify**
+
+Admin **Probe /health**, or
+`cd terminal/bridge && dart run tool/ao_mtls_enroll.dart --probe --config ../../config/comstar.yaml`.
+Restart bridge (or wait for next session open) so Reach uses the cert.
+Cert ~365d — re-pair from Admin when near expiry.
+
 ### Host network (Wi‑Fi + IPv4)
 
 Admin **Network** tab (`GET/POST /admin/api/network`, ADR 0012) uses the same

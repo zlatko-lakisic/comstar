@@ -1,8 +1,9 @@
-.PHONY: doctor bridge-dev kiosk-dev audio-sync deploy logs test stt-dev verify-cpai ao-hello site-dev site-build admin console pi-session plymouth soak road-vpn
+.PHONY: doctor bridge-dev kiosk-dev audio-sync deploy logs test stt-dev verify-cpai ao-hello site-dev site-build admin console pi-session plymouth soak road-vpn ao-mtls-enroll
 
 ROOT := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 REMOTE ?= comstar
 REMOTE_DIR ?= /opt/comstar/src
+CONFIG ?= config/comstar.yaml
 
 doctor:
 	@bash scripts/doctor.sh
@@ -34,6 +35,14 @@ plymouth:
 
 road-vpn:
 	@ssh "$(REMOTE)" "sudo bash $(REMOTE_DIR)/scripts/install-road-vpn.sh"
+
+# Headless AO mTLS enroll (ADR 0013). Mint token on Ada first.
+#   make ao-mtls-enroll TOKEN=… CONFIG=config/comstar.yaml
+# Or on the Pi after deploy:
+#   ssh comstar-lan 'cd /opt/comstar/src && TOKEN=… make ao-mtls-enroll'
+ao-mtls-enroll:
+	@test -n "$(TOKEN)" || (echo 'TOKEN=<ada-mint-token> required' >&2; exit 2)
+	cd terminal/bridge && TOKEN="$(TOKEN)" dart run tool/ao_mtls_enroll.dart --config "../../$(CONFIG)" $(if $(CLIENT_NAME),--client-name "$(CLIENT_NAME)",)
 
 logs:
 	@ssh "$(REMOTE)" 'journalctl --user -u comstar-bridge -u comstar-audio -u comstar-kiosk -n 80 --no-pager'

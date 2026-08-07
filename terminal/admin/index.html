@@ -71,6 +71,7 @@
                 </span>
               </button>
               <button type="button" class="tab" role="tab" aria-selected="false" data-tab="network" id="tabNetwork">Network</button>
+              <button type="button" class="tab" role="tab" aria-selected="false" data-tab="ao" id="tabAo">AO pairing</button>
               <button type="button" class="tab" role="tab" aria-selected="false" data-tab="logs" id="tabLogs">Logs</button>
             </div>
             <span class="freshness mono" id="opsFresh">—</span>
@@ -84,6 +85,9 @@
             </div>
             <div class="tab-pane" id="networkPane" role="tabpanel" data-pane="network" hidden>
               <div id="networkRoot"></div>
+            </div>
+            <div class="tab-pane" id="aoPane" role="tabpanel" data-pane="ao" hidden>
+              <div id="aoMtlsRoot"></div>
             </div>
             <div class="tab-pane tab-pane--logs" id="logsPane" role="tabpanel" data-pane="logs" hidden>
               <div class="logs-pane-head">

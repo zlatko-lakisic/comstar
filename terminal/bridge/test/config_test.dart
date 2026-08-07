@@ -16,6 +16,7 @@ void main() {
       expect(config.vision.ambientFps, 1);
       expect(config.vision.engagedFps, 3);
       expect(config.orchestration.timeoutSeconds, 15);
+      expect(config.orchestration.mtls.enabled, isFalse);
       expect(config.attention.strangerMode, 'restricted');
       expect(config.attention.workingAckMs, 4500);
       expect(config.attention.workingAckOnTools, isTrue);
@@ -23,6 +24,79 @@ void main() {
       expect(config.phrases.enabled, isTrue);
       expect(config.phrases.refreshHours, 6);
       expect(config.phrases.bankSize, 8);
+    });
+
+    test('orchestration.mtls requires https base_url when enabled', () {
+      final base = ComstarConfig.loadFile(fixturePath);
+      final map = <String, dynamic>{
+        'orchestration': {
+          'base_url': base.orchestration.baseUrl,
+          'token': base.orchestration.token,
+          'ttl_seconds': base.orchestration.ttlSeconds,
+          'timeout_seconds': base.orchestration.timeoutSeconds,
+          'overlay_root': base.orchestration.overlayRoot,
+          'mtls': {'enabled': true},
+        },
+        'vision': {
+          'codeproject_url': base.vision.codeprojectUrl,
+          'detection_endpoint': base.vision.detectionEndpoint,
+          'recognize_endpoint': base.vision.recognizeEndpoint,
+          'ambient_fps': base.vision.ambientFps,
+          'engaged_fps': base.vision.engagedFps,
+          'person_confidence': base.vision.personConfidence,
+          'face_confidence': base.vision.faceConfidence,
+          'recognize_votes': base.vision.recognizeVotes,
+          'identity_ttl_seconds': base.vision.identityTtlSeconds,
+        },
+        'audio': {
+          'wakeword_model': base.audio.wakewordModel,
+          'wakeword_threshold': base.audio.wakewordThreshold,
+          'vad_silence_ms': base.audio.vadSilenceMs,
+          'max_utterance_seconds': base.audio.maxUtteranceSeconds,
+          'followup_window_seconds': base.audio.followupWindowSeconds,
+          'duplex': base.audio.duplex,
+        },
+        'avatar': {
+          'render': base.avatar.render,
+          'model': base.avatar.model,
+          'tts': base.avatar.tts,
+          'piper_voice': base.avatar.piperVoice,
+        },
+        'attention': {
+          'face_attention_trigger': base.attention.faceAttentionTrigger,
+          'stranger_mode': base.attention.strangerMode,
+        },
+        'directory': {
+          'enabled': base.directory.enabled,
+          'sidecar_url': base.directory.sidecarUrl,
+          'require': base.directory.require,
+          'cache_ttl_seconds': base.directory.cacheTtlSeconds,
+          'timeout_ms': base.directory.timeoutMs,
+        },
+        'dev': {'bind_lan': false, 'lan_token': ''},
+      };
+      expect(
+        () => ComstarConfig.loadMap(map, sourcePath: 'test-mtls.yaml'),
+        throwsA(isA<ConfigError>().having(
+          (e) => e.message,
+          'message',
+          contains('https'),
+        )),
+      );
+
+      map['orchestration'] = {
+        ...(map['orchestration'] as Map),
+        'base_url': 'https://10.0.10.16:8765',
+        'mtls': {
+          'enabled': true,
+          'client_name': 'comstar-ai',
+          'trust_enrollment_ca': true,
+        },
+      };
+      final cfg = ComstarConfig.loadMap(map, sourcePath: 'test-mtls.yaml');
+      expect(cfg.orchestration.mtls.enabled, isTrue);
+      expect(cfg.orchestration.mtls.clientName, 'comstar-ai');
+      expect(cfg.orchestration.mtls.resolvedMaterialDir(), contains('ao-mtls'));
     });
 
     test('phrases section overrides defaults', () {

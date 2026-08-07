@@ -1014,3 +1014,75 @@ html, body {
   padding: 4px 8px;
 }
 
+/* AO mTLS pairing */
+.ao-mtls {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.ao-mtls__err {
+  color: var(--amber, #d4a017);
+  margin: 0;
+}
+.ao-mtls__banner {
+  padding: 10px 12px;
+  border-radius: var(--r-s);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  font-size: 13px;
+}
+.ao-mtls__banner.is-up {
+  border-color: color-mix(in srgb, var(--cyan, #3dd6c3) 50%, var(--border));
+}
+.ao-mtls__banner.is-down {
+  border-color: color-mix(in srgb, var(--amber, #d4a017) 50%, var(--border));
+}
+.ao-mtls__banner.is-off {
+  opacity: 0.85;
+}
+.ao-mtls__kv {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+}
+.ao-mtls__kv-row {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 8px;
+}
+.ao-mtls__step-title {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.ao-mtls__hint {
+  margin: 0 0 10px;
+  font-size: 12px;
+  opacity: 0.85;
+}
+.ao-mtls__form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ao-mtls__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+.ao-mtls__field input {
+  font: 400 12px var(--font-mono);
+  color: var(--fg);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-s);
+  padding: 6px 8px;
+}
+.ao-mtls__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+
