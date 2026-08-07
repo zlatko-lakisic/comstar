@@ -421,6 +421,8 @@ bridge = new BridgeClient(bridgeUrl, {
       fps: d.fps ?? d.maxFps,
       scale: d.scale ?? d.emblemScale,
       emblem: d.emblem,
+      fitMaxPx: d.fitMaxPx ?? d.maxSize,
+      fitFill: d.fitFill,
     });
     if (d.mood) avatar.setState(d.mood);
     console.info('[avatar] options', applied);
@@ -429,7 +431,7 @@ bridge = new BridgeClient(bridgeUrl, {
       statusEl.textContent =
         `state ${avatar.state}  fps ${s.fps}  ` +
         `gaze ${avatar.gaze.x.toFixed(2)}  amp ${avatar.amplitude.toFixed(2)}  ` +
-        `scale ${avatar.emblemScale}  bloom ${avatar.bloom}`;
+        `scale ${avatar.emblemScale}  fit ${avatar.fitMaxPx}  bloom ${avatar.bloom}`;
     }
   },
 
@@ -558,6 +560,9 @@ try {
     emblem: params.get('emblem') || 'starburst',
     // Pi: modest SVG bloom + capped fps. Override: ?bloom=0&fps=12 or COMSTAR_KIOSK_URL.
     emblemScale: parseFloat(params.get('scale') || '0.62'),
+    // Cap CSS square so the mark stays ~same size across resolutions; margins grow.
+    fitMaxPx: parseFloat(params.get('fitMax') || params.get('maxSize') || '720'),
+    fitFill: parseFloat(params.get('fitFill') || '0.92'),
     bloom: parseFloat(params.get('bloom') || '3'),
     maxFps: parseFloat(params.get('fps') || '12'),
     onEvent(type, data) {

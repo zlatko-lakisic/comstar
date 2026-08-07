@@ -31,14 +31,25 @@ const GAZE_DAMPING = 2.5;
 const MAX_DRIFT = 18;      // user units the emblem leans toward a person
 const METER_CIRCUM = 2 * Math.PI * 226;
 
+function _clampNum(raw, fallback, min, max) {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, n));
+}
+
 export class ComstarAvatar {
   /**
    * @param {HTMLElement} container  element to mount into; sized by CSS
    * @param {object} opts
    * @param {(type:string,data:object)=>void} opts.onEvent
    * @param {string} [opts.emblem='starburst']  preset name, or raw SVG markup
-   * @param {number}  [opts.emblemScale=0.62] emblem size relative to the panel;
-   *                   lower on portrait panels, the emblem must not touch the edges
+   * @param {number}  [opts.emblemScale=0.62] emblem size inside the fitted square
+   *                   (SVG user-space scale; keeps star points off the edges)
+   * @param {number}  [opts.fitMaxPx=720] max CSS square edge in px — keeps the
+   *                   mark roughly the same size across resolutions; leftover
+   *                   stage becomes margin. Shrinks when the stage is smaller.
+   * @param {number}  [opts.fitFill=0.92] fraction of the stage short axis to use
+   *                   before applying fitMaxPx (always leave a little gutter)
    * @param {number}  [opts.bloom=0] halo blur in SVG user units (0 disables).
    *                   User units, not CSS px, so it is invariant to panel size.
    * @param {number}  [opts.maxFps=24] hard cap for the animation loop (Pi GPU).
@@ -47,6 +58,8 @@ export class ComstarAvatar {
     this.container = container;
     this.onEvent = opts.onEvent || (() => {});
     this.emblemScale = opts.emblemScale ?? 0.62;
+    this.fitMaxPx = _clampNum(opts.fitMaxPx ?? opts.maxSize, 720, 200, 4096);
+    this.fitFill = _clampNum(opts.fitFill, 0.92, 0.5, 1);
     this.bloom = opts.bloom ?? 0;
     this.maxFps = Math.max(8, Math.min(60, opts.maxFps ?? 12));
     this.emblemName = typeof opts.emblem === 'string' ? opts.emblem : 'starburst';
@@ -281,7 +294,7 @@ export class ComstarAvatar {
       : [...this.core.querySelectorAll('.cs-bars rect')];
   }
 
-  /** Keep the SVG (and its glow) square inside the (often portrait) stage. */
+  /** Keep the SVG (and its glow) a centered square; cap size across resolutions. */
   _fitSquare() {
     if (!this.svg || !this.container) return;
     const w = this.container.clientWidth || 0;
@@ -291,7 +304,13 @@ export class ComstarAvatar {
     const vh = (typeof window !== 'undefined' && window.innerHeight) || 1024;
     const aw = w >= 1 ? w : vw;
     const ah = h >= 1 ? h : Math.max(1, vh - 92);
-    const s = Math.min(aw, ah);
+    const short = Math.min(aw, ah);
+    // Same visual size on large panels: use short axis (with a small gutter),
+    // but never grow past fitMaxPx — extra space becomes margin around center.
+    const s = Math.max(
+      1,
+      Math.round(Math.min(short * this.fitFill, this.fitMaxPx)),
+    );
     if (s < 1) return;
     // Avoid ResizeObserver feedback loops on Pi Chromium.
     if (this._fitPx === s) return;
@@ -406,8 +425,8 @@ export class ComstarAvatar {
 
   /**
    * Live tuning without remounting the page.
-   * @param {{bloom?: number, maxFps?: number, fps?: number, emblemScale?: number, scale?: number, emblem?: string}} opts
-   * @returns {{bloom: number, maxFps: number, emblemScale: number, emblem: string}}
+   * @param {{bloom?: number, maxFps?: number, fps?: number, emblemScale?: number, scale?: number, emblem?: string, fitMaxPx?: number, maxSize?: number, fitFill?: number}} opts
+   * @returns {{bloom: number, maxFps: number, emblemScale: number, emblem: string, fitMaxPx: number, fitFill: number}}
    */
   setOptions(opts = {}) {
     if (opts.bloom != null && Number.isFinite(Number(opts.bloom))) {
@@ -420,6 +439,17 @@ export class ComstarAvatar {
     const scaleRaw = opts.emblemScale ?? opts.scale;
     if (scaleRaw != null && Number.isFinite(Number(scaleRaw))) {
       this.emblemScale = Math.max(0.2, Math.min(1.2, Number(scaleRaw)));
+    }
+    const maxRaw = opts.fitMaxPx ?? opts.maxSize;
+    if (maxRaw != null && Number.isFinite(Number(maxRaw))) {
+      this.fitMaxPx = _clampNum(maxRaw, this.fitMaxPx, 200, 4096);
+      this._fitPx = undefined;
+      this._fitSquare();
+    }
+    if (opts.fitFill != null && Number.isFinite(Number(opts.fitFill))) {
+      this.fitFill = _clampNum(opts.fitFill, this.fitFill, 0.5, 1);
+      this._fitPx = undefined;
+      this._fitSquare();
     }
     if (opts.emblem != null && String(opts.emblem).trim()) {
       const name = String(opts.emblem).trim();
@@ -437,13 +467,15 @@ export class ComstarAvatar {
     return this.getOptions();
   }
 
-  /** @returns {{bloom: number, maxFps: number, emblemScale: number, emblem: string}} */
+  /** @returns {{bloom: number, maxFps: number, emblemScale: number, emblem: string, fitMaxPx: number, fitFill: number}} */
   getOptions() {
     return {
       bloom: this.bloom,
       maxFps: this.maxFps,
       emblemScale: this.emblemScale,
       emblem: this.emblemName || 'starburst',
+      fitMaxPx: this.fitMaxPx,
+      fitFill: this.fitFill,
     };
   }
 

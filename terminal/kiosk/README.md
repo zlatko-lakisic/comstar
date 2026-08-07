@@ -46,13 +46,18 @@ Bridge pushes `avatar.options` to the kiosk over WS.
 
 ## Sizing it on the real panel
 
-Two values must be set by eye against the actual screen. Both are live in
-`debug.html`, via `POST /control/avatar` on the Pi, and as query parameters
-(`?scale=` and `?bloom=`) for cold start.
-| Option | Default | What goes wrong |
+The emblem is a **centered square**. Layout uses the stage short axis, then
+caps at `fitMaxPx` so the mark stays roughly the same size on large monitors —
+extra space becomes margin. On small stages it shrinks to fit.
+
+| Option | Default | What it does |
 |---|---|---|
-| `emblemScale` | `0.62` | Too high and the star points run off the edges. Portrait panels need a lower value than you expect, because the emblem is sized by the short axis but the points extend along the long one. |
-| `bloom` | `9` | Too high and the halo swamps the sharp core into a white mass. Measured in SVG **user units**, not CSS pixels, so it is invariant to panel size. Set `0` to disable. |
+| `fitMaxPx` | `720` | Max CSS square edge (px). Raise on a huge panel if you want it bigger; lower to force more margin. Query: `?fitMax=720` |
+| `fitFill` | `0.92` | Fraction of the short stage axis used before the max cap (always leave a little gutter) |
+| `emblemScale` | `0.62` | SVG scale *inside* the square (star points / inset). Too high and points clip. Query: `?scale=` |
+| `bloom` | `9` | Halo blur in SVG **user units**, not CSS px. Set `0` to disable. |
+
+Live via `debug.html`, `POST /control/avatar`, or cold-start query params.
 
 > The bloom is an SVG `feGaussianBlur`, deliberately not a CSS `filter: blur()`.
 > CSS blur is measured in screen pixels and applied *after* the viewBox scale,

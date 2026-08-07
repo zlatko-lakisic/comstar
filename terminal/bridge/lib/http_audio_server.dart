@@ -198,6 +198,8 @@ class HttpAudioServer {
     takeNum('bloom', min: 0, max: 24);
     takeNum('fps', alias: 'maxFps', min: 8, max: 60);
     takeNum('scale', alias: 'emblemScale', min: 0.2, max: 1.2);
+    takeNum('fitMaxPx', alias: 'maxSize', min: 200, max: 4096);
+    takeNum('fitFill', min: 0.5, max: 1.0);
     // Preset names only — matches kiosk resolveEmblem allowlist (no raw SVG).
     const allowedEmblems = {
       'starburst',

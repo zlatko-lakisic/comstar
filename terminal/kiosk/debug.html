@@ -69,6 +69,8 @@ const q = new URLSearchParams(location.search);
 const opts = {
   emblem: q.get('emblem') || 'starburst',
   emblemScale: parseFloat(q.get('scale') || '0.62'),
+  fitMaxPx: parseFloat(q.get('fitMax') || q.get('maxSize') || '720'),
+  fitFill: parseFloat(q.get('fitFill') || '0.92'),
   bloom: parseFloat(q.get('bloom') || '0'),
   onEvent: (type, data) => console.log('[avatar]', type, data),
 };

@@ -40,6 +40,14 @@ export function mountEmblem(container, opts = {}) {
   const bloom = opts.bloom ?? 0;
   const emblemScale = opts.emblemScale ?? opts.scale ?? 0.62;
   const maxFps = Math.max(8, Math.min(60, opts.maxFps ?? 24));
+  const fitMaxPx = (() => {
+    const n = Number(opts.fitMaxPx ?? opts.maxSize ?? 720);
+    return Number.isFinite(n) ? Math.max(200, Math.min(4096, n)) : 720;
+  })();
+  const fitFill = (() => {
+    const n = Number(opts.fitFill ?? 0.92);
+    return Number.isFinite(n) ? Math.max(0.5, Math.min(1, n)) : 0.92;
+  })();
   const showBg = opts.bg !== false;
   const emblem = resolveEmblem(opts.emblem ?? 'starburst');
 
@@ -133,7 +141,8 @@ export function mountEmblem(container, opts = {}) {
     const w = container.clientWidth || 0;
     const h = container.clientHeight || 0;
     if (w < 1 || h < 1) return;
-    const s = Math.min(w, h);
+    const short = Math.min(w, h);
+    const s = Math.max(1, Math.round(Math.min(short * fitFill, fitMaxPx)));
     svg.style.width = `${s}px`;
     svg.style.height = `${s}px`;
     const g = Math.round(s * 1.4);
