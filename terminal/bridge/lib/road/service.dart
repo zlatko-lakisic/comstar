@@ -142,6 +142,27 @@ class RoadService {
     final secretsOvpn = await store.hasOpenVpnSecrets();
     final secretsL2tp = await store.hasL2tpSecrets();
     final prereq = await prerequisites();
+    final secrets = await store.loadSecrets();
+    final secretsOut = <String, Object?>{};
+    if (secrets['openvpn'] is Map) {
+      final o = Map<String, dynamic>.from(secrets['openvpn'] as Map);
+      secretsOut['openvpn'] = {
+        'ovpn': o['ovpn']?.toString() ?? '',
+        'passphrase': o['passphrase']?.toString() ?? '',
+        'username': o['username']?.toString() ?? '',
+        'password': o['password']?.toString() ?? '',
+      };
+    }
+    if (secrets['l2tp'] is Map) {
+      final o = Map<String, dynamic>.from(secrets['l2tp'] as Map);
+      secretsOut['l2tp'] = {
+        'gateway': o['gateway']?.toString() ?? '',
+        'user': o['user']?.toString() ?? '',
+        'password': o['password']?.toString() ?? '',
+        'psk': o['psk']?.toString() ?? '',
+        'ipsec_enabled': o['ipsec_enabled'] != false,
+      };
+    }
 
     return {
       'ok': true,
@@ -157,6 +178,7 @@ class RoadService {
       'l2tp_configured': l2tpExists || secretsL2tp,
       'openvpn_profile_present': ovpnExists,
       'l2tp_profile_present': l2tpExists,
+      'secrets': secretsOut,
       'prereqs_ok': prereq.ok,
       'prereqs': prereq.toJson(),
       'health_ok': healthOk,
@@ -229,10 +251,29 @@ class RoadService {
       if (ovpn.trim().isEmpty) {
         throw ArgumentError('openvpn.ovpn text required');
       }
+      final parsed = sanitizeOvpnForNmcli(ovpn);
+      // Explicit form fields win; fill gaps from embedded <auth-user-pass>.
+      final patchO = Map<String, dynamic>.from(patch['openvpn'] as Map);
+      final explicitUser = patchO['username']?.toString().trim() ?? '';
+      final explicitPass = patchO['password']?.toString() ?? '';
+      if (explicitUser.isNotEmpty) {
+        o['username'] = explicitUser;
+      } else if ((parsed.username ?? '').isNotEmpty) {
+        o['username'] = parsed.username;
+      }
+      if (explicitPass.isNotEmpty) {
+        o['password'] = explicitPass;
+      } else if ((parsed.password ?? '').isNotEmpty) {
+        o['password'] = parsed.password;
+      }
+      await store.mergeSecrets({'openvpn': o});
+
       final r = await backend.applyOpenVpn(
         connectionName: _effective.openvpnConnection,
         ovpnText: ovpn,
         passphrase: o['passphrase']?.toString(),
+        username: o['username']?.toString(),
+        password: o['password']?.toString(),
       );
       if (!r.ok) {
         lastError = r.message;
@@ -446,7 +487,13 @@ class RoadService {
       await Future<void>.delayed(const Duration(seconds: 2));
     }
 
-    var up = await backend.up(name);
+    final certPass = await _openVpnCertPass();
+    final userPass = await _openVpnUserPass();
+    var up = await backend.up(
+      name,
+      openVpnCertPass: protocol == 'openvpn' ? certPass : null,
+      openVpnUserPass: protocol == 'openvpn' ? userPass : null,
+    );
     var usedProto = protocol;
     var usedName = name;
 
@@ -456,7 +503,11 @@ class RoadService {
           ? _effective.openvpnConnection
           : _effective.l2tpConnection;
       if (await backend.connectionExists(altName)) {
-        up = await backend.up(altName);
+        up = await backend.up(
+          altName,
+          openVpnCertPass: alt == 'openvpn' ? certPass : null,
+          openVpnUserPass: alt == 'openvpn' ? userPass : null,
+        );
         if (up.ok) {
           usedProto = alt;
           usedName = altName;
@@ -589,6 +640,29 @@ class RoadService {
   Future<void> _downBoth() async {
     await backend.down(_effective.openvpnConnection);
     await backend.down(_effective.l2tpConnection);
+  }
+
+  Future<String?> _openVpnCertPass() async {
+    final secrets = await store.loadSecrets();
+    final o = secrets['openvpn'];
+    if (o is! Map) return null;
+    final pass = o['passphrase']?.toString() ?? '';
+    if (pass.isEmpty) return null;
+    return pass;
+  }
+
+  Future<String?> _openVpnUserPass() async {
+    final secrets = await store.loadSecrets();
+    final o = secrets['openvpn'];
+    if (o is! Map) return null;
+    // Prefer explicit field; else parse from ovpn blob.
+    final direct = o['password']?.toString() ?? '';
+    if (direct.isNotEmpty) return direct;
+    final ovpn = o['ovpn']?.toString() ?? '';
+    final parsed = sanitizeOvpnForNmcli(ovpn);
+    final p = parsed.password ?? '';
+    if (p.isEmpty) return null;
+    return p;
   }
 
   Future<String?> _resolveProtocol() async {

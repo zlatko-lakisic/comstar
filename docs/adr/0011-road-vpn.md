@@ -30,8 +30,9 @@ console, with automatic bring-up when off-home.
    failure with exponential backoff. **When at home:** bring COMSTAR VPN
    connections down (leave other VPNs alone).
 5. **Admin:** setup UI → prerequisites → credentials → **Initialize** (enable +
-   connect). Ongoing control via `GET/POST /admin/api/road`. Secrets never
-   echoed on GET.
+   connect). Ongoing control via `GET/POST /admin/api/road`. Saved credentials
+   are returned in GET `secrets` so the admin form can re-fill after save
+   (token-gated when LAN-bound).
 6. **Host packages:** `scripts/install-road-vpn.sh` / `make road-vpn`.
 
 ## Consequences

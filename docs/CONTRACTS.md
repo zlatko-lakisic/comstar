@@ -97,6 +97,15 @@ orchestration `/health`) with exponential backoff.
   "l2tp_configured": false,
   "openvpn_profile_present": false,
   "l2tp_profile_present": false,
+  "secrets": {
+    "openvpn": {
+      "ovpn": "",
+      "passphrase": "",
+      "username": "",
+      "password": ""
+    },
+    "l2tp": { "gateway": "", "user": "", "password": "", "psk": "", "ipsec_enabled": true }
+  },
   "prereqs_ok": true,
   "prereqs": { "ok": true, "checks": {} },
   "monitor_state": "idle",
@@ -111,19 +120,25 @@ orchestration `/health`) with exponential backoff.
 
 `monitor_state`: `idle` | `watching` | `healing` | `healthy` | `degraded`.
 
+Saved credentials are returned in `secrets` so the admin form can re-fill after save
+(admin token required when LAN-bound).
+
 **POST** body `{ "action": "<name>", ... }`:
 
 | action | Body fields | Meaning |
 |---|---|---|
 | `prereqs` | — | Re-check packages / sudo nmcli |
 | `configure` | `enabled`, `protocol`, `home_cidrs`, `health_url`, connection names, intervals | Persist runtime overlay |
-| `set_secrets` | `openvpn` and/or `l2tp` objects | Write secrets (0600); apply NM profiles; never returned on GET |
+| `set_secrets` | `openvpn` and/or `l2tp` objects | Write secrets (0600); apply NM profiles; echoed on subsequent GET `secrets` |
 | `initialize` | configure fields + optional secrets | Apply profile, set `enabled: true`, force connect, start monitor |
 | `reconcile` | — | One monitor tick (detect → health → heal) |
 | `connect` | optional `protocol`, `force` | Bring VPN up (`force` ignores at-home) |
 | `disconnect` | — | Bring COMSTAR VPN connections down |
 
-`set_secrets.openvpn`: `{ "ovpn": "<inline .ovpn text>", "passphrase": "..." }`  
+`set_secrets.openvpn`: `{ "ovpn", "passphrase"?, "username"?, "password"? }` —
+`.ovpn` text must match the router (`cipher`, `auth`, `proto`, certs). `passphrase`
+is only for an encrypted client private key. `username`/`password` are the PPP
+secret (MikroTik `/ppp secret`); they override an embedded `<auth-user-pass>` block.
 `set_secrets.l2tp`: `{ "gateway", "user", "password", "psk", "ipsec_enabled": true }`
 
 Restart units are whitelisted (`comstar-*.service` only). Loopback:

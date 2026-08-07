@@ -121,11 +121,57 @@ class NmcliVpnBackend {
     return false;
   }
 
-  Future<VpnActionResult> up(String name) async {
+  Future<VpnActionResult> up(
+    String name, {
+    String? openVpnCertPass,
+    String? openVpnUserPass,
+  }) async {
     if (name.trim().isEmpty) {
       return const VpnActionResult(ok: false, message: 'empty_connection');
     }
-    final r = await _run(['connection', 'up', 'id', name]);
+    ProcessResult r;
+    File? passFile;
+    try {
+      final lines = <String>[];
+      if (openVpnUserPass != null && openVpnUserPass.isNotEmpty) {
+        lines.add('vpn.secrets.password:$openVpnUserPass');
+      }
+      if (openVpnCertPass != null && openVpnCertPass.isNotEmpty) {
+        lines.add('vpn.secrets.cert-pass:$openVpnCertPass');
+      }
+      if (lines.isNotEmpty) {
+        final dir = stateDir;
+        if (dir == null || dir.isEmpty) {
+          return const VpnActionResult(ok: false, message: 'no_state_dir');
+        }
+        await Directory(dir).create(recursive: true);
+        passFile = File(p.join(dir, 'nm-passwd.tmp'));
+        await passFile.writeAsString('${lines.join('\n')}\n', flush: true);
+        try {
+          await Process.run('chmod', ['600', passFile.path]);
+        } on Object {
+          // best-effort
+        }
+        r = await _run([
+          'connection',
+          'up',
+          'id',
+          name,
+          'passwd-file',
+          passFile.path,
+        ]);
+      } else {
+        r = await _run(['connection', 'up', 'id', name]);
+      }
+    } finally {
+      try {
+        if (passFile != null && await passFile.exists()) {
+          await passFile.delete();
+        }
+      } on Object {
+        // ignore
+      }
+    }
     final ok = r.exitCode == 0;
     if (!ok) {
       logWarn('road_vpn_up_failed', 'nmcli connection up failed', data: {
@@ -176,14 +222,21 @@ class NmcliVpnBackend {
     required String connectionName,
     required String ovpnText,
     String? passphrase,
+    String? username,
+    String? password,
   }) async {
     final dir = stateDir;
     if (dir == null || dir.isEmpty) {
       return const VpnActionResult(ok: false, message: 'no_state_dir');
     }
     await Directory(dir).create(recursive: true);
+
+    final sanitized = sanitizeOvpnForNmcli(ovpnText);
+    final user = (username ?? sanitized.username ?? '').trim();
+    final pass = (password ?? sanitized.password ?? '');
     final ovpnPath = p.join(dir, 'client.ovpn');
-    await File(ovpnPath).writeAsString(ovpnText, flush: true);
+    await File(ovpnPath).writeAsString(sanitized.text, flush: true);
+
     // Remove existing connection with same name (ignore failure).
     await _run(['connection', 'delete', 'id', connectionName]);
     final import = await _run([
@@ -214,16 +267,69 @@ class NmcliVpnBackend {
         connectionName,
       ]);
     }
+
+    final secretParts = <String>[];
+    if (user.isNotEmpty && pass.isNotEmpty) {
+      // Certs + PPP user/password (typical MikroTik OVPN).
+      await _run([
+        'connection',
+        'modify',
+        'id',
+        connectionName,
+        '+vpn.data',
+        'connection-type=password-tls',
+      ]);
+      await _run([
+        'connection',
+        'modify',
+        'id',
+        connectionName,
+        'vpn.user-name',
+        user,
+      ]);
+      await _run([
+        'connection',
+        'modify',
+        'id',
+        connectionName,
+        '+vpn.data',
+        'password-flags=0',
+      ]);
+      secretParts.add('password=$pass');
+    }
+
     if (passphrase != null && passphrase.isNotEmpty) {
+      // Encrypted client key → NetworkManager wants vpn.secrets.cert-pass
+      await _run([
+        'connection',
+        'modify',
+        'id',
+        connectionName,
+        '+vpn.data',
+        'cert-pass-flags=0',
+      ]);
+      secretParts.add('cert-pass=$passphrase');
+    } else {
+      await _run([
+        'connection',
+        'modify',
+        'id',
+        connectionName,
+        '+vpn.data',
+        'cert-pass-flags=4',
+      ]);
+    }
+    if (secretParts.isNotEmpty) {
       await _run([
         'connection',
         'modify',
         'id',
         connectionName,
         'vpn.secrets',
-        'password=$passphrase',
+        secretParts.join(','),
       ]);
     }
+
     // Autoconnect off — COMSTAR reconciler owns bring-up.
     await _run([
       'connection',
@@ -235,8 +341,14 @@ class NmcliVpnBackend {
     ]);
     logInfo('road_ovpn_applied', 'OpenVPN profile applied', data: {
       'connection': connectionName,
+      'password_tls': user.isNotEmpty,
     });
-    return const VpnActionResult(ok: true, message: 'openvpn_applied');
+    return VpnActionResult(
+      ok: true,
+      message: 'openvpn_applied',
+      // Echo parsed PPP user so caller can persist it (never log password).
+      stdout: user,
+    );
   }
 
   String? _guessImportedName(String ovpnPath, String stdout) {
@@ -327,4 +439,42 @@ class NmcliVpnBackend {
       // best-effort on non-unix
     }
   }
+}
+
+class SanitizedOvpn {
+  const SanitizedOvpn({
+    required this.text,
+    this.username,
+    this.password,
+  });
+
+  final String text;
+  final String? username;
+  final String? password;
+}
+
+/// NM `connection import type openvpn` rejects `<auth-user-pass>` blobs.
+/// Strip them and return username/password for vpn.user-name / vpn.secrets.
+SanitizedOvpn sanitizeOvpnForNmcli(String raw) {
+  final authBlock = RegExp(
+    r'<auth-user-pass>\s*([\s\S]*?)\s*</auth-user-pass>',
+    multiLine: true,
+  );
+  String? user;
+  String? pass;
+  var text = raw;
+  final m = authBlock.firstMatch(raw);
+  if (m != null) {
+    final lines = m
+        .group(1)!
+        .trim()
+        .split(RegExp(r'\r?\n'))
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+    if (lines.isNotEmpty) user = lines[0];
+    if (lines.length > 1) pass = lines[1];
+    text = raw.replaceFirst(authBlock, 'auth-user-pass\n');
+  }
+  return SanitizedOvpn(text: text, username: user, password: pass);
 }

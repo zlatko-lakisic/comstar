@@ -86,15 +86,25 @@ export function createRoad(root, { api, onStatus } = {}) {
           </div>
 
           <details class="road__secrets" open>
-            <summary>Credentials (write-only — never echoed back)</summary>
+            <summary>Credentials (saved values are reloaded into these fields)</summary>
             <div class="road__secrets-body">
               <div class="road__proto-fields" data-proto="openvpn" id="roadOvpnCreds">
                 <label class="road__field">
-                  <span>OpenVPN (.ovpn paste)</span>
-                  <textarea id="roadOvpnText" class="mono" rows="5" placeholder="client&#10;dev tun&#10;…"></textarea>
+                  <span>OpenVPN (.ovpn paste) — match router cipher/auth/proto</span>
+                  <textarea id="roadOvpnText" class="mono" rows="5" placeholder="client&#10;dev tun&#10;proto tcp-client&#10;cipher AES-128-CBC&#10;auth SHA1&#10;…"></textarea>
                 </label>
+                <div class="road__row">
+                  <label class="road__field">
+                    <span>PPP username (MikroTik secret)</span>
+                    <input id="roadOvpnUser" class="mono" type="text" autocomplete="username" />
+                  </label>
+                  <label class="road__field">
+                    <span>PPP password</span>
+                    <input id="roadOvpnUserPass" type="password" autocomplete="new-password" />
+                  </label>
+                </div>
                 <label class="road__field">
-                  <span>OpenVPN passphrase (optional)</span>
+                  <span>Private-key passphrase (export only; not PPP)</span>
                   <input id="roadOvpnPass" type="password" autocomplete="new-password" />
                 </label>
               </div>
@@ -166,6 +176,8 @@ export function createRoad(root, { api, onStatus } = {}) {
     l2tpName: root.querySelector('#roadL2tpName'),
     form: root.querySelector('#roadForm'),
     ovpnText: root.querySelector('#roadOvpnText'),
+    ovpnUser: root.querySelector('#roadOvpnUser'),
+    ovpnUserPass: root.querySelector('#roadOvpnUserPass'),
     ovpnPass: root.querySelector('#roadOvpnPass'),
     l2tpGw: root.querySelector('#roadL2tpGw'),
     l2tpUser: root.querySelector('#roadL2tpUser'),
@@ -303,6 +315,23 @@ export function createRoad(root, { api, onStatus } = {}) {
     els.healthUrl.value = data.health_url || '';
     els.ovpnName.value = data.openvpn_connection || '';
     els.l2tpName.value = data.l2tp_connection || '';
+
+    const secrets = data.secrets || {};
+    if (secrets.openvpn && typeof secrets.openvpn === 'object') {
+      const ovpn = secrets.openvpn;
+      if (typeof ovpn.ovpn === 'string') els.ovpnText.value = ovpn.ovpn;
+      if (typeof ovpn.username === 'string') els.ovpnUser.value = ovpn.username;
+      if (typeof ovpn.password === 'string') els.ovpnUserPass.value = ovpn.password;
+      if (typeof ovpn.passphrase === 'string') els.ovpnPass.value = ovpn.passphrase;
+    }
+    if (secrets.l2tp && typeof secrets.l2tp === 'object') {
+      const l2tp = secrets.l2tp;
+      if (typeof l2tp.gateway === 'string') els.l2tpGw.value = l2tp.gateway;
+      if (typeof l2tp.user === 'string') els.l2tpUser.value = l2tp.user;
+      if (typeof l2tp.password === 'string') els.l2tpPass.value = l2tp.password;
+      if (typeof l2tp.psk === 'string') els.l2tpPsk.value = l2tp.psk;
+    }
+
     syncProtocolFields();
   }
 
@@ -331,9 +360,12 @@ export function createRoad(root, { api, onStatus } = {}) {
     if (proto === 'openvpn' || proto === 'auto') {
       const ovpn = els.ovpnText.value.trim();
       if (ovpn) {
-        body.openvpn = { ovpn };
-        const pass = els.ovpnPass.value;
-        if (pass) body.openvpn.passphrase = pass;
+        body.openvpn = {
+          ovpn,
+          username: els.ovpnUser.value.trim(),
+          password: els.ovpnUserPass.value,
+          passphrase: els.ovpnPass.value,
+        };
       }
     }
     if (proto === 'l2tp' || proto === 'auto') {
@@ -353,9 +385,7 @@ export function createRoad(root, { api, onStatus } = {}) {
   }
 
   function clearSecretFields() {
-    els.ovpnPass.value = '';
-    els.l2tpPass.value = '';
-    els.l2tpPsk.value = '';
+    // Kept for API compatibility; saved secrets are reloaded via fillConfig.
   }
 
   async function refresh({ config = false } = {}) {
@@ -379,6 +409,7 @@ export function createRoad(root, { api, onStatus } = {}) {
   els.form.addEventListener('submit', async (e) => {
     e.preventDefault();
     try {
+      showErr(null);
       await api.post('/api/road', {
         action: 'configure',
         enabled: els.enabled.checked,
@@ -388,9 +419,19 @@ export function createRoad(root, { api, onStatus } = {}) {
         openvpn_connection: els.ovpnName.value.trim(),
         l2tp_connection: els.l2tpName.value.trim(),
       });
+      const secrets = secretsBody();
+      if (secrets.openvpn || secrets.l2tp) {
+        await api.post('/api/road', {
+          action: 'set_secrets',
+          apply: true,
+          ...secrets,
+        });
+      }
       await refresh({ config: true });
     } catch (err) {
       showErr(err.message || String(err));
+      // Keep typed fields; still try to reload status without wiping inputs.
+      try { await refresh({ config: false }); } catch (_) { /* ignore */ }
     }
   });
 
