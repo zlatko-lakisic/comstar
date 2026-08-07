@@ -8,42 +8,102 @@ import 'package:comstar_bridge/net/nmcli.dart';
 class NetworkService {
   NetworkService({NmcliRunner? nmcli}) : _nm = nmcli ?? NmcliRunner();
 
+  /// Must match [HotspotService.connectionName] (ADR 0014).
+  static const hotspotConnectionName = 'comstar-hotspot';
+
   final NmcliRunner _nm;
   String? lastError;
 
-  /// Prefer a connected ethernet IPv4, else Wi‑Fi. Ignores VPN/tun/loopback.
-  Future<({String? ip, String? device, String? type})> preferredLanIpv4() async {
+  /// Prefer ethernet uplink, else Wi‑Fi client, else SoftAP (ADR 0014).
+  Future<({String? ip, String? device, String? type, bool hotspot})>
+      preferredLanIpv4() async {
     final devices = await _listDevices();
-    Map<String, Object?>? pick(String type) {
-      for (final d in devices) {
-        if (d['type'] != type) continue;
-        if (d['state'] != 'connected') continue;
-        final ipv4 = d['ipv4'];
-        if (ipv4 is! Map) continue;
-        final addrs = ipv4['addresses'];
-        if (addrs is! List || addrs.isEmpty) continue;
-        final raw = addrs.first.toString();
-        final ip = raw.split('/').first.trim();
-        if (ip.isEmpty || ip.startsWith('127.')) continue;
-        return d;
-      }
-      return null;
+
+    ({String ip, String device, String type, bool hotspot})? from(
+      Map<String, Object?> d, {
+      required bool hotspot,
+    }) {
+      if (d['state'] != 'connected') return null;
+      final ipv4 = d['ipv4'];
+      if (ipv4 is! Map) return null;
+      final addrs = ipv4['addresses'];
+      if (addrs is! List || addrs.isEmpty) return null;
+      final ip = addrs.first.toString().split('/').first.trim();
+      if (ip.isEmpty || ip.startsWith('127.')) return null;
+      return (
+        ip: ip,
+        device: d['device']?.toString() ?? '',
+        type: d['type']?.toString() ?? '',
+        hotspot: hotspot,
+      );
     }
 
-    final eth = pick('ethernet');
-    final wifi = pick('wifi');
-    final chosen = eth ?? wifi;
-    if (chosen == null) {
-      return (ip: null, device: null, type: null);
+    ({String ip, String device, String type, bool hotspot})? eth;
+    ({String ip, String device, String type, bool hotspot})? wifiClient;
+    ({String ip, String device, String type, bool hotspot})? hotspotAp;
+
+    for (final d in devices) {
+      final type = d['type']?.toString();
+      final conn = d['connection']?.toString();
+      final isHotspot = conn == hotspotConnectionName;
+      if (type == 'ethernet') {
+        eth ??= from(d, hotspot: false);
+      } else if (type == 'wifi') {
+        if (isHotspot) {
+          hotspotAp ??= from(d, hotspot: true);
+        } else {
+          wifiClient ??= from(d, hotspot: false);
+        }
+      }
     }
-    final ipv4 = chosen['ipv4'] as Map;
-    final addrs = ipv4['addresses'] as List;
-    final ip = addrs.first.toString().split('/').first.trim();
+
+    final chosen = eth ?? wifiClient ?? hotspotAp;
+    if (chosen == null) {
+      return (ip: null, device: null, type: null, hotspot: false);
+    }
     return (
-      ip: ip,
-      device: chosen['device']?.toString(),
-      type: chosen['type']?.toString(),
+      ip: chosen.ip,
+      device: chosen.device.isEmpty ? null : chosen.device,
+      type: chosen.type.isEmpty ? null : chosen.type,
+      hotspot: chosen.hotspot,
     );
+  }
+
+  /// True when ethernet or a non-hotspot Wi‑Fi client has IPv4.
+  Future<bool> hasUplink() async {
+    final lan = await preferredLanIpv4();
+    return lan.ip != null && !lan.hotspot;
+  }
+
+  /// Lightweight device rows (no deep IPv4 fetch beyond status).
+  Future<List<Map<String, Object?>>> listDeviceSummaries() async {
+    final r = await _nm.run([
+      '-t',
+      '-f',
+      'DEVICE,TYPE,STATE,CONNECTION',
+      'device',
+      'status',
+    ]);
+    if (!r.ok) return const [];
+    final out = <Map<String, Object?>>[];
+    for (final line in r.stdout.split('\n')) {
+      final t = line.trim();
+      if (t.isEmpty) continue;
+      final parts = t.split(':');
+      if (parts.length < 3) continue;
+      final type = parts[1];
+      if (type != 'ethernet' && type != 'wifi') continue;
+      final conn = parts.length > 3 && parts[3].isNotEmpty && parts[3] != '--'
+          ? parts[3]
+          : null;
+      out.add({
+        'device': parts[0],
+        'type': type,
+        'state': parts[2],
+        'connection': conn,
+      });
+    }
+    return out;
   }
 
   Future<Map<String, Object?>> inspect({bool scan = false}) async {

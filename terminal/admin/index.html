@@ -66,12 +66,17 @@
               <button type="button" class="tab is-active" role="tab" aria-selected="true" data-tab="actions" id="tabActions">Actions</button>
               <button type="button" class="tab" role="tab" aria-selected="false" data-tab="road" id="tabRoad">
                 Road VPN
-                <span class="tab__vpn-pill" id="roadTabPill" title="VPN status" aria-hidden="true">
-                  <span class="tab__vpn-dot" id="roadTabDot"></span>
+                <span class="tab__status-pill" id="roadTabPill" title="VPN status" aria-hidden="true">
+                  <span class="tab__status-dot" id="roadTabDot"></span>
                 </span>
               </button>
               <button type="button" class="tab" role="tab" aria-selected="false" data-tab="network" id="tabNetwork">Network</button>
-              <button type="button" class="tab" role="tab" aria-selected="false" data-tab="ao" id="tabAo">AO pairing</button>
+              <button type="button" class="tab" role="tab" aria-selected="false" data-tab="ao" id="tabAo">
+                AO pairing
+                <span class="tab__status-pill" id="aoTabPill" title="AO mTLS status" aria-hidden="true">
+                  <span class="tab__status-dot" id="aoTabDot"></span>
+                </span>
+              </button>
               <button type="button" class="tab" role="tab" aria-selected="false" data-tab="logs" id="tabLogs">Logs</button>
             </div>
             <span class="freshness mono" id="opsFresh">—</span>

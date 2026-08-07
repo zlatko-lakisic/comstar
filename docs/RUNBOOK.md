@@ -426,6 +426,18 @@ Admin **Network** tab (`GET/POST /admin/api/network`, ADR 0012) uses the same
 IPv4 on ethernet/wlan. Wrong static settings can lock out LAN access — keep
 serial/SSH as a backup.
 
+### Offline fallback hotspot
+
+When **neither ethernet nor client Wi‑Fi** has an address, the bridge starts a
+NetworkManager SoftAP (`comstar-hotspot`, ADR 0014):
+
+- SSID: `COMSTAR-<hostname>` (open)
+- Pi IP / DHCP: `10.87.65.1/24`
+- Admin QR uses that IP and shows the SSID under the code
+- Joining eth or client Wi‑Fi tears the AP down and refreshes the QR
+
+Disable with `COMSTAR_HOTSPOT=0`. Requires the same `nmcli` sudoers as Road VPN.
+
 ---
 
 ## 6. Rollback

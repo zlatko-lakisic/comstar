@@ -16,6 +16,7 @@ import 'package:comstar_bridge/http_audio_server.dart';
 import 'package:comstar_bridge/local_ws.dart';
 import 'package:comstar_bridge/log.dart';
 import 'package:comstar_bridge/session.dart';
+import 'package:comstar_bridge/net/hotspot.dart';
 import 'package:comstar_bridge/net/service.dart';
 import 'package:comstar_bridge/road/service.dart';
 import 'package:comstar_bridge/speech_routing.dart';
@@ -117,7 +118,12 @@ Future<void> main(List<String> arguments) async {
 
   final fallbackDir = Directory('$repoRoot/assets/fallback');
   final network = NetworkService();
-  coordinator = AttentionCoordinator(
+  AttentionCoordinator? coord;
+  final hotspot = HotspotService(
+    network: network,
+    onChanged: () => coord?.onHotspotChanged(),
+  );
+  coord = AttentionCoordinator(
     config: config,
     ws: ws,
     session: session,
@@ -126,7 +132,9 @@ Future<void> main(List<String> arguments) async {
     audioServer: audioServer,
     fallbackAudioDir: fallbackDir.existsSync() ? fallbackDir.path : null,
     network: network,
+    hotspot: hotspot,
   );
+  coordinator = coord;
 
   final visionEnabled = Platform.environment['COMSTAR_VISION'] == '1';
   if (visionEnabled) {
@@ -152,6 +160,7 @@ Future<void> main(List<String> arguments) async {
   }
 
   await coordinator.start(visionPoller: visionPoller);
+  await hotspot.start();
 
   final road = RoadService(
     yamlConfig: config.road,

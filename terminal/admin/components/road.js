@@ -22,8 +22,10 @@ const ICON_LINK = `
 </svg>`;
 
 function linkStateFromData(data) {
+  // On home LAN the VPN is intentionally down — gray, not an error.
+  if (data.at_home) return 'home';
   const mon = data.monitor_state || 'idle';
-  if (mon === 'healing' || (data.enabled && !data.at_home && !data.vpn_active && mon === 'watching')) {
+  if (mon === 'healing' || (data.enabled && !data.vpn_active && mon === 'watching')) {
     return 'connecting';
   }
   if (data.vpn_active) return 'connected';
@@ -237,8 +239,13 @@ export function createRoad(root, { api, onStatus } = {}) {
     els.enabledChip.querySelector('.vpn-chip__label').textContent = on ? 'Enabled' : 'Disabled';
 
     const link = linkStateFromData(data);
-    els.linkChip.classList.remove('is-down', 'is-connecting', 'is-up');
-    if (link === 'connected') {
+    els.linkChip.classList.remove('is-down', 'is-connecting', 'is-up', 'is-home', 'is-off');
+    if (link === 'home') {
+      els.linkChip.classList.add('is-home');
+      els.linkGlyph.innerHTML = ICON_DISC;
+      els.linkLabel.textContent = 'At home';
+      els.linkChip.title = 'On home LAN — VPN not needed';
+    } else if (link === 'connected') {
       els.linkChip.classList.add('is-up');
       els.linkGlyph.innerHTML = ICON_LINK;
       els.linkLabel.textContent = 'Connected';
@@ -260,6 +267,7 @@ export function createRoad(root, { api, onStatus } = {}) {
     onStatus?.({
       enabled: on,
       link,
+      at_home: !!data.at_home,
       monitor_state: data.monitor_state,
       vpn_active: !!data.vpn_active,
     });

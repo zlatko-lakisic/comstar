@@ -54,7 +54,7 @@ never require the admin token.
 |---|---|---|---|
 | `/admin/` | GET | token if LAN-bound | Static admin UI |
 | `/admin/health` `/health` | GET | none | Attention/session/WS snapshot (heal script) |
-| `/admin/api/status` | GET | token if LAN-bound | Extended status + host metrics + AO/CPAI probes |
+| `/admin/api/status` | GET | token if LAN-bound | Extended status + host metrics + AO/CPAI probes (AO probe uses mTLS client cert when `orchestration.mtls.enabled`) |
 | `/admin/api/logs` | GET | token if LAN-bound | SSE `journalctl --user` tail |
 | `/admin/api/restart` | POST | token if LAN-bound | `{unit: bridge\|audio\|kiosk\|stt\|health\|all}` |
 | `/admin/api/reboot` | POST | token if LAN-bound | `{confirm: "reboot"}` → `sudo /sbin/reboot` |
@@ -271,7 +271,7 @@ ignored, never fatal — this is how we ship kiosk and bridge independently.
 | `listening` | `{active, level?}` | Show/hide listening indicator; `level` 0–1 for a mic meter. |
 | `thinking` | `{active}` | Orchestration in flight. Kiosk shows a subtle working state. Optional bridge UX: after `attention.working_ack_ms` (default 4500; `0` off) while AO is still in flight — only when `attention.working_ack_on_tools` (default true) sees a non-empty `mcpProvidersForVoice` **and** the utterance looks like real tool/query work (lights, calendar, lookup, camera, etc.) — the bridge may speak a one-shot phrase-bank `working` line without completing the turn; if that ack played, the final AO reply is prefixed with `result_ready`. Casual continuity (“okay, good to know”) never arms. No new WS types. |
 | `pairing.qr` | `{active, phase?, url?, userCode?, qrSvg?}` | Show/hide Google OAuth device-code QR. `phase` is `awaiting` (user must approve), `verifying` (tokens received, tools starting), or `idle`. Same attempt as the spoken user code. `active:false` clears the overlay. |
-| `admin.qr` | `{active, url?, qrSvg?, ip?, iface?, port?}` | Debug / `COMSTAR_ENV=dev` only: small QR opening `http://<lan-ip>:8781/admin/?token=…` (token from admin token resolution). Prefer ethernet IPv4 over Wi‑Fi when both are up. `active:false` clears. Never log the token. |
+| `admin.qr` | `{active, url?, qrSvg?, ip?, iface?, port?, type?, hotspot?, ssid?}` | Debug / `COMSTAR_ENV=dev`, or **fallback SoftAP** (ADR 0014): small QR opening `http://<ip>:8781/admin/?token=…`. Prefer ethernet, then Wi‑Fi client, then hotspot `10.87.65.1`. When `hotspot` is true, `ssid` is the temporary AP name (shown under the QR). `active:false` clears. Never log the token. |
 | `error` | `{code, message}` | Display a non-fatal error affordance. |
 | `config` | `{avatarUrl, mood, cameraPose, debugUi?}` | Sent once on connect. `debugUi` true when bridge `COMSTAR_ENV=dev`. |
 | `avatar.options` | `{bloom?, fps?, scale?, emblem?}` | Live avatar tuning (no kiosk restart). `bloom` SVG blur stdDeviation (`0` off); `fps` animation cap 8–60; `scale` emblem size; `emblem` preset name. Omitted fields unchanged. |

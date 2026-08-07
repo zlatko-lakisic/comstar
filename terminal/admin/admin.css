@@ -210,10 +210,12 @@ html, body {
   background: var(--surface-2);
 }
 .tab:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+.tab__status-pill,
 .tab__vpn-pill {
   display: inline-flex;
   align-items: center;
 }
+.tab__status-dot,
 .tab__vpn-dot {
   width: 8px;
   height: 8px;
@@ -221,19 +223,28 @@ html, body {
   background: var(--fg-dim);
   box-shadow: 0 0 0 2px rgba(110, 127, 144, 0.25);
 }
+.tab__status-dot.is-off,
 .tab__vpn-dot.is-off { background: var(--fg-dim); }
+.tab__status-dot.is-down,
 .tab__vpn-dot.is-down {
   background: var(--red);
   box-shadow: 0 0 0 2px var(--red-dim);
 }
+.tab__status-dot.is-connecting,
 .tab__vpn-dot.is-connecting {
   background: var(--amber);
   box-shadow: 0 0 0 2px var(--amber-dim);
   animation: vpn-pulse 1.1s ease-in-out infinite;
 }
+.tab__status-dot.is-up,
 .tab__vpn-dot.is-up {
   background: var(--cyan);
   box-shadow: 0 0 0 2px var(--cyan-dim);
+}
+.tab__status-dot.is-home {
+  background: var(--fg-dim);
+  box-shadow: 0 0 0 2px rgba(110, 127, 144, 0.25);
+  opacity: 0.85;
 }
 
 .tab-pane[hidden] { display: none !important; }
@@ -290,6 +301,13 @@ html, body {
   color: var(--red);
   border-color: rgba(255, 92, 92, 0.35);
   background: var(--red-dim);
+}
+.vpn-chip--link.is-home,
+.vpn-chip--link.is-off {
+  color: var(--fg-dim);
+  border-color: var(--border);
+  background: transparent;
+  opacity: 0.9;
 }
 .vpn-chip--link.is-connecting {
   color: var(--amber);

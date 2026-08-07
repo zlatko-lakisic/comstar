@@ -268,6 +268,7 @@
     text-align: center;
   }
   #admin-qr.on { display: block; }
+  #admin-qr.is-hotspot { width: 6.2rem; }
   #admin-qr-svg {
     width: 100%;
     aspect-ratio: 1;
@@ -276,8 +277,16 @@
     overflow: hidden;
   }
   #admin-qr-svg svg { width: 100%; height: 100%; display: block; }
+  #admin-qr-ssid {
+    margin-top: 0.3rem;
+    font: 600 0.52rem/1.15 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: 0.01em;
+    color: rgba(230, 210, 120, 0.95);
+    word-break: break-all;
+  }
+  #admin-qr-ssid:empty { display: none; }
   #admin-qr-label {
-    margin-top: 0.25rem;
+    margin-top: 0.2rem;
     font: 500 0.55rem/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
     letter-spacing: 0.02em;
     color: rgba(180, 210, 240, 0.85);
@@ -333,6 +342,7 @@
 </div>
 <div id="admin-qr" aria-hidden="true">
   <div id="admin-qr-svg"></div>
+  <div id="admin-qr-ssid"></div>
   <div id="admin-qr-label"></div>
 </div>
 <div id="chat" aria-live="polite">
@@ -356,19 +366,24 @@ const phaseLabel = phaseEl.querySelector('.label');
 const phaseDetail = phaseEl.querySelector('.detail');
 const adminQrEl = document.getElementById('admin-qr');
 const adminQrSvg = document.getElementById('admin-qr-svg');
+const adminQrSsid = document.getElementById('admin-qr-ssid');
 const adminQrLabel = document.getElementById('admin-qr-label');
 if (demo) statusEl.classList.add('on');
 
 function setAdminQr(d) {
   if (!adminQrEl) return;
   if (!d || !d.active || !d.qrSvg) {
-    adminQrEl.classList.remove('on');
+    adminQrEl.classList.remove('on', 'is-hotspot');
     adminQrEl.setAttribute('aria-hidden', 'true');
     if (adminQrSvg) adminQrSvg.innerHTML = '';
+    if (adminQrSsid) adminQrSsid.textContent = '';
     if (adminQrLabel) adminQrLabel.textContent = '';
     return;
   }
   if (adminQrSvg) adminQrSvg.innerHTML = d.qrSvg;
+  const hotspot = !!d.hotspot && !!d.ssid;
+  adminQrEl.classList.toggle('is-hotspot', hotspot);
+  if (adminQrSsid) adminQrSsid.textContent = hotspot ? String(d.ssid) : '';
   if (adminQrLabel) {
     const bits = [d.ip, d.iface].filter(Boolean);
     adminQrLabel.textContent = bits.length ? bits.join(' · ') : 'admin';

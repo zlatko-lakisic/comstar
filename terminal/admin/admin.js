@@ -51,6 +51,7 @@ const els = {
   tabAo: document.getElementById('tabAo'),
   tabLogs: document.getElementById('tabLogs'),
   roadTabDot: document.getElementById('roadTabDot'),
+  aoTabDot: document.getElementById('aoTabDot'),
   injectRoot: document.getElementById('injectRoot'),
   logsControls: document.getElementById('logsControls'),
   logsRoot: document.getElementById('logsRoot'),
@@ -86,17 +87,55 @@ const api = createApi({
   onUnauthorized: () => showGate('unauthorized'),
 });
 
-function setRoadTabDot({ enabled, link } = {}) {
+function setRoadTabDot({ enabled, link, at_home } = {}) {
   const dot = els.roadTabDot;
   if (!dot) return;
-  dot.classList.remove('is-off', 'is-down', 'is-connecting', 'is-up');
-  if (!enabled) {
-    dot.classList.add('is-off');
+  dot.classList.remove('is-off', 'is-down', 'is-connecting', 'is-up', 'is-home');
+  const pill = els.roadTabDot?.parentElement;
+  if (at_home || link === 'home') {
+    dot.classList.add('is-home');
+    if (pill) pill.title = 'At home — VPN not needed';
     return;
   }
-  if (link === 'connected') dot.classList.add('is-up');
-  else if (link === 'connecting') dot.classList.add('is-connecting');
-  else dot.classList.add('is-down');
+  if (!enabled) {
+    dot.classList.add('is-off');
+    if (pill) pill.title = 'VPN monitor off';
+    return;
+  }
+  if (link === 'connected') {
+    dot.classList.add('is-up');
+    if (pill) pill.title = 'VPN connected';
+  } else if (link === 'connecting') {
+    dot.classList.add('is-connecting');
+    if (pill) pill.title = 'VPN connecting';
+  } else {
+    dot.classList.add('is-down');
+    if (pill) pill.title = 'VPN down';
+  }
+}
+
+function setAoTabDot({ enabled, paired, openssl_ok } = {}) {
+  const dot = els.aoTabDot;
+  if (!dot) return;
+  dot.classList.remove('is-off', 'is-down', 'is-connecting', 'is-up', 'is-home');
+  const pill = dot.parentElement;
+  if (!enabled) {
+    dot.classList.add('is-off');
+    if (pill) pill.title = 'AO mTLS disabled in config';
+    return;
+  }
+  if (paired) {
+    dot.classList.add('is-up');
+    if (pill) pill.title = 'AO mTLS paired';
+    return;
+  }
+  if (openssl_ok === false) {
+    dot.classList.add('is-connecting');
+    if (pill) pill.title = 'openssl missing — cannot enroll';
+    return;
+  }
+  dot.classList.add('is-down');
+  if (pill) pill.title = 'AO mTLS not paired';
 }
 
 function selectTab(name) {
@@ -143,7 +182,10 @@ const road = createRoad(els.roadRoot, {
   onStatus: setRoadTabDot,
 });
 const network = createNetwork(els.networkRoot, { api });
-const aoMtls = createAoMtls(els.aoMtlsRoot, { api });
+const aoMtls = createAoMtls(els.aoMtlsRoot, {
+  api,
+  onStatus: setAoTabDot,
+});
 const logs = createLogs(els.logsRoot, els.logsControls, {
   apiUrl: api.url,
   authHeaders: api.authHeaders,
@@ -243,6 +285,9 @@ async function tick(force) {
 
     if (status.road) {
       road.applyStatusSnippet(status.road);
+    }
+    if (status.ao_mtls) {
+      aoMtls.applyStatusSnippet?.(status.ao_mtls);
     }
 
     [els.healthPanel, els.opsPanel].forEach((p) => {

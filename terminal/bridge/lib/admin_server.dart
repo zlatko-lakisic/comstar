@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:ao_reach/ao_reach.dart';
 import 'package:path/path.dart' as p;
 
 import 'package:comstar_bridge/announce/types.dart';
@@ -325,7 +326,7 @@ class AdminServer {
             ? config.vision.codeprojectUrl
             : 'http://10.0.10.16:32168');
     final aoProbe = aoUrl.endsWith('/health') ? aoUrl : '$aoUrl/health';
-    final aoOk = await _probeHttp(aoProbe);
+    final aoOk = await _probeAoHttp(aoProbe);
     final cpaiOk = await _probeHttp('$cpaiBase/v1/server/status/ping') ||
         await _probeHttp(cpaiBase);
     base['ao_ok'] = aoOk;
@@ -359,6 +360,18 @@ class AdminServer {
         base['road'] = {'ok': false};
       }
     }
+
+    final mtlsSvc = aoMtls;
+    if (mtlsSvc != null) {
+      try {
+        base['ao_mtls'] = {
+          'enabled': mtlsSvc.mtls.enabled,
+          'paired': AoMtlsService.materialPresent(mtlsSvc.materialDir),
+        };
+      } on Object {
+        base['ao_mtls'] = {'ok': false};
+      }
+    }
     return base;
   }
 
@@ -373,6 +386,33 @@ class AdminServer {
     } on Object {
       return false;
     }
+  }
+
+  Future<bool> _probeAoHttp(String url) async {
+    final mtls = config.orchestration.mtls;
+    if (mtls.enabled) {
+      final dir = mtls.resolvedMaterialDir();
+      if (AoMtlsService.materialPresent(dir)) {
+        HttpClient? client;
+        try {
+          final material =
+              loadReachMtlsMaterial(ReachMtlsConfig(materialDir: dir));
+          client = reachMtlsHttpClient(material);
+          client.connectionTimeout = const Duration(seconds: 2);
+          final uri = Uri.parse(url);
+          final req =
+              await client.getUrl(uri).timeout(const Duration(seconds: 2));
+          final resp = await req.close().timeout(const Duration(seconds: 3));
+          await resp.drain<void>();
+          return resp.statusCode >= 200 && resp.statusCode < 500;
+        } on Object {
+          return false;
+        } finally {
+          client?.close(force: true);
+        }
+      }
+    }
+    return _probeHttp(url);
   }
 
   Future<bool> _probeHttp(String url) async {

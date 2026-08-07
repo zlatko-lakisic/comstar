@@ -45,11 +45,12 @@ import 'package:comstar_bridge/identity_intent.dart';
 import 'package:comstar_bridge/terminal_control.dart';
 import 'package:comstar_bridge/terminal_intent.dart';
 import 'package:comstar_bridge/tts.dart';
+import 'package:comstar_bridge/net/hotspot.dart';
+import 'package:comstar_bridge/net/service.dart';
 import 'package:comstar_bridge/vision_mcp_client.dart';
 import 'package:comstar_bridge/vision_visit_intent.dart';
 import 'package:comstar_bridge/wake_phrase.dart';
 import 'package:comstar_bridge/wav_duration.dart';
-import 'package:comstar_bridge/net/service.dart';
 import 'package:comstar_bridge/working_ack.dart';
 import 'package:comstar_bridge/vision/vision_poller.dart' as vision;
 import 'package:path/path.dart' as p;
@@ -73,6 +74,7 @@ class AttentionCoordinator {
     DirectoryResolver? directory,
     ConversationMemory? conversationMemory,
     this.network,
+    this.hotspot,
   })  : clock = clock ?? SystemClock(),
         control = control ?? TerminalControl(),
         googleTokens = googleTokenStore ?? GoogleTokenStore(),
@@ -101,6 +103,7 @@ class AttentionCoordinator {
   final ComstarConfig config;
   final LocalWs ws;
   final NetworkService? network;
+  final HotspotService? hotspot;
   final ComstarSession session;
   final SttClient stt;
   final TtsEngine tts;
@@ -3362,8 +3365,10 @@ class AttentionCoordinator {
   }
 
   Future<void> _refreshAdminQr({bool force = false}) async {
-    if (!_kioskWantsAdminQr && !force) return;
-    if (!_kioskWantsAdminQr) {
+    final hotspotActive = hotspot?.active == true;
+    final wants = _kioskWantsAdminQr || hotspotActive;
+    if (!wants && !force) return;
+    if (!wants) {
       _broadcastKiosk(
         Envelope.create(type: 'admin.qr', data: {'active': false}),
       );
@@ -3390,6 +3395,7 @@ class AttentionCoordinator {
       const port = 8781;
       final url =
           'http://$ip:$port/admin/?token=${Uri.encodeQueryComponent(token)}';
+      final ssid = hotspotActive ? hotspot?.ssid : null;
       _broadcastKiosk(
         Envelope.create(
           type: 'admin.qr',
@@ -3401,6 +3407,8 @@ class AttentionCoordinator {
             'iface': lan.device,
             'type': lan.type,
             'port': port,
+            'hotspot': hotspotActive || lan.hotspot,
+            if (ssid != null && ssid.isNotEmpty) 'ssid': ssid,
           },
         ),
       );
@@ -3408,10 +3416,17 @@ class AttentionCoordinator {
         'ip': ip,
         'iface': lan.device,
         'type': lan.type,
+        'hotspot': hotspotActive || lan.hotspot,
+        if (ssid != null) 'ssid': ssid,
       });
     } on Object catch (e) {
       logWarn('admin_qr_failed', e.toString());
     }
+  }
+
+  /// Called when SoftAP starts/stops so the kiosk QR/SSID update immediately.
+  void onHotspotChanged() {
+    unawaited(_refreshAdminQr(force: true));
   }
 
   void _broadcastPhase(String phase, {String detail = ''}) {

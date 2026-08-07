@@ -1,6 +1,6 @@
 /** AO Reach mTLS pairing (ADR 0013). */
 
-export function createAoMtls(root, { api }) {
+export function createAoMtls(root, { api, onStatus } = {}) {
   root.innerHTML = `
     <div class="ao-mtls">
       <p class="ao-mtls__err mono" id="aoMtlsErr" hidden></p>
@@ -102,6 +102,22 @@ export function createAoMtls(root, { api }) {
       els.clientName.value = data.client_name;
     }
     if (data.last_error) showErr(data.last_error);
+
+    onStatus?.({
+      enabled,
+      paired,
+      openssl_ok: data.openssl_ok !== false,
+    });
+  }
+
+  /** Lightweight update from /api/status.ao_mtls. */
+  function applyStatusSnippet(snippet) {
+    if (!snippet || typeof snippet !== 'object') return;
+    onStatus?.({
+      enabled: !!snippet.enabled,
+      paired: !!snippet.paired,
+      openssl_ok: snippet.openssl_ok !== false,
+    });
   }
 
   function escapeHtml(s) {
@@ -115,7 +131,7 @@ export function createAoMtls(root, { api }) {
   async function refresh() {
     showErr('');
     try {
-      const data = await api.get('/admin/api/ao_mtls');
+      const data = await api.get('/api/ao_mtls');
       render(data);
     } catch (e) {
       showErr(e.message || String(e));
@@ -127,7 +143,7 @@ export function createAoMtls(root, { api }) {
     busy = true;
     showErr('');
     try {
-      const data = await api.post('/admin/api/ao_mtls', body);
+      const data = await api.post('/api/ao_mtls', body);
       if (data.ok === false) {
         showErr(data.error || 'request failed');
       }
@@ -171,5 +187,6 @@ export function createAoMtls(root, { api }) {
   return {
     onShow: () => refresh(),
     refresh,
+    applyStatusSnippet,
   };
 }
