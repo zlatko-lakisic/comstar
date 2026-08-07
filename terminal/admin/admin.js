@@ -38,8 +38,10 @@ const els = {
   roadRoot: document.getElementById('roadRoot'),
   actionsPane: document.getElementById('actionsPane'),
   roadPane: document.getElementById('roadPane'),
+  logsPane: document.getElementById('logsPane'),
   tabActions: document.getElementById('tabActions'),
   tabRoad: document.getElementById('tabRoad'),
+  tabLogs: document.getElementById('tabLogs'),
   roadTabDot: document.getElementById('roadTabDot'),
   injectRoot: document.getElementById('injectRoot'),
   logsControls: document.getElementById('logsControls'),
@@ -90,17 +92,23 @@ function setRoadTabDot({ enabled, link } = {}) {
 }
 
 function selectTab(name) {
-  const isActions = name === 'actions';
-  els.tabActions.classList.toggle('is-active', isActions);
-  els.tabRoad.classList.toggle('is-active', !isActions);
-  els.tabActions.setAttribute('aria-selected', isActions ? 'true' : 'false');
-  els.tabRoad.setAttribute('aria-selected', isActions ? 'false' : 'true');
-  els.actionsPane.hidden = !isActions;
-  els.roadPane.hidden = isActions;
-  els.actionsPane.classList.toggle('is-active', isActions);
-  els.roadPane.classList.toggle('is-active', !isActions);
+  const tabs = [
+    { name: 'actions', tab: els.tabActions, pane: els.actionsPane },
+    { name: 'road', tab: els.tabRoad, pane: els.roadPane },
+    { name: 'logs', tab: els.tabLogs, pane: els.logsPane },
+  ];
+  const active = tabs.some((t) => t.name === name) ? name : 'actions';
+  for (const t of tabs) {
+    const on = t.name === active;
+    t.tab?.classList.toggle('is-active', on);
+    t.tab?.setAttribute('aria-selected', on ? 'true' : 'false');
+    if (t.pane) {
+      t.pane.hidden = !on;
+      t.pane.classList.toggle('is-active', on);
+    }
+  }
   try {
-    sessionStorage.setItem('comstar_ops_tab', name);
+    sessionStorage.setItem('comstar_ops_tab', active);
   } catch {
     // ignore
   }
@@ -108,9 +116,10 @@ function selectTab(name) {
 
 els.tabActions?.addEventListener('click', () => selectTab('actions'));
 els.tabRoad?.addEventListener('click', () => selectTab('road'));
+els.tabLogs?.addEventListener('click', () => selectTab('logs'));
 
 const savedTab = sessionStorage.getItem('comstar_ops_tab');
-selectTab(savedTab === 'road' ? 'road' : 'actions');
+selectTab(['actions', 'road', 'logs'].includes(savedTab) ? savedTab : 'actions');
 
 const rail = createRailEmblem(els.railEmblem);
 const health = createHealth(els.healthGrid, els.metricsRow);

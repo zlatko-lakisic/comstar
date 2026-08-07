@@ -238,6 +238,7 @@ html, body {
 
 .tab-pane[hidden] { display: none !important; }
 .tab-pane.is-active { display: block; }
+.tab-pane--logs.is-active { display: flex; }
 
 .road__icons {
   display: flex;
@@ -548,7 +549,20 @@ html, body {
   outline-offset: 2px;
 }
 
-.panel--logs { min-height: 280px; }
+.tab-pane--logs {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 280px;
+}
+.tab-pane--logs.is-active {
+  display: flex;
+}
+.logs-pane-head {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
 .logs-controls {
   display: flex;
   flex-wrap: wrap;
@@ -566,8 +580,8 @@ html, body {
 }
 .logs-root {
   position: relative;
-  height: calc(100vh - 520px);
-  min-height: 280px;
+  height: calc(100vh - 360px);
+  min-height: 320px;
   overflow-y: auto;
   background: var(--surface-2);
   border: 1px solid var(--border);

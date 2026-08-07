@@ -70,6 +70,7 @@
                   <span class="tab__vpn-dot" id="roadTabDot"></span>
                 </span>
               </button>
+              <button type="button" class="tab" role="tab" aria-selected="false" data-tab="logs" id="tabLogs">Logs</button>
             </div>
             <span class="freshness mono" id="opsFresh">—</span>
           </div>
@@ -80,6 +81,12 @@
             <div class="tab-pane" id="roadPane" role="tabpanel" data-pane="road" hidden>
               <div id="roadRoot"></div>
             </div>
+            <div class="tab-pane tab-pane--logs" id="logsPane" role="tabpanel" data-pane="logs" hidden>
+              <div class="logs-pane-head">
+                <div class="logs-controls" id="logsControls"></div>
+              </div>
+              <div id="logsRoot" class="logs-root"></div>
+            </div>
           </div>
         </section>
 
@@ -88,14 +95,6 @@
             <h2 class="inject-heading">Inject (dev)</h2>
           </div>
           <div id="injectRoot"></div>
-        </section>
-
-        <section class="panel panel--logs">
-          <div class="panel__head">
-            <h2>Logs</h2>
-            <div class="logs-controls" id="logsControls"></div>
-          </div>
-          <div id="logsRoot" class="logs-root"></div>
         </section>
       </main>
     </div>
