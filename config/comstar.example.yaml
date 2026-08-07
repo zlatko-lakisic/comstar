@@ -63,10 +63,16 @@ memory:
   max_facts_chars: 1200                        # 200–4000
 
 # House-wide presence via HA person.* (ADR 0006). Does not drive attention FSM.
-# IPA group / comstarHaPerson overlay is P2.3+; yaml remains the override.
+# Bridge auto-discovers Assist-exposed person.* (friendly_name match for where-is).
+# Yaml is optional aliases / overrides (faceId or FreeIPA uid → person.*); yaml wins.
+# IPA comstarHaPerson overlay is P2.3+; duplicates of the same person.* are fine.
 presence:
   ha_person_by_uid:
     zlatko: person.zlatko_lakisic
+    zlatko.lakisic: person.zlatko_lakisic
+    # Optional — Adna/Ibrica also resolve via HA discovery without these entries:
+    # adna: person.adna_zujo_lakisic
+    # ibrica: person.ibrica_lakisic
 
 # FreeIPA directory resolve (ADR 0005). When enabled=false, faceId == session uid.
 directory:

@@ -53,7 +53,7 @@ final _toolHeavy = RegExp(
   r'blinds?|shades?|curtain|fan|heater|hvac|vacuum|media player|'
   r'turn (on|off)|switch (on|off)|set (the )?(temp|temperature|thermostat)|'
   r'dim|brighten|who s home|whos home|anyone home|who is home|'
-  r'home assistant|sensor)\b|'
+  r'where is|wheres|is .+ (at )?home|home assistant|sensor)\b|'
   // Google / workspace.
   r'\b(google|gmail|calendar|g-?cal|drive|workspace|inbox|email|e-?mail|'
   r'meeting|appointments?|schedule|compose)\b|'

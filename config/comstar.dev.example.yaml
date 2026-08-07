@@ -45,7 +45,7 @@ attention:
 presence:
   ha_person_by_uid:
     zlatko: person.zlatko_lakisic
-
+    # Other household members resolve via HA person.* discovery when HA agent is configured.
 directory:
   enabled: false
   sidecar_url: ""

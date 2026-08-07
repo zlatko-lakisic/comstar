@@ -8,6 +8,11 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:test/test.dart';
 
+http.Response _emptyPersonList() => http.Response(
+      jsonEncode({'success': true, 'entities': <dynamic>[]}),
+      200,
+    );
+
 void main() {
   group('PresenceConfig', () {
     test('parses ha_person_by_uid', () {
@@ -44,6 +49,7 @@ void main() {
   group('HousePresenceService', () {
     test('snapshot maps HA entity states', () async {
       final client = MockClient((request) async {
+        if (request.url.path.contains('/list')) return _emptyPersonList();
         expect(request.url.path, contains('person.zlatko_lakisic'));
         return http.Response(
           jsonEncode({
@@ -80,6 +86,7 @@ void main() {
 
     test('spokenSummary for one person home', () async {
       final client = MockClient((request) async {
+        if (request.url.path.contains('/list')) return _emptyPersonList();
         return http.Response(
           jsonEncode({
             'success': true,
@@ -103,6 +110,189 @@ void main() {
         ),
       );
       expect(await svc.spokenSummary(), 'Zlatko is home.');
+    });
+
+    test('whereIs matches first name and reports home', () async {
+      final client = MockClient((request) async {
+        if (request.url.path.contains('/list')) return _emptyPersonList();
+        final path = request.url.path;
+        if (path.contains('adna')) {
+          return http.Response(
+            jsonEncode({
+              'success': true,
+              'state': {
+                'state': 'unknown',
+                'attributes': {'friendly_name': 'Adna Zujo Lakisic'},
+              },
+            }),
+            200,
+          );
+        }
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'state': {
+              'state': 'home',
+              'attributes': {'friendly_name': 'Zlatko Lakisic'},
+            },
+          }),
+          200,
+        );
+      });
+      final svc = HousePresenceService(
+        config: const PresenceConfig(
+          haPersonByUid: {
+            'zlatko': 'person.zlatko_lakisic',
+            'adna': 'person.adna_zujo_lakisic',
+          },
+        ),
+        clock: FakeClock(1),
+        ha: HaAgentClient(
+          httpClient: client,
+          baseUrlOverride: 'http://ha.test',
+          apiKeyOverride: 'test-key',
+        ),
+      );
+
+      final z = await svc.whereIs('Zlatko');
+      expect(z.matched, isTrue);
+      expect(z.liveKnown, isTrue);
+      expect(z.spoken, 'Zlatko Lakisic is home.');
+
+      final a = await svc.whereIs('Adna');
+      expect(a.matched, isTrue);
+      expect(a.liveKnown, isFalse);
+      expect(a.spoken, contains('does not have a live location'));
+      expect(a.displayName, 'Adna Zujo Lakisic');
+    });
+
+    test('whereIs dedupes aliased uids for same entity', () async {
+      var stateCalls = 0;
+      final client = MockClient((request) async {
+        if (request.url.path.contains('/list')) return _emptyPersonList();
+        stateCalls++;
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'state': {
+              'state': 'home',
+              'attributes': {'friendly_name': 'Zlatko Lakisic'},
+            },
+          }),
+          200,
+        );
+      });
+      final svc = HousePresenceService(
+        config: const PresenceConfig(
+          haPersonByUid: {
+            'zlatko': 'person.zlatko_lakisic',
+            'zlatko.lakisic': 'person.zlatko_lakisic',
+          },
+        ),
+        clock: FakeClock(1),
+        ha: HaAgentClient(
+          httpClient: client,
+          baseUrlOverride: 'http://ha.test',
+          apiKeyOverride: 'test-key',
+        ),
+      );
+      final people = (await svc.snapshot())['people'] as List;
+      expect(people, hasLength(1));
+      expect(stateCalls, 1);
+    });
+
+    test('discovers person.* without yaml map', () async {
+      final client = MockClient((request) async {
+        expect(request.url.path, contains('/list'));
+        expect(request.url.queryParameters['domain'], 'person');
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'entities': [
+              {
+                'entity_id': 'person.google_home',
+                'state': 'unknown',
+                'friendly_name': 'Google Home',
+              },
+              {
+                'entity_id': 'person.md_admin',
+                'state': 'unknown',
+                'friendly_name': 'md-admin',
+              },
+              {
+                'entity_id': 'person.adna_zujo_lakisic',
+                'state': 'not_home',
+                'friendly_name': 'Adna Zujo Lakisic',
+              },
+            ],
+          }),
+          200,
+        );
+      });
+      final svc = HousePresenceService(
+        config: const PresenceConfig(),
+        clock: FakeClock(1),
+        ha: HaAgentClient(
+          httpClient: client,
+          baseUrlOverride: 'http://ha.test',
+          apiKeyOverride: 'test-key',
+        ),
+      );
+
+      final people = (await svc.snapshot())['people'] as List;
+      expect(people, hasLength(1));
+      expect(people.first['ha_entity'], 'person.adna_zujo_lakisic');
+      expect(people.first['uid'], 'adna_zujo_lakisic');
+
+      final a = await svc.whereIs('Adna');
+      expect(a.matched, isTrue);
+      expect(a.spoken, 'Adna Zujo Lakisic is away from home.');
+    });
+
+    test('yaml mapping wins over discovery for same entity', () async {
+      final client = MockClient((request) async {
+        if (request.url.path.contains('/list')) {
+          return http.Response(
+            jsonEncode({
+              'success': true,
+              'entities': [
+                {
+                  'entity_id': 'person.zlatko_lakisic',
+                  'state': 'not_home',
+                  'friendly_name': 'Zlatko Lakisic',
+                },
+              ],
+            }),
+            200,
+          );
+        }
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'state': {
+              'state': 'home',
+              'attributes': {'friendly_name': 'Zlatko'},
+            },
+          }),
+          200,
+        );
+      });
+      final svc = HousePresenceService(
+        config: const PresenceConfig(
+          haPersonByUid: {'zlatko': 'person.zlatko_lakisic'},
+        ),
+        clock: FakeClock(1),
+        ha: HaAgentClient(
+          httpClient: client,
+          baseUrlOverride: 'http://ha.test',
+          apiKeyOverride: 'test-key',
+        ),
+      );
+      final people = (await svc.snapshot())['people'] as List;
+      expect(people, hasLength(1));
+      expect(people.first['uid'], 'zlatko');
+      expect(people.first['displayName'], 'Zlatko');
+      expect(people.first['state'], 'home');
     });
   });
 }

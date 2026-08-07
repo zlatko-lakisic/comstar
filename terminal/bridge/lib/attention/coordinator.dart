@@ -26,6 +26,7 @@ import 'package:comstar_bridge/google/workspace_client.dart';
 import 'package:comstar_bridge/ha_agent_client.dart';
 import 'package:comstar_bridge/home_data_intent.dart';
 import 'package:comstar_bridge/house_presence.dart';
+import 'package:comstar_bridge/presence_location_service.dart';
 import 'package:comstar_bridge/http_audio_server.dart';
 import 'package:comstar_bridge/sentiment.dart';
 import 'package:comstar_bridge/local_ws.dart';
@@ -148,6 +149,9 @@ class AttentionCoordinator {
   var _googlePhase = GooglePairingPhase.idle;
   String? _googlePairingUserCode;
   String? _googleLastError;
+
+  /// Last successful where-is / leave person for pronoun follow-ups ("when did they leave?").
+  String? _lastPresencePersonName;
 
   final _captureBuffer = BytesBuilder(); // copy:true — toBytes() must not wipe PCM
   var _capturePeakRms = 0.0;
@@ -1768,21 +1772,76 @@ class AttentionCoordinator {
           config: config.presence,
           clock: clock,
         ).spokenSummary();
+      case HomeDataIntentKind.whereIsPerson:
+        spoken = await _spokenWhereIsPerson(intent.personName);
+      case HomeDataIntentKind.whenPersonLeft:
+        spoken = await _spokenWhenPersonLeft(intent.personName);
     }
     if (spoken == null || spoken.trim().isEmpty) {
       logWarn('home_data_intent', 'HA agent returned empty', data: {
         'turn_id': turnId,
         'kind': intent.kind.name,
+        if (intent.personName != null) 'name': intent.personName,
       });
       return false;
     }
     logInfo('home_data_intent', 'Answered from HA agent', data: {
       'turn_id': turnId,
       'kind': intent.kind.name,
+      if (intent.personName != null) 'name': intent.personName,
       'chars': spoken.length,
+      'preview': spoken.length > 160 ? '${spoken.substring(0, 160)}…' : spoken,
     });
     await _speakText(spoken, turnId, rememberUserText: text);
     return true;
+  }
+
+  /// HA person location first; Frigate last-seen when live location is unknown.
+  Future<String?> _spokenWhereIsPerson(String? nameQuery) async {
+    final name = (nameQuery ?? _lastPresencePersonName)?.trim() ?? '';
+    if (name.isEmpty) {
+      return 'Who should I look up?';
+    }
+    final lookup = await PresenceLocationService(
+      config: config.presence,
+      clock: clock,
+    ).whereIs(name);
+
+    if (lookup.matched) {
+      _lastPresencePersonName = lookup.displayName.split(' ').first;
+    }
+
+    if (!lookup.matched) return lookup.spoken;
+    if (lookup.liveKnown) return lookup.spoken;
+
+    // HA unknown → optional camera history (do not invent driveway times).
+    if (!VisionMcpClient.isConfigured) return lookup.spoken;
+    final client = VisionMcpClient();
+    try {
+      final hint = await client.personLastSeenSpoken(name: name);
+      if (hint == null || hint.trim().isEmpty) return lookup.spoken;
+      return '${lookup.spoken} ${clipSpokenHint(hint)}';
+    } catch (e) {
+      logWarn('where_is_frigate_fallback', e.toString(), data: {'name': name});
+      return lookup.spoken;
+    } finally {
+      client.close();
+    }
+  }
+
+  Future<String?> _spokenWhenPersonLeft(String? nameQuery) async {
+    final name = (nameQuery ?? _lastPresencePersonName)?.trim() ?? '';
+    if (name.isEmpty) {
+      return 'Who left — say a name, or ask where someone is first.';
+    }
+    final lookup = await PresenceLocationService(
+      config: config.presence,
+      clock: clock,
+    ).whenLeft(name);
+    if (lookup.matched) {
+      _lastPresencePersonName = lookup.displayName.split(' ').first;
+    }
+    return lookup.spoken;
   }
 
   Future<bool> _tryGoogleDataIntent(String text, String turnId) async {

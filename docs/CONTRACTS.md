@@ -494,6 +494,22 @@ secrets.
 - Lip-sync stays on one clock; follow-up window opens on kiosk `speak.ended`.
 - Bridge → audio `play` is **not used** in Phase 1 (reserved in §2 only).
 
+### TTS synthesis streaming (TTS.0.2 — VERIFIED 2026-08-07)
+
+sherpa-onnx **1.13.4** Python `OfflineTts.generate(text, sid, speed, callback=None)`
+documents an optional incremental callback
+`(samples: np.ndarray, progress: float) -> int` (C API:
+`SherpaOnnxGeneratedAudioCallback`). Return non-zero to abort.
+
+**Kokoro (`kokoro-en-v0_19`) empirical on Ada:** the callback fires **once** with
+the complete sample buffer; measured TTFC ≈ full `synth_sec`. Treat Kokoro as
+**buffer-complete** for first-audio budgeting unless `tts_server.py` chunks at
+sentence boundaries. See `docs/BASELINES.md` §12 and `docs/TTS_HANDOFF.md`.
+
+Ada `venv-tts` ORT currently has **no CUDA EP**; `provider=cuda` falls back to
+CPU. Product TTS.1 should either rebuild sherpa-onnx with GPU or accept CPU RTF
+~1.0 until then.
+
 ---
 
 ## 7. Config schema
@@ -526,7 +542,7 @@ See `config/comstar.example.yaml` for the annotated version. Validation rules:
 | `directory.require` | bool — fail closed when true |
 | `directory.cache_ttl_seconds` | 60 ≤ x ≤ 3600 |
 | `directory.timeout_ms` | 200 ≤ x ≤ 10000 |
-| `presence.ha_person_by_uid` | map of COMSTAR uid → HA `person.*` entity_id (optional) |
+| `presence.ha_person_by_uid` | optional map of COMSTAR uid → HA `person.*` (aliases / overrides). Bridge also auto-discovers Assist-exposed `person.*` via HA agent `GET /api/entities/list?domain=person` and matches spoken names to `friendly_name`. Yaml wins on the same entity_id. Non-people (`person.google_home`, `person.md_admin`) are skipped. |
 | `audio.duplex` | enum: `half` \| `full` (`full` requires AEC — ADR 0007) |
 
 ---
@@ -559,15 +575,34 @@ Response:
 | field | meaning |
 |---|---|
 | `ts` | epoch ms when the snapshot was built |
-| `uid` | COMSTAR / IPA uid from `presence.ha_person_by_uid` |
+| `uid` | COMSTAR / IPA uid from `presence.ha_person_by_uid`, else HA entity suffix for auto-discovered people |
 | `displayName` | HA friendly_name when present, else uid |
-| `ha_entity` | configured entity_id |
+| `ha_entity` | entity_id (yaml or discovered) |
 | `state` | HA person state (`home`, `not_home`, zone name, or `unknown` on error) |
 
 **Non-goal:** this API does **not** drive the attention FSM or open AO sessions
 (ADR 0006). Local camera identity remains the terminal identity terminator.
 
-Optional voice path: bridge-local `HomeDataIntent` → spoken summary without AO.
+Optional voice paths (bridge-local, no AO):
+
+| utterance | behavior |
+|---|---|
+| “Who’s home?” | Summarize people with HA state `home` (yaml + auto-discovered) |
+| “Where is Adna?” / “Is Zlatko home?” | Resolve spoken name → HA person state. If `home` / named zone, say that. Else reverse-geocode GPS (`latitude`/`longitude`) vs `zone.home` and speak by tier (below). If HA is `unknown` / no GPS, append Frigate `person_last_seen` when `COMSTAR_VISION_MCP_URL` is set |
+| “When did Adna leave?” / “When did they leave?” | HA history (`GET /api/history/list`) for last `home`→away transition. Pronouns use the last successful where-is / leave person |
+
+**Location speech tiers** (distance from `zone.home`, country/state from reverse geocode — Nominatim, cached):
+
+| tier | when | example |
+|---|---|---|
+| home | state `home` or in `zone.home` | “Adna is home.” |
+| named zone | HA zone other than home | “Adna is at Work.” |
+| local | same region, roughly ≤12 km | “Adna is at Trader Joe's on Central Avenue in Greenburgh.” |
+| same state | farther, same admin state/country | “Adna went to New York City.” |
+| other state | same country, different state | “Adna went to Atlanta, Georgia.” |
+| other country | different country | “Adna is in Melbourne, Australia.” |
+
+Yaml aliases remain useful for faceId/LDAP uid shortcuts; they are not required for named where-is.
 
 ---
 

@@ -324,3 +324,36 @@ Ordered summary of operator actions during this bring-up:
 ---
 
 *Last updated: 2026-08-02 (post OS/firmware upgrade and CPAI/camera verification).*
+
+## 12. Kokoro TTS on Ada (TTS.0) — 20260807T155500Z
+
+Captured by `scripts/verify_tts.sh` → `docs/fixtures/kokoro_bench_20260807T155500Z.json`.
+
+| Field | Value |
+|---|---|
+| Host | `10.0.10.16` (RTX 4000 Ada) |
+| Model dir | `/home/zlatko.lakisic/agentic-speech-models/tts-kokoro` |
+| sherpa-onnx | 1.13.4 |
+| Provider requested | `cpu` |
+| Provider effective | `cpu` |
+| Speaker id | 0 (af_heart if 0) |
+| Sample rate | 24000 Hz |
+
+### Metrics (raw)
+
+| mode | n | RTF mean | RTF p50 | TTFC ms mean | TTFC ms p50 | TTFC ms min | synth_sec mean | multi-callback? |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| idle | 6 | 1.078 | 1.0658 | 1516.46 | 1464.32 | 1105.62 | 1.5165 | no |
+| contended | 6 | 0.9634 | 0.9555 | 1333.45 | 1336.2 | 1082.15 | 1.3335 | no |
+
+### TTS.0.2 streaming (from installed API + empirical)
+
+API (sherpa-onnx 1.13.4 Python binding): OfflineTts.generate(text, sid, speed, callback=None) documents an optional callback(samples, progress)->int invoked during speech generation with sample chunks (C header: SherpaOnnxGeneratedAudioCallback — incremental). Same OfflineTts path serves Kokoro via OfflineTtsKokoroModelConfig. EMPIRICAL (kokoro-en-v0_19 on this host): callback fires exactly once per utterance with the full sample buffer; TTFC ≈ full synth_sec. So Kokoro is buffer-complete for first-audio purposes unless sentence-level chunking is added in tts_server.py. max_num_sentences!=1 is ignored for Kokoro.
+
+- `generate_doc_mentions_callback`: True
+- `OfflineTts` methods: `generate`, `num_speakers`, `sample_rate`
+
+*Do not treat these numbers as product SLOs until TTS.0.3 voice pick and TTS.0.4 sample-rate decision land in ADR 0008.*
+
+**Note:** Ada `venv-tts` sherpa-onnx ORT has **no CUDA EP** (`Please compile with -DSHERPA_ONNX_ENABLE_GPU=ON`); `provider=cuda` falls back to CPU. Contended mode storms CPAI detection; Kokoro itself stayed on CPU so VRAM (~15.7 GiB) is CPAI/other, not TTS.
+

@@ -74,6 +74,125 @@ class HaAgentClient {
     }
   }
 
+  /// List entities via HA agent (`GET /api/entities/list`).
+  ///
+  /// When [summaryOnly] is true, each item is a compact map with
+  /// `entity_id`, `state`, `domain`, `friendly_name`.
+  Future<List<Map<String, dynamic>>> listEntities({
+    String? domain,
+    String? search,
+    bool summaryOnly = true,
+    int pageSize = 100,
+  }) async {
+    final base = _url;
+    final key = _key;
+    if (base == null || key == null) return const [];
+    final params = <String, String>{
+      'page': '1',
+      'page_size': '${pageSize.clamp(1, 500)}',
+      if (summaryOnly) 'summary_only': 'true',
+      if (domain != null && domain.isNotEmpty) 'domain': domain,
+      if (search != null && search.isNotEmpty) 'search': search,
+    };
+    final uri = Uri.parse('$base/api/entities/list').replace(queryParameters: params);
+    try {
+      final resp = await _http
+          .get(uri, headers: {'Authorization': 'Bearer $key'})
+          .timeout(const Duration(seconds: 12));
+      if (resp.statusCode != 200) {
+        logWarn('ha_agent_http', 'entities list failed', data: {
+          'status': resp.statusCode,
+          'domain': domain,
+        });
+        return const [];
+      }
+      final decoded = jsonDecode(resp.body);
+      if (decoded is! Map || decoded['success'] == false) return const [];
+      final raw = decoded['entities'];
+      if (raw is! List) return const [];
+      return [
+        for (final e in raw)
+          if (e is Map) Map<String, dynamic>.from(e),
+      ];
+    } catch (e) {
+      logWarn('ha_agent_http', e.toString(), data: {'op': 'list_entities'});
+      return const [];
+    }
+  }
+
+  /// State history via HA agent (`GET /api/history/list`).
+  Future<List<Map<String, dynamic>>> entityHistory(
+    String entityId, {
+    DateTime? start,
+    DateTime? end,
+    bool minimalResponse = true,
+  }) async {
+    final base = _url;
+    final key = _key;
+    if (base == null || key == null) return const [];
+    final params = <String, String>{
+      'entity_id': entityId,
+      'minimal_response': minimalResponse ? 'true' : 'false',
+      if (start != null) 'start': start.toUtc().toIso8601String(),
+      if (end != null) 'end': end.toUtc().toIso8601String(),
+    };
+    final uri =
+        Uri.parse('$base/api/history/list').replace(queryParameters: params);
+    try {
+      final resp = await _http
+          .get(uri, headers: {'Authorization': 'Bearer $key'})
+          .timeout(const Duration(seconds: 30));
+      if (resp.statusCode != 200) {
+        logWarn('ha_agent_http', 'history failed', data: {
+          'entity_id': entityId,
+          'status': resp.statusCode,
+        });
+        return const [];
+      }
+      final decoded = jsonDecode(resp.body);
+      if (decoded is! Map || decoded['success'] == false) return const [];
+      final raw = decoded['history'];
+      if (raw is! List) return const [];
+      return [
+        for (final e in raw)
+          if (e is Map) Map<String, dynamic>.from(e),
+      ];
+    } catch (e) {
+      logWarn('ha_agent_http', e.toString(), data: {'op': 'history'});
+      return const [];
+    }
+  }
+
+  /// Zones from HA agent (`GET /api/zones/list`).
+  Future<List<Map<String, dynamic>>> listZones() async {
+    final base = _url;
+    final key = _key;
+    if (base == null || key == null) return const [];
+    final uri = Uri.parse('$base/api/zones/list');
+    try {
+      final resp = await _http
+          .get(uri, headers: {'Authorization': 'Bearer $key'})
+          .timeout(const Duration(seconds: 10));
+      if (resp.statusCode != 200) {
+        logWarn('ha_agent_http', 'zones list failed', data: {
+          'status': resp.statusCode,
+        });
+        return const [];
+      }
+      final decoded = jsonDecode(resp.body);
+      if (decoded is! Map || decoded['success'] == false) return const [];
+      final raw = decoded['zones'];
+      if (raw is! List) return const [];
+      return [
+        for (final e in raw)
+          if (e is Map) Map<String, dynamic>.from(e),
+      ];
+    } catch (e) {
+      logWarn('ha_agent_http', e.toString(), data: {'op': 'zones_list'});
+      return const [];
+    }
+  }
+
   /// Spoken summary of qBittorrent sensors in Home Assistant.
   Future<String?> torrentsSpokenSummary() async {
     if (!isConfigured) return null;

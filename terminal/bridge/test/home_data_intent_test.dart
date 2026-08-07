@@ -84,4 +84,59 @@ void main() {
       HomeDataIntentKind.presenceHome,
     );
   });
+
+  test('detects where is person questions', () {
+    final where = parseHomeDataIntent('Where is Adna?');
+    expect(where?.kind, HomeDataIntentKind.whereIsPerson);
+    expect(where?.personName, 'Adna');
+
+    expect(
+      parseHomeDataIntent("Where's Zlatko right now?")?.personName,
+      'Zlatko',
+    );
+    expect(
+      parseHomeDataIntent('Is Adna home?')?.kind,
+      HomeDataIntentKind.whereIsPerson,
+    );
+    expect(
+      parseHomeDataIntent('Is Ibrica at home?')?.personName,
+      'Ibrica',
+    );
+  });
+
+  test('where is does not steal aggregate presence', () {
+    expect(parseHomeDataIntent('Where is everyone?'), isNull);
+    expect(
+      parseHomeDataIntent("Who's home?")?.kind,
+      HomeDataIntentKind.presenceHome,
+    );
+  });
+
+  test('when did leave intents', () {
+    final named = parseHomeDataIntent('When did Adna leave?');
+    expect(named?.kind, HomeDataIntentKind.whenPersonLeft);
+    expect(named?.personName, 'Adna');
+
+    final home = parseHomeDataIntent('When did Adna leave home?');
+    expect(home?.kind, HomeDataIntentKind.whenPersonLeft);
+    expect(home?.personName, 'Adna');
+
+    final pronoun = parseHomeDataIntent('When did they leave?');
+    expect(pronoun?.kind, HomeDataIntentKind.whenPersonLeft);
+    expect(pronoun?.personName, isNull);
+
+    final gone = parseHomeDataIntent('How long has she been gone?');
+    expect(gone?.kind, HomeDataIntentKind.whenPersonLeft);
+    expect(gone?.personName, isNull);
+  });
+
+  test('where is they uses pronoun context', () {
+    final they = parseHomeDataIntent('Where are they?');
+    expect(they?.kind, HomeDataIntentKind.whereIsPerson);
+    expect(they?.personName, isNull);
+
+    final she = parseHomeDataIntent('Where is she?');
+    expect(she?.kind, HomeDataIntentKind.whereIsPerson);
+    expect(she?.personName, isNull);
+  });
 }

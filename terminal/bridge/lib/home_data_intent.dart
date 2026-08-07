@@ -4,14 +4,23 @@ enum HomeDataIntentKind {
   irrigationSummary,
   networkSummary,
   presenceHome,
+  whereIsPerson,
+  whenPersonLeft,
 }
 
 class HomeDataIntent {
-  const HomeDataIntent(this.kind, {this.query = ''});
+  const HomeDataIntent(
+    this.kind, {
+    this.query = '',
+    this.personName,
+  });
   final HomeDataIntentKind kind;
 
   /// Original normalized text — used for network sub-routing (WAN vs LAN vs speed).
   final String query;
+
+  /// Spoken name for person lookups (e.g. Adna). Null when pronouns need context.
+  final String? personName;
 }
 
 /// Returns a [HomeDataIntent] when [text] asks about HA-backed household data
@@ -19,19 +28,26 @@ class HomeDataIntent {
 HomeDataIntent? parseHomeDataIntent(String text) {
   final t = text
       .toLowerCase()
+      .replaceAll(RegExp(r"['\u2019]"), '')
       .replaceAll(RegExp(r'[^\w\s]'), ' ')
       .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
   if (t.isEmpty) return null;
 
+  final left = _parseWhenPersonLeft(t);
+  if (left != null) return left;
+
+  final where = _parseWhereIsPerson(t);
+  if (where != null) return where;
+
   // Who's home / anyone home — before network (no IP conflict).
-  // Apostrophes are stripped above, so "who's" → "who s".
+  // Apostrophes are stripped above, so "who's" → "whos".
   if (RegExp(
-        r'\bwho\s+s\s+(home|here)\b|'
+        r'\bwhos?\s+(home|here)\b|'
         r'\bwho\s+is\s+(home|here)\b|'
         r'\bwho\s+are\s+(home|here)\b|'
         r'\banyone\s+(home|here)\b|'
-        r'\bwho\s+s\s+at\s+home\b|'
+        r'\bwhos?\s+at\s+home\b|'
         r'\bwho\s+is\s+at\s+home\b|'
         r'\bhouse\s+presence\b|'
         r'\bwho\s+is\s+in\s+the\s+house\b',
@@ -81,4 +97,120 @@ HomeDataIntent? parseHomeDataIntent(String text) {
   }
 
   return null;
+}
+
+HomeDataIntent? _parseWhenPersonLeft(String t) {
+  // "when did Adna leave" / "when did they leave home" / "how long has she been gone"
+  final patterns = <RegExp>[
+    RegExp(
+      r'\bwhen\s+did\s+(.+?)\s+leave(?:\s+(?:home|the\s+house|here))?\b',
+    ),
+    RegExp(
+      r'\bwhen\s+did\s+(.+?)\s+go(?:\s+(?:away|out))?\b',
+    ),
+    RegExp(
+      r'\bhow\s+long\s+has\s+(.+?)\s+been\s+(?:gone|away|out)\b',
+    ),
+    RegExp(
+      r'\bwhat\s+time\s+did\s+(.+?)\s+leave(?:\s+(?:home|the\s+house))?\b',
+    ),
+  ];
+
+  String? raw;
+  for (final re in patterns) {
+    final m = re.firstMatch(t);
+    if (m != null) {
+      raw = m.group(1);
+      break;
+    }
+  }
+  if (raw == null) return null;
+
+  final name = _cleanPersonName(raw);
+  if (name == null) return null;
+
+  // Pronouns → null personName; coordinator fills from last presence lookup.
+  if (RegExp(r'^(they|them|she|he|her|him)$').hasMatch(name.toLowerCase())) {
+    return HomeDataIntent(
+      HomeDataIntentKind.whenPersonLeft,
+      query: t,
+      personName: null,
+    );
+  }
+
+  return HomeDataIntent(
+    HomeDataIntentKind.whenPersonLeft,
+    query: t,
+    personName: _titleCaseName(name),
+  );
+}
+
+HomeDataIntent? _parseWhereIsPerson(String t) {
+  // Named person location — not "where's home" / "where is the camera".
+  final patterns = <RegExp>[
+    RegExp(r'\b(?:where\s+is|wheres|where\s+s)\s+(.+?)(?:\s+right\s+now|\s+now)?$'),
+    RegExp(r'\bwhere\s+are\s+(.+?)(?:\s+right\s+now|\s+now)?$'),
+    RegExp(r'\bis\s+(.+?)\s+(?:at\s+)?home(?:\s+right\s+now|\s+now)?$'),
+    RegExp(r'\bis\s+(.+?)\s+here(?:\s+right\s+now|\s+now)?$'),
+    RegExp(r'\bwhere\s+can\s+i\s+find\s+(.+)$'),
+  ];
+
+  String? raw;
+  for (final re in patterns) {
+    final m = re.firstMatch(t);
+    if (m != null) {
+      raw = m.group(1);
+      break;
+    }
+  }
+  if (raw == null) return null;
+
+  final name = _cleanPersonName(raw);
+  if (name == null) return null;
+
+  if (RegExp(r'^(they|them|she|he|her|him)$').hasMatch(name.toLowerCase())) {
+    return HomeDataIntent(
+      HomeDataIntentKind.whereIsPerson,
+      query: t,
+      personName: null,
+    );
+  }
+
+  return HomeDataIntent(
+    HomeDataIntentKind.whereIsPerson,
+    query: t,
+    personName: _titleCaseName(name),
+  );
+}
+
+String? _cleanPersonName(String raw) {
+  var name = raw
+      .replaceAll(
+        RegExp(
+          r'\b(right now|now|today|please|at home|in the house|'
+          r'located|living|staying|home|the house|here)\b',
+        ),
+        ' ',
+      )
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+  name = name.replaceFirst(RegExp(r'^(the |a |an |my |our )'), '').trim();
+  if (name.isEmpty || name.length < 2) return null;
+
+  // Reject non-person / household aggregate queries.
+  if (RegExp(
+        r'^(everyone|everybody|anyone|anybody|someone|somebody|'
+        r'home|house|camera|driveway|front door|keys|car|wifi|network|'
+        r'light|lights|thermostat)$',
+      ).hasMatch(name)) {
+    return null;
+  }
+  return name;
+}
+
+String _titleCaseName(String name) {
+  return name.split(' ').map((w) {
+    if (w.isEmpty) return w;
+    return '${w[0].toUpperCase()}${w.substring(1)}';
+  }).join(' ');
 }

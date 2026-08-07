@@ -16,7 +16,7 @@ Detailed playbooks live in sibling skills — use the matching one:
 | `ha_media_voice` | Plex, OwnTone, TVs, speakers |
 | `ha_downloads_voice` | qBittorrent, Sonarr, Radarr, Prowlarr |
 | `ha_infra_voice` | NAS, containers, host health |
-| `ha_presence_voice` | Who’s home, person entities |
+| `ha_presence_voice` | Who’s home, where is \<name\>, person entities |
 
 Assist only sees **exposed** entities. If live context is empty for a topic, say
 you checked Home Assistant and that entity is not exposed — do not guess.
