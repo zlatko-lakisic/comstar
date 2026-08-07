@@ -5,6 +5,7 @@ import { createHealth } from './components/health.js';
 import { createLogs } from './components/logs.js';
 import { createActions } from './components/actions.js';
 import { createInject } from './components/inject.js';
+import { createRoad } from './components/road.js';
 
 const params = new URLSearchParams(location.search);
 let token = params.get('token') || sessionStorage.getItem('comstar_lan_token') || '';
@@ -34,6 +35,9 @@ const els = {
   healthPanel: document.getElementById('healthPanel'),
   actionsPanel: document.getElementById('actionsPanel'),
   actionsRoot: document.getElementById('actionsRoot'),
+  roadFresh: document.getElementById('roadFresh'),
+  roadPanel: document.getElementById('roadPanel'),
+  roadRoot: document.getElementById('roadRoot'),
   injectRoot: document.getElementById('injectRoot'),
   logsControls: document.getElementById('logsControls'),
   logsRoot: document.getElementById('logsRoot'),
@@ -75,6 +79,7 @@ createActions(els.actionsRoot, els.modalRoot, {
   api,
   onDanger: () => rail.setUnreachable(),
 });
+createRoad(els.roadRoot, { api });
 const logs = createLogs(els.logsRoot, els.logsControls, {
   apiUrl: api.url,
   authHeaders: api.authHeaders,
@@ -167,12 +172,13 @@ async function tick(force) {
     renderRail(status, emblemName);
     health.render(status);
 
-    [els.healthPanel, els.actionsPanel].forEach((p) => {
+    [els.healthPanel, els.actionsPanel, els.roadPanel].forEach((p) => {
       p.classList.remove('is-stale', 'is-nocontact');
     });
     setFreshness(els.railFresh, 0.4, false);
     setFreshness(els.healthFresh, 0.4, false);
     setFreshness(els.actionsFresh, 0.4, false);
+    setFreshness(els.roadFresh, 0.4, false);
 
     showApp();
     schedule(document.hidden ? 15000 : 2000);
@@ -187,12 +193,13 @@ async function tick(force) {
     els.railState.textContent = 'NO CONTACT';
     els.railState.classList.add('is-dim');
     els.liveDot.classList.add(api.misses >= 2 ? 'is-dead' : 'is-miss');
-    [els.healthPanel, els.actionsPanel].forEach((p) => {
+    [els.healthPanel, els.actionsPanel, els.roadPanel].forEach((p) => {
       p.classList.add(age > 10 ? 'is-nocontact' : 'is-stale');
     });
     setFreshness(els.railFresh, age, true);
     setFreshness(els.healthFresh, age, true);
     setFreshness(els.actionsFresh, age, true);
+    setFreshness(els.roadFresh, age, true);
     schedule(api.nextBackoffMs());
   }
 }

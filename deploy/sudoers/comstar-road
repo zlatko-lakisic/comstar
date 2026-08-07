@@ -1,0 +1,7 @@
+# Non-interactive nmcli for COMSTAR road VPN (ADR 0011).
+# Install: sudo install -m 440 deploy/sudoers/comstar-road /etc/sudoers.d/comstar-road
+# Validate: sudo visudo -cf /etc/sudoers.d/comstar-road
+#
+# Adjust the username if the bridge does not run as md-admin.
+
+md-admin ALL=(root) NOPASSWD: /usr/bin/nmcli

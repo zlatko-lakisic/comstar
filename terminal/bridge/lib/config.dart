@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:comstar_bridge/announce/config.dart';
+import 'package:comstar_bridge/road/config.dart';
 import 'package:path/path.dart' as p;
 import 'package:yaml/yaml.dart';
 
@@ -25,6 +26,7 @@ class ComstarConfig {
     this.memory = const MemoryConfig(),
     this.presence = const PresenceConfig(),
     this.announce = const AnnounceConfig(),
+    this.road = const RoadConfig(),
     required this.sourcePath,
   });
 
@@ -40,6 +42,7 @@ class ComstarConfig {
   final MemoryConfig memory;
   final PresenceConfig presence;
   final AnnounceConfig announce;
+  final RoadConfig road;
   final String sourcePath;
 
   static const _topLevelKeys = {
@@ -55,6 +58,7 @@ class ComstarConfig {
     'memory',
     'presence',
     'announce',
+    'road',
   };
 
   static const _orchestrationKeys = {
@@ -151,6 +155,15 @@ class ComstarConfig {
     'timezone',
   };
 
+  static const _roadKeys = {
+    'enabled',
+    'protocol',
+    'home_cidrs',
+    'check_interval_seconds',
+    'openvpn_connection',
+    'l2tp_connection',
+  };
+
   static ComstarConfig loadFile(String path) {
     final file = File(path);
     if (!file.existsSync()) {
@@ -218,11 +231,20 @@ class ComstarConfig {
                 ? Map<String, dynamic>.from(announceRaw)
                 : (throw ConfigError('Section announce must be a mapping')),
           );
+    final roadRaw = root['road'];
+    final road = roadRaw == null
+        ? const RoadConfig()
+        : _parseRoad(
+            roadRaw is Map
+                ? Map<String, dynamic>.from(roadRaw)
+                : (throw ConfigError('Section road must be a mapping')),
+          );
 
     _validateRanges(vision, audio, orchestration, avatar, attention, directory);
     _validatePhrases(phrases);
     _validateMemory(memory);
     _validatePresence(presence);
+    _validateRoad(road);
 
     return ComstarConfig(
       orchestration: orchestration,
@@ -237,6 +259,7 @@ class ComstarConfig {
       memory: memory,
       presence: presence,
       announce: announce,
+      road: road,
       sourcePath: sourcePath,
     );
   }
@@ -481,6 +504,70 @@ class ComstarConfig {
       quietEnd: map['quiet_end']?.toString() ?? '07:00',
       timezone: map['timezone']?.toString() ?? '',
     );
+  }
+
+  static RoadConfig _parseRoad(Map<String, dynamic> map) {
+    _assertKnownKeys(map.keys, _roadKeys, 'road');
+    final cidrsRaw = map['home_cidrs'];
+    final cidrs = <String>[];
+    if (cidrsRaw == null) {
+      cidrs.addAll(defaultHomeCidrs);
+    } else if (cidrsRaw is List) {
+      for (final e in cidrsRaw) {
+        final s = e.toString().trim();
+        if (s.isNotEmpty) cidrs.add(s);
+      }
+    } else {
+      throw ConfigError('road.home_cidrs must be a list of CIDR strings');
+    }
+    return RoadConfig(
+      enabled: map['enabled'] as bool? ?? false,
+      protocol: map['protocol']?.toString() ?? 'openvpn',
+      homeCidrs: cidrs.isEmpty ? defaultHomeCidrs : cidrs,
+      checkIntervalSeconds: map['check_interval_seconds'] as int? ?? 30,
+      openvpnConnection: map['openvpn_connection']?.toString() ?? 'comstar-ovpn',
+      l2tpConnection: map['l2tp_connection']?.toString() ?? 'comstar-l2tp',
+    );
+  }
+
+  static void _validateRoad(RoadConfig road) {
+    if (!roadProtocols.contains(road.protocol)) {
+      throw ConfigError(
+        'road.protocol must be one of: ${roadProtocols.join(', ')}',
+      );
+    }
+    _rangeInt(
+      'road.check_interval_seconds',
+      road.checkIntervalSeconds,
+      5,
+      3600,
+    );
+    if (road.homeCidrs.isEmpty) {
+      throw ConfigError('road.home_cidrs must not be empty');
+    }
+    for (final c in road.homeCidrs) {
+      try {
+        // ignore: unused_result — validation only
+        // Parse via string split to avoid importing cidr into config cyclically;
+        // lightweight check:
+        final slash = c.indexOf('/');
+        final addr = slash < 0 ? c : c.substring(0, slash);
+        final prefix = slash < 0 ? '32' : c.substring(slash + 1);
+        if (InternetAddress.tryParse(addr.trim()) == null) {
+          throw FormatException('bad addr');
+        }
+        final p = int.tryParse(prefix.trim());
+        if (p == null || p < 0 || p > 32) throw FormatException('bad prefix');
+      } on Object {
+        throw ConfigError('road.home_cidrs entry invalid: $c');
+      }
+    }
+    if (road.openvpnConnection.trim().isEmpty) {
+      throw ConfigError('road.openvpn_connection must not be empty');
+    }
+    if (road.l2tpConnection.trim().isEmpty) {
+      throw ConfigError('road.l2tp_connection must not be empty');
+    }
   }
 
   static void _validatePresence(PresenceConfig presence) {

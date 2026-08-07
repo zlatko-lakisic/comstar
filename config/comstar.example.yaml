@@ -102,3 +102,17 @@ dev:
 admin:
   bind_lan: false
   token: ""
+
+# Road VPN phone-home (ADR 0011). Off when any local IPv4 is in home_cidrs.
+# Secrets / NM profiles live under ~/.local/share/comstar/road/ — never commit.
+# Admin: GET/POST /admin/api/road (OpenVPN + L2TP).
+road:
+  enabled: false
+  protocol: openvpn                       # openvpn | l2tp | auto
+  home_cidrs:
+    - 192.168.89.0/24
+    - 192.168.90.0/24
+    - 172.16.90.0/24
+  check_interval_seconds: 30
+  openvpn_connection: comstar-ovpn        # NetworkManager connection name
+  l2tp_connection: comstar-l2tp

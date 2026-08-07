@@ -337,6 +337,46 @@ Supported events: `PersonDetected`, `PersonAbsent`, `FaceRecognized`,
 Injected events are logged with `src: injected`. Restart / reboot / sleep /
 live logs are on `/api/*` (see `docs/CONTRACTS.md` admin console).
 
+### Road VPN (phone-home)
+
+When the Pi is **not** on a home subnet, the bridge can bring up a NetworkManager
+VPN so Ada/HA remain reachable. See ADR 0011 and admin **Road VPN** panel.
+
+Default home CIDRs: `192.168.89.0/24`, `192.168.90.0/24`, `172.16.90.0/24`.
+
+```yaml
+road:
+  enabled: false
+  protocol: openvpn          # openvpn | l2tp | auto
+  home_cidrs:
+    - 192.168.89.0/24
+    - 192.168.90.0/24
+    - 172.16.90.0/24
+  openvpn_connection: comstar-ovpn
+  l2tp_connection: comstar-l2tp
+```
+
+Runtime toggles + credentials: `GET/POST /admin/api/road` (secrets write-only;
+stored under `~/.local/share/comstar/road/`).
+
+**Pi packages (pick what you use):**
+
+```bash
+sudo apt install -y network-manager-openvpn network-manager-l2tp strongswan
+```
+
+**Sudoers** (system NM connections; bridge runs as user). Install once:
+
+```bash
+# /etc/sudoers.d/comstar-road — visudo -cf before relying on it
+md-admin ALL=(root) NOPASSWD: /usr/bin/nmcli
+```
+
+Set `COMSTAR_ROAD_NMCLI_SUDO=0` to force plain `nmcli` (user connections only).
+
+At home the reconciler brings **COMSTAR** VPN connections down so LAN routing
+wins. On the road with `enabled: true` it brings the selected protocol up.
+
 ---
 
 ## 6. Rollback

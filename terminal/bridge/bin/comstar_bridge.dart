@@ -15,6 +15,7 @@ import 'package:comstar_bridge/http_audio_server.dart';
 import 'package:comstar_bridge/local_ws.dart';
 import 'package:comstar_bridge/log.dart';
 import 'package:comstar_bridge/session.dart';
+import 'package:comstar_bridge/road/service.dart';
 import 'package:comstar_bridge/speech_routing.dart';
 import 'package:comstar_bridge/stt.dart';
 import 'package:comstar_bridge/systemd_watchdog.dart';
@@ -148,6 +149,9 @@ Future<void> main(List<String> arguments) async {
 
   await coordinator.start(visionPoller: visionPoller);
 
+  final road = RoadService(yamlConfig: config.road);
+  await road.start();
+
   final adminDir = Directory('$repoRoot/terminal/admin');
   final hostMetrics = HostMetrics();
   await hostMetrics.sample(); // prime /proc/stat delta
@@ -160,6 +164,7 @@ Future<void> main(List<String> arguments) async {
     hostMetrics: hostMetrics,
     oauth: coordinator.googleDesktop,
     kioskRoot: kioskDir.existsSync() ? kioskDir.path : null,
+    road: road,
   );
   await admin.start();
   await coordinator.googleDesktop.start(sharedServer: true);

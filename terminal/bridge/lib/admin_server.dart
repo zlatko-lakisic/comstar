@@ -15,6 +15,7 @@ import 'package:comstar_bridge/host_metrics.dart';
 import 'package:comstar_bridge/house_presence.dart';
 import 'package:comstar_bridge/log.dart';
 import 'package:comstar_bridge/admin_ops.dart';
+import 'package:comstar_bridge/road/service.dart';
 
 /// Always-on admin + shared public HTTP on :8781.
 ///
@@ -30,6 +31,7 @@ class AdminServer {
     this.hostMetrics,
     this.oauth,
     this.kioskRoot,
+    this.road,
     this.port = 8781,
     this.httpClientFactory,
     Future<Process> Function(String executable, List<String> arguments)?
@@ -43,6 +45,7 @@ class AdminServer {
   final HostMetrics? hostMetrics;
   final GoogleDesktopUpgrade? oauth;
   final String? kioskRoot;
+  final RoadService? road;
   final int port;
 
   /// Injectable for tests.
@@ -225,6 +228,16 @@ class AdminServer {
         return;
       }
 
+      if (request.method == 'GET' && adminPath == '/admin/api/road') {
+        await _handleRoadGet(request);
+        return;
+      }
+
+      if (request.method == 'POST' && adminPath == '/admin/api/road') {
+        await _handleRoadPost(request);
+        return;
+      }
+
       if (request.method == 'POST' && adminPath == '/admin/inject') {
         await _handleInject(request);
         return;
@@ -300,6 +313,23 @@ class AdminServer {
       units[e.key] = await _unitActive(e.value);
     }
     base['units'] = units;
+
+    final roadSvc = road;
+    if (roadSvc != null) {
+      try {
+        final r = await roadSvc.inspect();
+        base['road'] = {
+          'enabled': r['enabled'],
+          'at_home': r['at_home'],
+          'vpn_active': r['vpn_active'],
+          'active_protocol': r['active_protocol'],
+          'protocol': r['protocol'],
+          'last_error': r['last_error'],
+        };
+      } on Object {
+        base['road'] = {'ok': false};
+      }
+    }
     return base;
   }
 
@@ -457,6 +487,70 @@ class AdminServer {
       return;
     }
     await _writeJson(request, 400, {'ok': false, 'error': 'invalid_action'});
+  }
+
+  Future<void> _handleRoadGet(HttpRequest request) async {
+    final svc = road;
+    if (svc == null) {
+      await _writeJson(request, 503, {'ok': false, 'error': 'road_unavailable'});
+      return;
+    }
+    await _writeJson(request, 200, await svc.inspect());
+  }
+
+  Future<void> _handleRoadPost(HttpRequest request) async {
+    final svc = road;
+    if (svc == null) {
+      await _writeJson(request, 503, {'ok': false, 'error': 'road_unavailable'});
+      return;
+    }
+    final body = await _readJson(request);
+    final action = (body['action'] ?? '').toString().trim();
+    try {
+      switch (action) {
+        case 'configure':
+          final cfg = await svc.configure(body);
+          await _writeJson(request, 200, {
+            'ok': true,
+            'action': action,
+            'config': cfg.toJson(),
+          });
+          return;
+        case 'set_secrets':
+          final apply = body['apply'] != false;
+          await svc.setSecrets(body, apply: apply);
+          await _writeJson(request, 200, {
+            'ok': true,
+            'action': action,
+            'applied': apply,
+          });
+          return;
+        case 'reconcile':
+          final result = await svc.reconcile();
+          await _writeJson(request, 200, {'ok': true, 'action': action, ...result});
+          return;
+        case 'connect':
+          final proto = body['protocol']?.toString();
+          final force = body['force'] != false;
+          final result = await svc.connect(protocol: proto, force: force);
+          await _writeJson(request, 200, {'ok': result['ok'] == true, 'action': action, ...result});
+          return;
+        case 'disconnect':
+          final result = await svc.disconnect();
+          await _writeJson(request, 200, {...result});
+          return;
+        default:
+          await _writeJson(request, 400, {
+            'ok': false,
+            'error': 'invalid_action',
+            'hint': 'configure|set_secrets|reconcile|connect|disconnect',
+          });
+      }
+    } on ArgumentError catch (e) {
+      await _writeJson(request, 400, {'ok': false, 'error': e.message});
+    } on StateError catch (e) {
+      await _writeJson(request, 502, {'ok': false, 'error': e.message});
+    }
   }
 
   Future<void> _handleInject(HttpRequest request) async {

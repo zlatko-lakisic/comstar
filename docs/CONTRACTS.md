@@ -59,8 +59,51 @@ never require the admin token.
 | `/admin/api/restart` | POST | token if LAN-bound | `{unit: bridge\|audio\|kiosk\|stt\|health\|all}` |
 | `/admin/api/reboot` | POST | token if LAN-bound | `{confirm: "reboot"}` → `sudo /sbin/reboot` |
 | `/admin/api/sleep` | POST | token if LAN-bound | `{action: enter\|exit}` |
+| `/admin/api/announce` | GET/POST | token if LAN-bound | Announce queue inspect / inject / force gate (M10) |
+| `/admin/api/road` | GET/POST | token if LAN-bound | Road VPN status / configure / connect (ADR 0011) |
 | `/admin/inject` | POST | token if LAN-bound | Attention event inject; **403 unless `COMSTAR_ENV=dev`** |
 | `/oauth/google/*` | * | none | Desktop OAuth start/callback/resend |
+
+#### Road VPN (`GET/POST /admin/api/road`) — SPEC
+
+Phone-home when the Pi has **no** local IPv4 in `road.home_cidrs`. Control plane
+is NetworkManager connection names (OpenVPN and/or L2TP). See ADR 0011.
+
+**GET** returns (no secrets):
+
+```json
+{
+  "ok": true,
+  "enabled": false,
+  "protocol": "openvpn",
+  "home_cidrs": ["192.168.89.0/24", "192.168.90.0/24", "172.16.90.0/24"],
+  "at_home": true,
+  "matched_addrs": ["192.168.89.34"],
+  "vpn_active": false,
+  "active_connection": null,
+  "active_protocol": null,
+  "openvpn_connection": "comstar-ovpn",
+  "l2tp_connection": "comstar-l2tp",
+  "openvpn_configured": false,
+  "l2tp_configured": false,
+  "check_interval_seconds": 30,
+  "last_error": null,
+  "last_reconcile_ts": null
+}
+```
+
+**POST** body `{ "action": "<name>", ... }`:
+
+| action | Body fields | Meaning |
+|---|---|---|
+| `configure` | `enabled`, `protocol`, `home_cidrs`, `openvpn_connection`, `l2tp_connection`, `check_interval_seconds` | Persist runtime overlay (merge); does not rewrite yaml |
+| `set_secrets` | `openvpn` and/or `l2tp` objects | Write secrets file (0600); optionally apply NM profiles; never returned on GET |
+| `reconcile` | — | One detect → up/down cycle |
+| `connect` | optional `protocol`, `force` | Bring VPN up (`force` ignores at-home) |
+| `disconnect` | — | Bring COMSTAR VPN connections down |
+
+`set_secrets.openvpn`: `{ "ovpn": "<inline .ovpn text>", "passphrase": "..." }`  
+`set_secrets.l2tp`: `{ "gateway", "user", "password", "psk", "ipsec_enabled": true }`
 
 Restart units are whitelisted (`comstar-*.service` only). Loopback:
 `ssh -L 8781:127.0.0.1:8781 comstar` → `http://127.0.0.1:8781/admin/`. LAN:

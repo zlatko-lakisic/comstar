@@ -572,3 +572,98 @@ html, body {
 .modal__actions { display: flex; gap: 8px; justify-content: center; }
 
 .app[hidden] { display: none !important; }
+
+.btn--danger {
+  border-color: var(--red-dim);
+  color: var(--red);
+}
+.btn--danger:hover {
+  border-color: var(--red);
+  background: var(--red-dim);
+}
+
+.road__kv {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 16px;
+  font-size: 12px;
+  margin: 0 0 14px;
+}
+.road__kv dt { color: var(--fg-dim); margin: 0; }
+.road__kv dd { color: var(--fg); margin: 0; text-align: right; }
+.road__err {
+  color: var(--red);
+  font-size: 12px;
+  margin: 0 0 12px;
+}
+.road__form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.road__check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--fg-muted);
+}
+.road__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  flex: 1;
+  min-width: 0;
+}
+.road__field input,
+.road__field select,
+.road__field textarea {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--fg);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-s);
+  padding: 8px 10px;
+}
+.road__field textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+.road__row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+@media (max-width: 700px) {
+  .road__row { grid-template-columns: 1fr; }
+}
+.road__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.road__secrets {
+  margin-top: 16px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+.road__secrets summary {
+  cursor: pointer;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+}
+.road__secrets-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+}
