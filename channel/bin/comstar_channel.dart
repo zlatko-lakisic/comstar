@@ -1,8 +1,9 @@
 /// COMSTAR text channel daemon (Ada-side).
 ///
 /// Env:
-///   TELEGRAM_BOT_TOKEN          required
-///   COMSTAR_CHANNEL_ALLOWLIST   JSON object or path to yaml/json
+///   TELEGRAM_BOT_TOKEN          required (Telegram provider)
+///   TELEGRAM_BOT_USERNAME       optional; else resolved via getMe
+///   COMSTAR_CHANNEL_ALLOWLIST   JSON object or path to yaml/json (static seed)
 ///   AO_BASE_URL / COMSTAR_AO_BASE_URL
 ///   AO_TOKEN / COMSTAR_AO_TOKEN
 ///   COMSTAR_OVERLAY_ROOT        default /opt/comstar/src/overlays/comstar
@@ -13,11 +14,12 @@
 ///   COMSTAR_CHANNEL_TOKEN       required when bind is non-loopback
 ///   COMSTAR_AO_MTLS=1          use Reach mTLS (Ada AO ≥ 1.29)
 ///   COMSTAR_AO_MTLS_DIR        PEM dir (default ~/.local/share/comstar/ao-mtls)
+///   COMSTAR_DATA_DIR            bindings + pairing store root
 ///
-/// Unknown senders: ZERO outbound (allowlist silence).
+/// Unknown senders: ZERO outbound (allowlist + QR bindings silence).
+/// Pairing: voice on Pi → POST /v1/pairing/begin → kiosk pairing.qr (ADR 0015).
 ///
-/// Providers: Telegram today (ChannelMux). Additional Channel implementations
-/// register beside Telegram without rewriting the turn loop.
+/// Providers: Telegram shipping; WhatsApp/Signal stubs until backends configured.
 library;
 
 import 'dart:async';
@@ -28,12 +30,17 @@ import 'package:args/args.dart';
 import 'package:path/path.dart' as p;
 
 import 'package:comstar_channel/announce_http.dart';
+import 'package:comstar_channel/bindings.dart';
 import 'package:comstar_channel/channel.dart';
 import 'package:comstar_channel/identity.dart';
+import 'package:comstar_channel/identity_resolver.dart';
 import 'package:comstar_channel/mux.dart';
+import 'package:comstar_channel/pairing.dart';
 import 'package:comstar_channel/rate_limit.dart';
 import 'package:comstar_channel/session.dart';
+import 'package:comstar_channel/signal.dart';
 import 'package:comstar_channel/telegram.dart';
+import 'package:comstar_channel/whatsapp.dart';
 
 void _log(String level, String evt, String msg, [Map<String, Object?>? data]) {
   stdout.writeln(jsonEncode({
@@ -62,13 +69,17 @@ Future<void> main(List<String> args) async {
     exit(2);
   }
 
-  final allowlist = Allowlist.fromEnv();
-  if (allowlist.length == 0) {
-    _log('warn', 'config',
-        'Allowlist empty — all senders will be silently ignored');
-  } else {
-    _log('info', 'config', 'Allowlist loaded', {'n': allowlist.length});
-  }
+  final staticAllowlist = Allowlist.fromEnv();
+  final bindings = BindingStore();
+  await bindings.load();
+  final identity = IdentityResolver(
+    staticAllowlist: staticAllowlist,
+    bindings: bindings,
+  );
+  _log('info', 'config', 'Identity loaded', {
+    'static': staticAllowlist.length,
+    'bindings': bindings.length,
+  });
 
   final repoGuess = Directory.current.path.endsWith('channel')
       ? Directory('..').absolute.path
@@ -103,11 +114,20 @@ Future<void> main(List<String> args) async {
           200;
   final limiter = RateLimiter(perSenderMax: perSenderMax, dailyCap: dailyCap);
 
-  // M11.2: Telegram is the only provider today; mux is the integration point
-  // for additional Channel implementations.
-  final mux = ChannelMux([
-    TelegramChannel(botToken: token),
-  ]);
+  final telegram = TelegramChannel(botToken: token);
+  final providers = <Channel>[telegram];
+  if (whatsappConfiguredFromEnv()) {
+    providers.add(WhatsAppChannel(
+      baseUrl: Platform.environment['COMSTAR_WHATSAPP_URL'] ?? '',
+    ));
+  }
+  if (signalConfiguredFromEnv()) {
+    providers.add(SignalChannel(
+      baseUrl: Platform.environment['COMSTAR_SIGNAL_URL'] ?? '',
+    ));
+  }
+  final mux = ChannelMux(providers);
+  final pairing = PairingManager(bindings: bindings);
   late final StreamSubscription<ChannelInbound> sub;
 
   final announceBind =
@@ -117,7 +137,8 @@ Future<void> main(List<String> args) async {
   final channelHttpToken = Platform.environment['COMSTAR_CHANNEL_TOKEN'] ?? '';
   final announceHttp = AnnounceHttpServer(
     channel: mux,
-    allowlist: allowlist,
+    identity: identity,
+    pairing: pairing,
     token: channelHttpToken,
     bindHost: announceBind,
     port: announcePort,
@@ -137,11 +158,43 @@ Future<void> main(List<String> args) async {
   ProcessSignal.sigint.watch().listen((_) => shutdown());
 
   sub = mux.inbound.listen((msg) async {
-    final userid = allowlist.useridFor(msg.senderId);
+    // Pairing completion: /start pair_<token> (before allowlist silence).
+    final startPayload = PairingManager.telegramStartPayload(msg.text);
+    if (startPayload != null && startPayload.isNotEmpty) {
+      final linkedUser = await pairing.completeFromStartPayload(
+        provider: msg.provider,
+        senderId: msg.senderId,
+        payload: startPayload,
+      );
+      if (linkedUser != null) {
+        _log('info', 'pairing_complete', 'Channel linked via QR/start', {
+          'userid': linkedUser,
+          'provider': msg.provider,
+          'senderId': msg.senderId,
+        });
+        try {
+          await mux.send(
+            msg.senderId,
+            'Linked to COMSTAR as *$linkedUser*. You can message me here.',
+          );
+        } catch (_) {}
+        return;
+      }
+      // Unknown / expired token — still silence (do not reveal bot).
+      _log('info', 'pairing_miss', 'start payload did not match pending', {
+        'senderId': msg.senderId,
+      });
+      return;
+    }
+
+    final userid = identity.useridFor(
+      provider: msg.provider,
+      senderId: msg.senderId,
+    );
     if (userid == null) {
-      // Security boundary: silence. Do not send(), do not reveal the bot lives.
       _log('info', 'allowlist_deny', 'unknown sender silenced', {
         'senderId': msg.senderId,
+        'provider': msg.provider,
       });
       return;
     }
@@ -162,6 +215,7 @@ Future<void> main(List<String> args) async {
     _log('info', 'inbound', 'message', {
       'userid': userid,
       'chars': msg.text.length,
+      'provider': msg.provider,
     });
     try {
       await mux.setTyping(msg.senderId, ChannelTyping.started);
@@ -180,6 +234,13 @@ Future<void> main(List<String> args) async {
   });
 
   await mux.start();
+  final botUser = await resolveTelegramBotUsername(telegram);
+  announceHttp.telegramBotUsername = botUser;
+  if (botUser.isEmpty) {
+    _log('warn', 'config',
+        'Telegram bot username unknown — QR pairing begin will fail until set');
+  }
+
   try {
     await announceHttp.start();
   } catch (e) {
@@ -190,7 +251,12 @@ Future<void> main(List<String> args) async {
     'overlayRoot': overlayRoot,
     'ao': aoBaseUrlFromEnv(),
     'mtls': mtlsOn,
-    'providers': ['telegram'],
+    'providers': [
+      'telegram',
+      if (whatsappConfiguredFromEnv()) 'whatsapp',
+      if (signalConfiguredFromEnv()) 'signal',
+    ],
+    'telegramBot': botUser,
     'announceHttp': '$announceBind:$announcePort',
   });
 
@@ -198,9 +264,7 @@ Future<void> main(List<String> args) async {
     try {
       await sessions.reapIdle();
     } catch (e) {
-      _log('warn', 'reap', '$e');
+      _log('warn', 'reap_fail', '$e');
     }
   });
-
-  await Completer<void>().future;
 }

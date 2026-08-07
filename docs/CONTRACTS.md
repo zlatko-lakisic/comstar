@@ -270,7 +270,7 @@ ignored, never fatal — this is how we ship kiosk and bridge independently.
 | `speak.cancel` | `{}` | Barge-in or timeout. Stop immediately, return to idle. |
 | `listening` | `{active, level?}` | Show/hide listening indicator; `level` 0–1 for a mic meter. |
 | `thinking` | `{active}` | Orchestration in flight. Kiosk shows a subtle working state. Optional bridge UX: after `attention.working_ack_ms` (default 4500; `0` off) while AO is still in flight — only when `attention.working_ack_on_tools` (default true) sees a non-empty `mcpProvidersForVoice` **and** the utterance looks like real tool/query work (lights, calendar, lookup, camera, etc.) — the bridge may speak a one-shot phrase-bank `working` line without completing the turn; if that ack played, the final AO reply is prefixed with `result_ready`. Casual continuity (“okay, good to know”) never arms. No new WS types. |
-| `pairing.qr` | `{active, phase?, url?, userCode?, qrSvg?}` | Show/hide Google OAuth device-code QR. `phase` is `awaiting` (user must approve), `verifying` (tokens received, tools starting), or `idle`. Same attempt as the spoken user code. `active:false` clears the overlay. |
+| `pairing.qr` | `{active, phase?, url?, userCode?, qrSvg?}` | Show/hide QR overlay for **Google** device-code OAuth **or** messaging-channel pairing (ADR 0015). `phase` is `awaiting` \| `verifying` \| `idle`. Same attempt as the spoken user code. `active:false` clears the overlay. |
 | `admin.qr` | `{active, url?, qrSvg?, ip?, iface?, port?, type?, hotspot?, ssid?}` | Debug / `COMSTAR_ENV=dev`, or **fallback SoftAP** (ADR 0014): small QR opening `http://<ip>:8781/admin/?token=…`. Prefer ethernet, then Wi‑Fi client, then hotspot `10.87.65.1`. When `hotspot` is true, `ssid` is the temporary AP name (shown under the QR). `active:false` clears. Never log the token. |
 | `error` | `{code, message}` | Display a non-fatal error affordance. |
 | `config` | `{avatarUrl, mood, cameraPose, debugUi?}` | Sent once on connect. `debugUi` true when bridge `COMSTAR_ENV=dev`. |
@@ -980,11 +980,12 @@ Pi fps / render-path ADR: `docs/adr/0002-render-path.md`.
 
 ---
 
-## 11. Text channel protocol (Telegram)
+## 11. Text channel protocol (native multi-channel)
 
-**Status:** VERIFIED path (M11.0–M11.7) — Ada-side `channel/` package; dual-surface
-announce live (M11.6). Operator UAT-11 remains.
-**ADR:** `docs/adr/0010-text-channel.md`.
+**Status:** VERIFIED path (M11.0–M11.7) + **ADR 0015** QR pairing.
+Ada-side `channel/` package; dual-surface announce live (M11.6).
+**ADRs:** `docs/adr/0010-text-channel.md` (session isolation),
+`docs/adr/0015-native-channels.md` (providers + QR pairing; **no OpenClaw**).
 
 ### Surfaces and session ids
 
@@ -998,37 +999,52 @@ Same userid; distinct session ids. Do not share overlays across surfaces.
 
 ### Identity mapping
 
-Static allowlist: channel sender id → COMSTAR userid (`COMSTAR_CHANNEL_ALLOWLIST`
-JSON or YAML path). **Unknown senders → zero outbound** (silence). No guest mode.
-Reverse map (userid → sender id) is used only for **outbound announcements**
-from the bridge; if a userid has no allowlisted sender, channel delivery is a
-no-op (logged, not an error to strangers).
+1. **Static seed:** `COMSTAR_CHANNEL_ALLOWLIST` (JSON object or path) —
+   historically bare Telegram sender ids → userid.
+2. **QR bindings:** `$COMSTAR_DATA_DIR/channel/bindings.json` —
+   `(provider, sender_id) → userid` from kiosk pairing (ADR 0015).
+
+**Unknown senders → zero outbound** (silence). No guest pairing. Reverse map
+(userid → sender ids) is used for outbound announcements; if empty, channel
+delivery is a no-op (logged, not an error to strangers).
+
+### QR pairing (same UX as Google)
+
+Voice at the terminal (“link Telegram”) → bridge `POST /v1/pairing/begin` →
+kiosk `pairing.qr` (deep link URL + spoken `user_code`) → user opens Telegram
+`/start pair_<token>` → Ada completes binding → bridge status poll clears QR.
+
+Guests / missing userid are refused. Google and channel pairing share the
+overlay; only one may run at a time.
 
 ### Inbound / outbound
 
-- Inbound: `(senderId, text, attachments?)` from the `Channel` abstraction.
-- Outbound: `send(senderId, text)` only after allowlist + rate limit.
+- Inbound: `(provider, senderId, text, attachments?)` from the `Channel` abstraction.
+- Outbound: `send(senderId, text)` only after identity resolve + rate limit.
 - Typing indicators optional (`ChannelTyping`).
 
-### Channel HTTP (Ada, announce ingress from Pi)
+### Channel HTTP (Ada)
 
 `comstar-channel` listens on `COMSTAR_CHANNEL_BIND` / `COMSTAR_CHANNEL_PORT`
 (default `127.0.0.1:8782`). When bound beyond loopback, `COMSTAR_CHANNEL_TOKEN`
 is required (`X-Comstar-Channel-Token` or `?token=`).
 
-Providers are registered in a **ChannelMux** (M11.2). Telegram is the only
-shipping provider; additional `Channel` implementations join the mux without
-rewriting the turn loop. Announce delivery fans out to **all** allowlisted
-sender ids for the recipient userid.
+Providers register in a **ChannelMux**. Telegram ships today; WhatsApp/Signal
+join when backends are configured (env gates). Announce fans out to **all**
+mapped sender ids for the recipient userid.
 
 Channel → AO sessions use `COMSTAR_AO_MTLS=1` + `COMSTAR_AO_MTLS_DIR` when Ada
-requires client certs (same PEM layout as ADR 0013). `AO_BASE_URL` must be
-`https://…` when mTLS is enabled.
+requires client certs (ADR 0013).
 
 | Route | Method | Auth | Meaning |
 |---|---|---|---|
-| `/health` | GET | none | Liveness |
-| `/v1/announce` | POST | token if non-loopback | Deliver one announcement to an allowlisted userid |
+| `/health` | GET | none | Liveness + provider flags |
+| `/v1/announce` | POST | token if non-loopback | Deliver one announcement |
+| `/v1/pairing/begin` | POST | token if non-loopback | Start QR pairing `{userid,provider}` |
+| `/v1/pairing/status` | GET | token if non-loopback | `?id=` → pending/approved/… |
+| `/v1/pairing/cancel` | POST | token if non-loopback | Cancel pending attempt |
+| `/v1/pairing/unlink` | POST | token if non-loopback | Drop bindings for userid |
+| `/v1/pairing/links` | GET | token if non-loopback | `?userid=` linked providers |
 
 `POST /v1/announce` body:
 
@@ -1043,25 +1059,24 @@ requires client certs (same PEM layout as ADR 0013). `AO_BASE_URL` must be
 }
 ```
 
-- Channel re-checks `shouldDeliverToChannel` (same policy as bridge) before send.
-- `recipient: "any"` is rejected (`400`) — channel delivery requires a concrete userid.
-- Unknown / unmapped recipient → `200` with `{ "delivered": false, "reason": "no_sender" }`
-  (no Telegram traffic).
+- Channel re-checks `shouldDeliverToChannel` before send.
+- `recipient: "any"` is rejected (`400`).
+- Unknown / unmapped recipient → `200` `{ "delivered": false, "reason": "no_sender" }`.
 - Success → `{ "delivered": true, "sender_id": "…" }`.
 
 Bridge config (`announce.channel_url`, `announce.channel_token`) or env
-`COMSTAR_CHANNEL_URL` / `COMSTAR_CHANNEL_TOKEN`. Empty URL disables channel surface.
+`COMSTAR_CHANNEL_URL` / `COMSTAR_CHANNEL_TOKEN`. Empty URL disables channel
+surface and voice pairing.
 
 ### Announcement dual-surface (M11.6)
 
 Policy lives on the **bridge** announce queue (source of delivered-once truth).
-Pure helper: `shouldDeliverToChannel` (`channel/lib/announce_gate.dart` and
-`terminal/bridge/lib/announce/channel_surface.dart`).
+Pure helper: `shouldDeliverToChannel`.
 
 | Condition | Behaviour |
 |---|---|
 | Recipient present at terminal | Terminal wins; channel does not fire |
-| Recipient absent, `urgent` | Bridge POSTs `/v1/announce`; on success `markDelivered` |
+| Recipient absent, `urgent` | Bridge POSTs `/v1/announce`; on success CAS `claimDelivered` |
 | Recipient absent, `normal` | Hold for terminal until TTL, then drop |
 | Delivered on either surface | Marked delivered globally (SQLite CAS on pending) |
 
@@ -1073,5 +1088,6 @@ urgent items can leave while the room is empty.
 
 ### Privacy
 
-Enabling M11 means message text (and Telegram metadata) leave the LAN via the
-Telegram Bot API. See README privacy model.
+Enabling a provider means message text and provider metadata leave the LAN via
+that network (Telegram Bot API today; WhatsApp/Signal when configured). See
+README privacy model.

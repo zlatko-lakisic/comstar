@@ -1,7 +1,7 @@
-/// Fan-in multiplexer over one or more [Channel] providers (M11.2).
+/// Fan-in multiplexer over one or more [Channel] providers (M11.2 / ADR 0015).
 ///
-/// M11 ships Telegram only; the mux exists so a second provider is a day of
-/// work and so announce delivery can target every mapped sender for a userid.
+/// Telegram ships; WhatsApp/Signal join when backends are configured.
+/// Announce delivery can target every mapped sender for a userid.
 library;
 
 import 'dart:async';

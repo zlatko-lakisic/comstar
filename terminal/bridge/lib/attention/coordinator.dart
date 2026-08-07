@@ -3,9 +3,12 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:comstar_bridge/announce/channel_pairing_client.dart';
 import 'package:comstar_bridge/announce/gate.dart';
 import 'package:comstar_bridge/announce/service.dart';
 import 'package:comstar_bridge/attention/clock.dart';
+import 'package:comstar_bridge/channel_intent.dart';
+import 'package:comstar_bridge/pairing_speak.dart';
 import 'package:comstar_bridge/attention/effects.dart';
 import 'package:comstar_bridge/attention/events.dart';
 import 'package:comstar_bridge/attention/machine.dart';
@@ -160,6 +163,12 @@ class AttentionCoordinator {
   var _googlePhase = GooglePairingPhase.idle;
   String? _googlePairingUserCode;
   String? _googleLastError;
+
+  ChannelPairingClient? _channelPairing;
+  Completer<void>? _channelPairingCancel;
+  var _channelPairingInFlight = false;
+  String? _channelPairingId;
+  String? _channelPairingUserCode;
 
   /// Last successful where-is / leave person for pronoun follow-ups ("when did they leave?").
   String? _lastPresencePersonName;
@@ -326,6 +335,7 @@ class AttentionCoordinator {
         unawaited(_sessionOpenFuture);
       case CloseSession():
         _cancelGooglePairing();
+        unawaited(_cancelChannelPairing());
         _sessionOpenFuture = null;
         directory.clearCache();
         unawaited(session.close());
@@ -497,6 +507,7 @@ class AttentionCoordinator {
         }
       case EnteredSleep():
         _cancelGooglePairing();
+        unawaited(_cancelChannelPairing());
         control.sleepEnter();
         _cancelSleepWakeVerify(stopListen: true);
         _followUpTimer?.cancel();
@@ -1497,6 +1508,9 @@ class AttentionCoordinator {
       final google = await _tryGoogleIntent(text, turnId);
       if (google) return;
 
+      final channel = await _tryChannelIntent(text, turnId);
+      if (channel) return;
+
       final googleData = await _tryGoogleDataIntent(text, turnId);
       if (googleData) return;
 
@@ -2138,6 +2152,7 @@ class AttentionCoordinator {
 
   /// Issues device code + QR, acknowledges, then polls in the background.
   Future<void> _startGooglePairing(String userid, String turnId) async {
+    await _cancelChannelPairing(announce: false);
     _cancelGooglePairing(announce: false);
     final cancel = Completer<void>();
     _googlePairingCancel = cancel;
@@ -2382,6 +2397,259 @@ class AttentionCoordinator {
         },
       ),
     );
+  }
+
+  ChannelPairingClient get channelPairing {
+    return _channelPairing ??= ChannelPairingClient(
+      baseUrl: config.announce.channelUrl,
+      token: config.announce.channelToken,
+    );
+  }
+
+  Future<bool> _tryChannelIntent(String text, String turnId) async {
+    final intent = parseChannelIntent(text);
+    if (intent == null) return false;
+
+    if (session.guest || session.userid == null) {
+      await _speakText(
+        'Messaging links are only available when I recognize you.',
+        turnId,
+      );
+      return true;
+    }
+
+    final userid = session.userid!;
+    var provider = intent.provider;
+    if (provider == 'any') provider = 'telegram';
+
+    if (!channelPairing.enabled) {
+      await _speakText(
+        'Messaging channels are not configured on this terminal yet.',
+        turnId,
+      );
+      return true;
+    }
+
+    switch (intent.kind) {
+      case ChannelIntentKind.status:
+        final linked = await channelPairing.linkedProviders(userid);
+        if (_channelPairingInFlight) {
+          await _speakText(
+            'Channel pairing is in progress'
+            '${_channelPairingUserCode != null ? ". The code is ${PairingManagerSpeak.speakable(_channelPairingUserCode!)}" : ""}. '
+            'Say cancel connect to stop.',
+            turnId,
+          );
+          return true;
+        }
+        if (linked.isEmpty) {
+          await _speakText(
+            'No messaging channels are linked yet. '
+            'Say link Telegram to show a QR code.',
+            turnId,
+          );
+        } else {
+          await _speakText(
+            'Linked channels: ${linked.join(', ')}.',
+            turnId,
+          );
+        }
+        return true;
+
+      case ChannelIntentKind.cancel:
+        if (!_channelPairingInFlight) {
+          await _speakText(
+            'There is no channel pairing in progress.',
+            turnId,
+          );
+          return true;
+        }
+        await _cancelChannelPairing(announce: false);
+        await _speakText('Okay, I cancelled channel pairing.', turnId);
+        return true;
+
+      case ChannelIntentKind.unlink:
+        await _cancelChannelPairing(announce: false);
+        final removed = await channelPairing.unlink(
+          userid: userid,
+          provider: intent.provider == 'any' ? null : provider,
+        );
+        await _speakText(
+          removed
+              ? 'Okay, I unlinked ${intent.provider == 'any' ? 'your messaging channels' : provider}.'
+              : '${intent.provider == 'any' ? 'Messaging channels were' : '$provider was'} not linked.',
+          turnId,
+        );
+        return true;
+
+      case ChannelIntentKind.connect:
+      case ChannelIntentKind.reconnect:
+        if (_googlePairingInFlight) {
+          await _speakText(
+            'Google pairing is already on the screen. Finish or cancel that first.',
+            turnId,
+          );
+          return true;
+        }
+        if (_channelPairingInFlight) {
+          await _speakText(
+            'Channel pairing is already in progress'
+            '${_channelPairingUserCode != null ? ". The code is ${PairingManagerSpeak.speakable(_channelPairingUserCode!)}" : ""}. '
+            'Say cancel connect to stop.',
+            turnId,
+          );
+          return true;
+        }
+        if (intent.kind == ChannelIntentKind.connect) {
+          final linked = await channelPairing.linkedProviders(userid);
+          if (linked.contains(provider)) {
+            await _speakText(
+              '$provider is already linked. '
+              'Say reconnect $provider to link again, or unlink $provider to remove it.',
+              turnId,
+            );
+            return true;
+          }
+        }
+        await _startChannelPairing(userid, provider, turnId);
+        return true;
+    }
+  }
+
+  Future<void> _startChannelPairing(
+    String userid,
+    String provider,
+    String turnId,
+  ) async {
+    await _cancelChannelPairing(announce: false);
+    _cancelGooglePairing(announce: false);
+
+    final result = await channelPairing.beginDetailed(
+      userid: userid,
+      provider: provider,
+    );
+    if (result.begin == null) {
+      final err = result.error ?? 'failed';
+      final speech = switch (err) {
+        'whatsapp_not_configured' =>
+          'WhatsApp is not set up on the channel server yet.',
+        'signal_not_configured' =>
+          'Signal is not set up on the channel server yet.',
+        'telegram_bot_username_unknown' =>
+          'I could not resolve the Telegram bot name for the QR link.',
+        'provider_pairing_not_implemented' =>
+          '$provider pairing is not implemented yet.',
+        'unreachable' =>
+          'I could not reach the channel server to start pairing.',
+        _ => 'I could not start $provider pairing.',
+      };
+      await _speakText(speech, turnId);
+      return;
+    }
+
+    final begin = result.begin!;
+    _channelPairingInFlight = true;
+    _channelPairingId = begin.id;
+    _channelPairingUserCode = begin.userCode;
+    _channelPairingCancel = Completer<void>();
+
+    final svg = qrSvg(begin.url);
+    _broadcastPairingUi(
+      active: true,
+      phase: 'awaiting',
+      url: begin.url,
+      userCode: begin.userCode,
+      qrSvg: svg,
+    );
+
+    final spokenCode = PairingManagerSpeak.speakable(begin.userCode);
+    await _speakText(
+      'Scan the QR code on the screen to link $provider, '
+      'or open the link on your phone. The code is $spokenCode. '
+      'I will let you know when it is linked.',
+      turnId,
+    );
+
+    unawaited(_pollChannelPairing(userid, provider, begin.id));
+  }
+
+  Future<void> _pollChannelPairing(
+    String userid,
+    String provider,
+    String id,
+  ) async {
+    final cancel = _channelPairingCancel;
+    try {
+      for (var i = 0; i < 120; i++) {
+        if (cancel?.isCompleted == true) return;
+        await Future<void>.delayed(const Duration(seconds: 2));
+        if (cancel?.isCompleted == true) return;
+        if (_channelPairingId != id) return;
+
+        final status = await channelPairing.status(id);
+        if (status == 'approved') {
+          _broadcastPairingUi(active: true, phase: 'verifying');
+          await Future<void>.delayed(const Duration(milliseconds: 400));
+          _channelPairingInFlight = false;
+          _channelPairingId = null;
+          _channelPairingUserCode = null;
+          _broadcastPairingUi(active: false);
+          unawaited(
+            _announceEngaged(
+              'Okay, $provider is linked for you.',
+            ),
+          );
+          return;
+        }
+        if (status == 'expired' || status == 'cancelled') {
+          _channelPairingInFlight = false;
+          _channelPairingId = null;
+          _channelPairingUserCode = null;
+          _broadcastPairingUi(active: false);
+          if (status == 'expired') {
+            unawaited(
+              _announceEngaged(
+                '$provider pairing timed out. Say link $provider to try again.',
+              ),
+            );
+          }
+          return;
+        }
+      }
+      await _cancelChannelPairing(announce: false);
+      unawaited(
+        _announceEngaged(
+          '$provider pairing timed out. Say link $provider to try again.',
+        ),
+      );
+    } catch (e) {
+      logWarn('channel_pairing_poll', e.toString());
+      await _cancelChannelPairing(announce: false);
+    }
+  }
+
+  Future<void> _cancelChannelPairing({bool announce = false}) async {
+    final id = _channelPairingId;
+    final c = _channelPairingCancel;
+    if (c != null && !c.isCompleted) {
+      c.complete();
+    }
+    _channelPairingCancel = null;
+    if (id != null) {
+      try {
+        await channelPairing.cancel(id);
+      } catch (_) {}
+    }
+    final was = _channelPairingInFlight;
+    _channelPairingInFlight = false;
+    _channelPairingId = null;
+    _channelPairingUserCode = null;
+    _broadcastPairingUi(active: false);
+    if (announce && was) {
+      unawaited(
+        _announceEngaged('Okay, I cancelled channel pairing.'),
+      );
+    }
   }
 
   String _friendlyGoogleError(String raw) {

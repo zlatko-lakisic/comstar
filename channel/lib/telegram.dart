@@ -3,6 +3,7 @@ library;
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
@@ -30,6 +31,31 @@ class TelegramChannel implements Channel {
 
   Uri _api(String method) =>
       Uri.parse('https://api.telegram.org/bot$botToken/$method');
+
+  /// Bot @username without @ (from getMe or env). Cached after [resolveBotUsername].
+  String? botUsername;
+
+  Future<String?> resolveBotUsername() async {
+    if (botUsername != null && botUsername!.isNotEmpty) return botUsername;
+    final env = Platform.environment['TELEGRAM_BOT_USERNAME']?.trim();
+    if (env != null && env.isNotEmpty) {
+      botUsername = env.replaceFirst(RegExp(r'^@'), '');
+      return botUsername;
+    }
+    try {
+      final res = await _http.get(_api('getMe')).timeout(const Duration(seconds: 10));
+      if (res.statusCode != 200) return null;
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      if (body['ok'] != true) return null;
+      final result = body['result'] as Map<String, dynamic>?;
+      final u = '${result?['username'] ?? ''}'.trim();
+      if (u.isEmpty) return null;
+      botUsername = u;
+      return botUsername;
+    } catch (_) {
+      return null;
+    }
+  }
 
   @override
   Stream<ChannelInbound> get inbound => _inbound.stream;
@@ -85,6 +111,7 @@ class TelegramChannel implements Channel {
           if (text.isEmpty) continue;
           if (!_inbound.isClosed) {
             _inbound.add(ChannelInbound(
+              provider: 'telegram',
               senderId: senderId,
               text: text,
               raw: update,

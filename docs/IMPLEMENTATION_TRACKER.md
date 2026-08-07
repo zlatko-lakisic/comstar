@@ -20,7 +20,7 @@
 
 | Field | Value |
 |---|---|
-| Active milestone | **M10+M11 landed 2026-08-07** — deploy/UAT + soak remain |
+| Active milestone | **M10+M11 landed 2026-08-07** — ADR 0015 QR pairing; deploy/UAT + soak remain |
 | Overall Phase 1 | ~85% (M9 soak wall-clock open) |
 | Overall Phase 2 | Presence + **proactivity M10** + **channel M11** (UAT open) |
 | Last updated | 2026-08-07 |
@@ -103,6 +103,7 @@ Living plan: `docs/PHASE2_PLAN.md`. ADRs: `0006-house-presence-ha`, `0007-full-d
 - [x] M11.0 text-channel ground truth (ADR 0010, CONTRACTS §4/§11, probe fixture) — 2026-08-07
 - [x] M11.1–M11.5 + M11.7–M11.8 scaffold (`channel/`, text_responder, privacy docs) — 2026-08-07
 - [x] M11.6 dual-surface announce live wiring (bridge CAS + channel `/v1/announce`) — 2026-08-07
+- [x] ADR 0015 native multi-channel + QR pairing (no OpenClaw) — 2026-08-07
 - [ ] UAT-10/11 operator sign-off
 
 Living plan: `docs/PHASE2_PLAN_PROACTIVITY_AND_CHANNEL.md`.
@@ -120,3 +121,4 @@ Living plan: `docs/PHASE2_PLAN_PROACTIVITY_AND_CHANNEL.md`.
 | M11.6 Announce → channel gate | `done` | bridge `evaluateChannelSurface` + Ada `/v1/announce`; CAS delivered-once |
 | M11.7 Rate limit | `done` | per-sender + daily cap tests |
 | M11.8 Docs / privacy | `done` | README + CONTRACTS §11 + RUNBOOK §9c + admin Channel health |
+| ADR 0015 QR pairing | `done` | Voice → `pairing.qr` → Telegram deep link; bindings store; WA/Signal stubs |

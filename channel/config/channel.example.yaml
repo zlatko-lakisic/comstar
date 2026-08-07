@@ -1,5 +1,8 @@
 # COMSTAR text channel (Ada) — example config
 #
+# Native ChannelMux (ADR 0015). Telegram ships; WhatsApp/Signal when backends
+# are configured. Pairing: voice “link Telegram” → kiosk pairing.qr.
+#
 # Copy to a private path (never commit real tokens / allowlist of real ids).
 # Prefer env vars for secrets; this file documents the shape.
 

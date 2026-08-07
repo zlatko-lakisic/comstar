@@ -605,12 +605,13 @@ Environment=COMSTAR_AEC_REF_SOURCE=alsa_output.platform-….hdmi.monitor
    If `aec_unavailable`, keep `duplex: half` — do not claim full duplex in hallway UAT.
 5. Optional SpeexDSP: `pip install speexdsp` in the audio venv (`terminal/audio`).
 
-## 9c. Text channel + dual-surface announce (M11)
+## 9c. Text channel + dual-surface announce (M11 / ADR 0015)
 
 Runs on **Ada**, not the Pi (`deploy/systemd/comstar-channel.service`).
-Providers run under a `ChannelMux` (Telegram today).
+Providers run under a `ChannelMux` (Telegram shipping; WhatsApp/Signal when
+backends are configured). **No OpenClaw** — COMSTAR owns the channels.
 
-1. Set `TELEGRAM_BOT_TOKEN` + `COMSTAR_CHANNEL_ALLOWLIST` (JSON sender→userid).
+1. Set `TELEGRAM_BOT_TOKEN` (+ optional static `COMSTAR_CHANNEL_ALLOWLIST`).
 2. Point at AO with mTLS (Ada HTTPS):
 
 ```bash
@@ -619,7 +620,7 @@ COMSTAR_AO_MTLS=1
 # COMSTAR_AO_MTLS_DIR=~/.local/share/comstar/ao-mtls
 ```
 
-3. For Pi → Ada announce delivery: bind LAN and share a token:
+3. For Pi → Ada announce + QR pairing: bind LAN and share a token:
 
 ```bash
 # ~/.config/comstar/channel.env on Ada
@@ -636,12 +637,18 @@ announce:
   # channel_token via COMSTAR_CHANNEL_TOKEN preferred
 ```
 
-5. Urgent announcements while the recipient is **not** at the terminal POST
-   `/v1/announce` and mark delivered once (CAS). Normal priority waits for the
-   hallway. Unknown Telegram senders get silence. Admin Health shows a
+5. **Link a userid** at the hallway: say “link Telegram”. The kiosk shows the
+   same `pairing.qr` overlay as Google; scan with the phone. Bindings land in
+   `$COMSTAR_DATA_DIR/channel/bindings.json` on Ada. Unknown senders stay silent.
+
+6. Urgent announcements while the recipient is **not** at the terminal POST
+   `/v1/announce` and mark delivered once (CAS). Admin Health shows a
    **Channel** card when `channel_url` is set.
 
 Local smoke: `make channel-test` · `make channel-dev`.
+
+WhatsApp / Signal: set `COMSTAR_WHATSAPP_*` / `COMSTAR_SIGNAL_*` when backends
+exist (ADR 0015). Until then voice reports “not set up”.
 
 ## 10. Google Workspace (mail / calendar / Drive)
 

@@ -187,9 +187,16 @@ Every hold logs the *reason*. "Why didn't it tell me?" must be answerable from `
 
 # M11 — Text channel
 
-**Goal:** one messaging channel where you talk to the same COMSTAR, as the same identity, with the same memory, from outside the house.
+**Goal:** messaging continuity away from the hallway — same household brain,
+allowlisted / QR-paired senders only.
 
-**Channel choice: Telegram.** Straightforward bot API, no phone-number pairing, no terms-of-service exposure. WhatsApp's unofficial APIs get accounts banned and Signal needs `signal-cli` pairing. Neither is worth it for channel number one. The abstraction in M11.2 keeps a second channel cheap later; do not build one now.
+**Plane (ADR 0015):** native `ChannelMux` on Ada (`comstar-channel`). Telegram
+ships first with **kiosk QR pairing** (same `pairing.qr` UX as Google).
+WhatsApp and Signal join as additional `Channel` implementations when backends
+are configured. **Do not route messaging through OpenClaw.**
+
+Original Telegram-first scaffold notes below remain the M11.0–M11.5 base;
+pairing + multi-provider extension is ADR 0015.
 
 ---
 

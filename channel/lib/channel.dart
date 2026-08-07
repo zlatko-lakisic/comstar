@@ -11,9 +11,13 @@ class ChannelInbound {
   const ChannelInbound({
     required this.senderId,
     required this.text,
+    this.provider = 'telegram',
     this.attachments = const [],
     this.raw,
   });
+
+  /// Provider id: `telegram`, `whatsapp`, `signal`, …
+  final String provider;
 
   /// Channel-native sender id (e.g. Telegram numeric user id as string).
   final String senderId;

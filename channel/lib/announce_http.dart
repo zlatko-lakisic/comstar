@@ -1,16 +1,21 @@
-/// HTTP ingress for bridge → channel announcement delivery (M11.6).
+/// HTTP ingress for bridge → channel announce + QR pairing (M11.6 / ADR 0015).
 ///
-/// Listens on Ada; Pi bridge POSTs `/v1/announce`. Token required when bound
-/// beyond loopback. See CONTRACTS §11.
+/// Listens on Ada; Pi bridge POSTs `/v1/announce` and `/v1/pairing/*`.
+/// Token required when bound beyond loopback. See CONTRACTS §11.
 library;
 
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:comstar_channel/announce_gate.dart';
+import 'package:comstar_channel/bindings.dart';
 import 'package:comstar_channel/channel.dart';
-import 'package:comstar_channel/identity.dart';
+import 'package:comstar_channel/identity_resolver.dart';
 import 'package:comstar_channel/mux.dart';
+import 'package:comstar_channel/pairing.dart';
+import 'package:comstar_channel/signal.dart';
+import 'package:comstar_channel/telegram.dart';
+import 'package:comstar_channel/whatsapp.dart';
 
 typedef AnnounceLog = void Function(
   String level,
@@ -19,22 +24,28 @@ typedef AnnounceLog = void Function(
   Map<String, Object?>? data,
 ]);
 
-/// Serve announce + health endpoints.
+/// Serve announce, pairing, and health endpoints.
 class AnnounceHttpServer {
   AnnounceHttpServer({
     required this.channel,
-    required this.allowlist,
+    required this.identity,
+    required this.pairing,
     required this.token,
     this.bindHost = '127.0.0.1',
     this.port = 8782,
+    this.telegramBotUsername = '',
     AnnounceLog? log,
   }) : _log = log ?? ((_, __, ___, [____]) {});
 
   final Channel channel;
-  final Allowlist allowlist;
+  final IdentityResolver identity;
+  final PairingManager pairing;
   final String token;
   final String bindHost;
   final int port;
+
+  /// Telegram @username without @ (for deep links).
+  String telegramBotUsername;
   final AnnounceLog _log;
 
   HttpServer? _server;
@@ -65,7 +76,15 @@ class AnnounceHttpServer {
     try {
       final path = req.uri.path;
       if (req.method == 'GET' && (path == '/health' || path == '/')) {
-        await _json(req, 200, {'ok': true, 'proc': 'channel'});
+        await _json(req, 200, {
+          'ok': true,
+          'proc': 'channel',
+          'providers': {
+            'telegram': true,
+            'whatsapp': whatsappConfiguredFromEnv(),
+            'signal': signalConfiguredFromEnv(),
+          },
+        });
         return;
       }
       if (req.method == 'POST' && path == '/v1/announce') {
@@ -74,6 +93,46 @@ class AnnounceHttpServer {
           return;
         }
         await _handleAnnounce(req);
+        return;
+      }
+      if (req.method == 'POST' && path == '/v1/pairing/begin') {
+        if (!_authorized(req)) {
+          await _json(req, 401, {'ok': false, 'error': 'unauthorized'});
+          return;
+        }
+        await _handlePairingBegin(req);
+        return;
+      }
+      if (req.method == 'GET' && path == '/v1/pairing/status') {
+        if (!_authorized(req)) {
+          await _json(req, 401, {'ok': false, 'error': 'unauthorized'});
+          return;
+        }
+        await _handlePairingStatus(req);
+        return;
+      }
+      if (req.method == 'POST' && path == '/v1/pairing/cancel') {
+        if (!_authorized(req)) {
+          await _json(req, 401, {'ok': false, 'error': 'unauthorized'});
+          return;
+        }
+        await _handlePairingCancel(req);
+        return;
+      }
+      if (req.method == 'POST' && path == '/v1/pairing/unlink') {
+        if (!_authorized(req)) {
+          await _json(req, 401, {'ok': false, 'error': 'unauthorized'});
+          return;
+        }
+        await _handlePairingUnlink(req);
+        return;
+      }
+      if (req.method == 'GET' && path == '/v1/pairing/links') {
+        if (!_authorized(req)) {
+          await _json(req, 401, {'ok': false, 'error': 'unauthorized'});
+          return;
+        }
+        await _handlePairingLinks(req);
         return;
       }
       await _json(req, 404, {'ok': false, 'error': 'not_found'});
@@ -93,17 +152,141 @@ class AnnounceHttpServer {
     return header == token || q == token;
   }
 
-  Future<void> _handleAnnounce(HttpRequest req) async {
+  Future<Map<String, dynamic>?> _readJson(HttpRequest req) async {
     final raw = await utf8.decoder.bind(req).join();
-    Map<String, dynamic> body;
     try {
       final decoded = jsonDecode(raw.isEmpty ? '{}' : raw);
-      if (decoded is! Map) {
-        await _json(req, 400, {'ok': false, 'error': 'body_must_be_object'});
+      if (decoded is! Map) return null;
+      return Map<String, dynamic>.from(decoded);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _handlePairingBegin(HttpRequest req) async {
+    final body = await _readJson(req);
+    if (body == null) {
+      await _json(req, 400, {'ok': false, 'error': 'invalid_json'});
+      return;
+    }
+    final userid = '${body['userid'] ?? ''}'.trim();
+    final provider = '${body['provider'] ?? ''}'.trim().toLowerCase();
+    if (userid.isEmpty || provider.isEmpty) {
+      await _json(req, 400, {
+        'ok': false,
+        'error': 'userid_provider_required',
+      });
+      return;
+    }
+
+    if (provider == 'telegram') {
+      final bot = telegramBotUsername.trim().replaceFirst(RegExp(r'^@'), '');
+      if (bot.isEmpty) {
+        await _json(req, 503, {
+          'ok': false,
+          'error': 'telegram_bot_username_unknown',
+        });
         return;
       }
-      body = Map<String, dynamic>.from(decoded);
-    } catch (_) {
+      final attempt = await pairing.begin(
+        userid: userid,
+        provider: provider,
+        urlBuilder: (token) => PairingManager.telegramPairUrl(
+          botUsername: bot,
+          token: token,
+        ),
+      );
+      await _json(req, 200, {'ok': true, ...attempt.toPublicJson()});
+      return;
+    }
+
+    if (provider == 'whatsapp' && !whatsappConfiguredFromEnv()) {
+      await _json(req, 503, {'ok': false, 'error': 'whatsapp_not_configured'});
+      return;
+    }
+    if (provider == 'signal' && !signalConfiguredFromEnv()) {
+      await _json(req, 503, {'ok': false, 'error': 'signal_not_configured'});
+      return;
+    }
+
+    await _json(req, 501, {
+      'ok': false,
+      'error': 'provider_pairing_not_implemented',
+      'provider': provider,
+    });
+  }
+
+  Future<void> _handlePairingStatus(HttpRequest req) async {
+    final id = (req.uri.queryParameters['id'] ?? '').trim();
+    if (id.isEmpty) {
+      await _json(req, 400, {'ok': false, 'error': 'id_required'});
+      return;
+    }
+    final attempt = pairing.get(id);
+    if (attempt == null) {
+      await _json(req, 404, {'ok': false, 'error': 'not_found'});
+      return;
+    }
+    await _json(req, 200, {'ok': true, ...attempt.toPublicJson()});
+  }
+
+  Future<void> _handlePairingCancel(HttpRequest req) async {
+    final body = await _readJson(req);
+    if (body == null) {
+      await _json(req, 400, {'ok': false, 'error': 'invalid_json'});
+      return;
+    }
+    final id = '${body['id'] ?? ''}'.trim();
+    if (id.isEmpty) {
+      await _json(req, 400, {'ok': false, 'error': 'id_required'});
+      return;
+    }
+    final ok = await pairing.cancel(id);
+    await _json(req, 200, {'ok': true, 'cancelled': ok});
+  }
+
+  Future<void> _handlePairingUnlink(HttpRequest req) async {
+    final body = await _readJson(req);
+    if (body == null) {
+      await _json(req, 400, {'ok': false, 'error': 'invalid_json'});
+      return;
+    }
+    final userid = '${body['userid'] ?? ''}'.trim();
+    final provider = '${body['provider'] ?? ''}'.trim();
+    if (userid.isEmpty) {
+      await _json(req, 400, {'ok': false, 'error': 'userid_required'});
+      return;
+    }
+    final removed = await identity.bindings.remove(
+      userid: userid,
+      provider: provider.isEmpty ? null : provider,
+    );
+    await _json(req, 200, {'ok': true, 'removed': removed});
+  }
+
+  Future<void> _handlePairingLinks(HttpRequest req) async {
+    final userid = (req.uri.queryParameters['userid'] ?? '').trim();
+    if (userid.isEmpty) {
+      await _json(req, 400, {'ok': false, 'error': 'userid_required'});
+      return;
+    }
+    await identity.bindings.load();
+    final bindings = identity.bindings.bindingsFor(userid);
+    final providers = <String>{
+      for (final b in bindings) b.provider,
+      if (identity.staticAllowlist.senderIdsFor(userid).isNotEmpty) 'telegram',
+    };
+    await _json(req, 200, {
+      'ok': true,
+      'userid': userid,
+      'providers': providers.toList()..sort(),
+      'bindings': [for (final b in bindings) b.toJson()],
+    });
+  }
+
+  Future<void> _handleAnnounce(HttpRequest req) async {
+    final body = await _readJson(req);
+    if (body == null) {
       await _json(req, 400, {'ok': false, 'error': 'invalid_json'});
       return;
     }
@@ -150,9 +333,10 @@ class AnnounceHttpServer {
       return;
     }
 
-    final senderIds = allowlist.senderIdsFor(recipient);
+    await identity.bindings.load();
+    final senderIds = identity.senderIdsFor(recipient);
     if (senderIds.isEmpty) {
-      _log('warn', 'announce_no_sender', 'No Telegram mapping for userid', {
+      _log('warn', 'announce_no_sender', 'No channel mapping for userid', {
         'userid': recipient,
         'id': id,
       });
@@ -216,4 +400,9 @@ class AnnounceHttpServer {
     req.response.write(jsonEncode(body));
     await req.response.close();
   }
+}
+
+/// Resolve Telegram bot username for pairing deep links.
+Future<String> resolveTelegramBotUsername(TelegramChannel tg) async {
+  return (await tg.resolveBotUsername()) ?? '';
 }
