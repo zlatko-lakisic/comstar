@@ -957,6 +957,24 @@ html, body {
   flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 10px;
+  align-items: center;
+}
+.net__ssid-row {
+  display: flex;
+  flex: 1 1 220px;
+  gap: 8px;
+  min-width: 200px;
+  align-items: center;
+}
+.net__ssid-row select {
+  flex: 1 1 auto;
+  min-width: 0;
+  font: 400 12px var(--font-mono);
+  color: var(--fg);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-s);
+  padding: 6px 8px;
 }
 .net__wifi-join input {
   font: 400 12px var(--font-mono);
@@ -966,6 +984,12 @@ html, body {
   border-radius: var(--r-s);
   padding: 6px 8px;
   min-width: 140px;
+}
+.net__table tr {
+  cursor: pointer;
+}
+.net__table tr.is-selected {
+  background: var(--cyan-dim);
 }
 .net__table {
   width: 100%;

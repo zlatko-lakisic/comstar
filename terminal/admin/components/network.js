@@ -6,7 +6,6 @@ export function createNetwork(root, { api }) {
       <p class="net__err mono" id="netErr" hidden></p>
       <div class="net__toolbar">
         <button type="button" class="btn" id="netRefresh">Refresh</button>
-        <button type="button" class="btn" id="netScan">Scan Wi‑Fi</button>
         <label class="net__check">
           <input type="checkbox" id="netWifiRadio" />
           Wi‑Fi radio
@@ -21,7 +20,12 @@ export function createNetwork(root, { api }) {
       <section class="net__step">
         <h3 class="net__step-title">Wi‑Fi networks</h3>
         <div class="net__wifi-join">
-          <input id="netSsid" class="mono" type="text" placeholder="SSID" autocomplete="off" />
+          <div class="net__ssid-row">
+            <select id="netSsid" class="mono" aria-label="SSID">
+              <option value="">Scanning…</option>
+            </select>
+            <button type="button" class="btn" id="netSsidRefresh" title="Rescan Wi‑Fi">Refresh</button>
+          </div>
           <input id="netWifiPass" type="password" placeholder="Password" autocomplete="new-password" />
           <button type="button" class="btn btn--primary" id="netWifiConnect">Connect</button>
           <button type="button" class="btn" id="netWifiDisconnect">Disconnect</button>
@@ -40,9 +44,12 @@ export function createNetwork(root, { api }) {
     wifiRadio: root.querySelector('#netWifiRadio'),
     ssid: root.querySelector('#netSsid'),
     wifiPass: root.querySelector('#netWifiPass'),
+    ssidRefresh: root.querySelector('#netSsidRefresh'),
   };
 
   let busy = false;
+  let lastSsid = '';
+  let networksCache = [];
 
   function showErr(msg) {
     if (!msg) {
@@ -58,6 +65,56 @@ export function createNetwork(root, { api }) {
     if (m === 'auto') return 'DHCP';
     if (m === 'manual') return 'Static';
     return m || '—';
+  }
+
+  function populateSsidSelect(networks, saved) {
+    const prev = lastSsid || els.ssid.value;
+    const bySsid = new Map();
+    for (const n of networks || []) {
+      const ssid = (n.ssid || '').trim();
+      if (!ssid) continue;
+      bySsid.set(ssid, n);
+    }
+    for (const s of saved || []) {
+      const ssid = String(s || '').trim();
+      if (!ssid || bySsid.has(ssid)) continue;
+      bySsid.set(ssid, {
+        ssid,
+        signal: null,
+        security: 'saved',
+        in_use: false,
+        saved: true,
+      });
+    }
+    networksCache = [...bySsid.values()].sort((a, b) => {
+      if (a.in_use && !b.in_use) return -1;
+      if (!a.in_use && b.in_use) return 1;
+      return (b.signal || 0) - (a.signal || 0) || a.ssid.localeCompare(b.ssid);
+    });
+
+    const opts = ['<option value="">Select a network…</option>'];
+    for (const n of networksCache) {
+      const bits = [];
+      if (n.in_use) bits.push('connected');
+      if (n.signal != null) bits.push(`${n.signal}%`);
+      if (n.security) bits.push(n.security);
+      if (n.saved && n.signal == null) bits.push('saved');
+      const label = bits.length ? `${n.ssid}  (${bits.join(' · ')})` : n.ssid;
+      const sel = n.ssid === prev ? ' selected' : '';
+      opts.push(
+        `<option value="${escapeHtml(n.ssid)}"${sel}>${escapeHtml(label)}</option>`,
+      );
+    }
+    if (!networksCache.length) {
+      opts.push(
+        '<option value="" disabled>No networks found — turn radio on and Refresh</option>',
+      );
+    }
+    els.ssid.innerHTML = opts.join('');
+    if (prev && [...els.ssid.options].some((o) => o.value === prev)) {
+      els.ssid.value = prev;
+      lastSsid = prev;
+    }
   }
 
   function renderDevices(devices) {
@@ -162,25 +219,31 @@ export function createNetwork(root, { api }) {
   }
 
   function renderWifi(networks, saved) {
-    const rows = Array.isArray(networks) ? networks : [];
+    populateSsidSelect(networks, saved);
+    const rows = networksCache;
     els.wifiList.innerHTML = rows.length
-      ? `<table class="net__table"><thead><tr><th></th><th>SSID</th><th>Signal</th><th>Security</th><th></th></tr></thead><tbody>${rows
+      ? `<table class="net__table"><thead><tr><th></th><th>SSID</th><th>Signal</th><th>Security</th></tr></thead><tbody>${rows
           .map((n) => {
             const ssid = n.ssid || '';
-            return `<tr>
+            return `<tr data-row-ssid="${escapeHtml(ssid)}" class="${ssid === els.ssid.value ? 'is-selected' : ''}">
               <td>${n.in_use ? '●' : ''}</td>
               <td>${escapeHtml(ssid)}</td>
               <td>${n.signal != null ? escapeHtml(String(n.signal)) : '—'}</td>
               <td>${escapeHtml(n.security || '')}</td>
-              <td><button type="button" class="btn btn--small" data-pick-ssid="${escapeHtml(ssid)}">Use</button></td>
             </tr>`;
           })
           .join('')}</tbody></table>`
-      : '<p class="net__hint">No networks (turn radio on and scan).</p>';
+      : '<p class="net__hint">No networks yet — turn Wi‑Fi on and hit Refresh.</p>';
 
-    els.wifiList.querySelectorAll('[data-pick-ssid]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        els.ssid.value = btn.getAttribute('data-pick-ssid') || '';
+    els.wifiList.querySelectorAll('[data-row-ssid]').forEach((row) => {
+      row.addEventListener('click', () => {
+        const ssid = row.getAttribute('data-row-ssid') || '';
+        els.ssid.value = ssid;
+        lastSsid = ssid;
+        els.wifiList
+          .querySelectorAll('tr.is-selected')
+          .forEach((r) => r.classList.remove('is-selected'));
+        row.classList.add('is-selected');
         els.wifiPass.focus();
       });
     });
@@ -198,7 +261,9 @@ export function createNetwork(root, { api }) {
 
     els.saved.querySelectorAll('[data-saved]').forEach((btn) => {
       btn.addEventListener('click', () => {
-        els.ssid.value = btn.getAttribute('data-saved') || '';
+        const ssid = btn.getAttribute('data-saved') || '';
+        els.ssid.value = ssid;
+        lastSsid = ssid;
       });
     });
     els.saved.querySelectorAll('[data-forget]').forEach((btn) => {
@@ -224,6 +289,10 @@ export function createNetwork(root, { api }) {
   async function refresh({ scan = false } = {}) {
     if (busy) return;
     busy = true;
+    if (scan) {
+      els.ssidRefresh.disabled = true;
+      els.ssidRefresh.textContent = 'Scanning…';
+    }
     try {
       const q = scan ? '?scan=1' : '';
       const data = await api.get(`/api/network${q}`);
@@ -232,6 +301,8 @@ export function createNetwork(root, { api }) {
       showErr(e.message || String(e));
     } finally {
       busy = false;
+      els.ssidRefresh.disabled = false;
+      els.ssidRefresh.textContent = 'Refresh';
     }
   }
 
@@ -254,15 +325,20 @@ export function createNetwork(root, { api }) {
     }
   }
 
+  els.ssid.addEventListener('change', () => {
+    lastSsid = els.ssid.value;
+  });
+
   root.querySelector('#netRefresh').addEventListener('click', () => refresh());
-  root.querySelector('#netScan').addEventListener('click', () => refresh({ scan: true }));
-  els.wifiRadio.addEventListener('change', () => {
-    post({ action: 'wifi_radio', enabled: els.wifiRadio.checked });
+  els.ssidRefresh.addEventListener('click', () => refresh({ scan: true }));
+  els.wifiRadio.addEventListener('change', async () => {
+    await post({ action: 'wifi_radio', enabled: els.wifiRadio.checked });
+    if (els.wifiRadio.checked) await refresh({ scan: true });
   });
   root.querySelector('#netWifiConnect').addEventListener('click', () => {
     const ssid = els.ssid.value.trim();
     if (!ssid) {
-      showErr('SSID required');
+      showErr('Select an SSID');
       return;
     }
     post({
@@ -275,10 +351,14 @@ export function createNetwork(root, { api }) {
     post({ action: 'wifi_disconnect' });
   });
 
-  refresh();
+  // Initial load: status + Wi‑Fi scan so the SSID list is filled.
+  refresh({ scan: true });
 
   return {
     refresh,
+    onShow() {
+      refresh({ scan: true });
+    },
     applyStatusSnippet() {
       /* status poll does not carry full network — no-op */
     },

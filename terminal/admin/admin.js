@@ -117,17 +117,13 @@ function selectTab(name) {
   } catch {
     // ignore
   }
+  if (active === 'network') network?.onShow?.();
 }
 
 els.tabActions?.addEventListener('click', () => selectTab('actions'));
 els.tabRoad?.addEventListener('click', () => selectTab('road'));
 els.tabNetwork?.addEventListener('click', () => selectTab('network'));
 els.tabLogs?.addEventListener('click', () => selectTab('logs'));
-
-const savedTab = sessionStorage.getItem('comstar_ops_tab');
-selectTab(
-  ['actions', 'road', 'network', 'logs'].includes(savedTab) ? savedTab : 'actions',
-);
 
 const rail = createRailEmblem(els.railEmblem);
 const health = createHealth(els.healthGrid, els.metricsRow);
@@ -145,6 +141,11 @@ const logs = createLogs(els.logsRoot, els.logsControls, {
   authHeaders: api.authHeaders,
   onUnauthorized: () => showGate('unauthorized'),
 });
+
+const savedTab = sessionStorage.getItem('comstar_ops_tab');
+selectTab(
+  ['actions', 'road', 'network', 'logs'].includes(savedTab) ? savedTab : 'actions',
+);
 
 els.gateToken.value = token;
 els.gateToken.addEventListener('keydown', async (e) => {
