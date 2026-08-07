@@ -78,7 +78,14 @@ class AnnounceService {
       logInfo('announce_disabled', 'Announce subsystem off');
       return;
     }
-    queue.open();
+    try {
+      queue.open();
+    } catch (e) {
+      logWarn('announce_queue_open_failed', e.toString(), data: {
+        'hint': 'Install libsqlite3-0 on the Pi (apt install libsqlite3-0)',
+      });
+      return;
+    }
     _schedule = ScheduleAnnounceSource(
       queue: queue,
       schedulePath: _resolveRepoPath(config.announce.schedulePath),

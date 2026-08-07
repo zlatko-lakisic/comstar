@@ -1,9 +1,32 @@
+import 'dart:ffi';
 import 'dart:io';
 
 import 'package:comstar_bridge/announce/types.dart';
 import 'package:comstar_bridge/log.dart';
+import 'package:sqlite3/open.dart';
 import 'package:sqlite3/sqlite3.dart';
 import 'package:uuid/uuid.dart';
+
+var _sqliteOpenConfigured = false;
+
+void _ensureSqliteOpen() {
+  if (_sqliteOpenConfigured) return;
+  _sqliteOpenConfigured = true;
+  // Debian/Pi ships libsqlite3.so.0 without an unversioned .so unless -dev is installed.
+  open.overrideFor(OperatingSystem.linux, () {
+    for (final name in const [
+      'libsqlite3.so.0',
+      'libsqlite3.so',
+      '/usr/lib/aarch64-linux-gnu/libsqlite3.so.0',
+      '/lib/aarch64-linux-gnu/libsqlite3.so.0',
+    ]) {
+      try {
+        return DynamicLibrary.open(name);
+      } catch (_) {}
+    }
+    return DynamicLibrary.open('libsqlite3.so.0');
+  });
+}
 
 /// Persistent announcement queue (M10.1). Sources enqueue; gate delivers.
 ///
@@ -25,6 +48,7 @@ class AnnouncementQueue {
 
   void open() {
     if (_db != null) return;
+    _ensureSqliteOpen();
     final dir = File(dbPath).parent;
     if (!dir.existsSync()) {
       dir.createSync(recursive: true);
@@ -62,7 +86,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_ann_dedupe_pending
   }
 
   void close() {
-    _db?.close();
+    _db?.dispose();
     _db = null;
   }
 
