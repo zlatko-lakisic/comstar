@@ -4,9 +4,10 @@
 # Prefer env vars for secrets; this file documents the shape.
 
 ao:
-  # Co-located with AO on Ada
-  base_url: http://127.0.0.1:8765
+  # Co-located with AO on Ada (HTTPS + mTLS when AO ≥ 1.29)
+  base_url: https://127.0.0.1:8765
   # token: set AO_TOKEN / COMSTAR_AO_TOKEN instead
+  # mtls: COMSTAR_AO_MTLS=1 + COMSTAR_AO_MTLS_DIR
 
 overlay_root: /opt/comstar/src/overlays/comstar
 

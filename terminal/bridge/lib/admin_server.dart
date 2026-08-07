@@ -334,6 +334,20 @@ class AdminServer {
     base['ao_url'] = aoProbe;
     base['cpai_url'] = cpaiBase;
 
+    final channelUrl = (Platform.environment['COMSTAR_CHANNEL_URL'] ??
+            config.announce.channelUrl)
+        .trim();
+    if (channelUrl.isNotEmpty) {
+      final baseCh = channelUrl.replaceAll(RegExp(r'/+$'), '');
+      final healthUrl = '$baseCh/health';
+      final channelOk = await _probeHttp(healthUrl);
+      base['channel_ok'] = channelOk;
+      base['channel_url'] = healthUrl;
+    } else {
+      base['channel_ok'] = null;
+      base['channel_url'] = null;
+    }
+
     // Unit active hints (best-effort).
     final units = <String, Object?>{};
     for (final e in adminRestartUnits.entries) {

@@ -608,9 +608,18 @@ Environment=COMSTAR_AEC_REF_SOURCE=alsa_output.platform-….hdmi.monitor
 ## 9c. Text channel + dual-surface announce (M11)
 
 Runs on **Ada**, not the Pi (`deploy/systemd/comstar-channel.service`).
+Providers run under a `ChannelMux` (Telegram today).
 
 1. Set `TELEGRAM_BOT_TOKEN` + `COMSTAR_CHANNEL_ALLOWLIST` (JSON sender→userid).
-2. For Pi → Ada announce delivery: bind LAN and share a token:
+2. Point at AO with mTLS (Ada HTTPS):
+
+```bash
+AO_BASE_URL=https://127.0.0.1:8765
+COMSTAR_AO_MTLS=1
+# COMSTAR_AO_MTLS_DIR=~/.local/share/comstar/ao-mtls
+```
+
+3. For Pi → Ada announce delivery: bind LAN and share a token:
 
 ```bash
 # ~/.config/comstar/channel.env on Ada
@@ -619,7 +628,7 @@ COMSTAR_CHANNEL_PORT=8782
 COMSTAR_CHANNEL_TOKEN=<secret>
 ```
 
-3. On the Pi `comstar.yaml` (or env):
+4. On the Pi `comstar.yaml` (or env):
 
 ```yaml
 announce:
@@ -627,9 +636,12 @@ announce:
   # channel_token via COMSTAR_CHANNEL_TOKEN preferred
 ```
 
-4. Urgent announcements while the recipient is **not** at the terminal POST
+5. Urgent announcements while the recipient is **not** at the terminal POST
    `/v1/announce` and mark delivered once (CAS). Normal priority waits for the
-   hallway. Unknown Telegram senders get silence.
+   hallway. Unknown Telegram senders get silence. Admin Health shows a
+   **Channel** card when `channel_url` is set.
+
+Local smoke: `make channel-test` · `make channel-dev`.
 
 ## 10. Google Workspace (mail / calendar / Drive)
 

@@ -67,16 +67,16 @@ class ChannelSessionManager {
 
   ReachMtlsConfig? _mtlsOrThrow() {
     if (!mtlsEnabled) return null;
+    if (!baseUrl.trim().toLowerCase().startsWith('https://')) {
+      throw StateError(
+        'AO mTLS enabled requires https:// AO_BASE_URL (got $baseUrl)',
+      );
+    }
     final dir = resolvedMtlsDir;
     if (!materialPresent(dir)) {
       throw StateError(
         'AO mTLS enabled but PEMs missing in $dir — enroll on Ada '
         '(same material as bridge ADR 0013)',
-      );
-    }
-    if (!baseUrl.trim().toLowerCase().startsWith('https://')) {
-      throw StateError(
-        'AO mTLS enabled requires https:// AO_BASE_URL (got $baseUrl)',
       );
     }
     return ReachMtlsConfig(materialDir: dir);

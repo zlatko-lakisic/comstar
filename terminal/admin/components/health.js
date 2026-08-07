@@ -45,14 +45,23 @@ export function createHealth(rootGrid, rootMetrics) {
     const kiosk = !!status.kiosk_connected;
     const audio = !!status.audio_connected;
     const stt = units.stt !== false;
+    const channelConfigured = status.channel_url != null && status.channel_url !== '';
+    const channelOk = status.channel_ok;
 
-    rootGrid.innerHTML = [
+    const cards = [
       card('AO', aoOk ? 'ok' : 'fail', status.ao_url ? 'reach' : '', probeTone(aoOk)),
       card('CPAI', cpaiOk ? 'ok' : 'fail', '', probeTone(cpaiOk)),
       card('STT', stt ? 'ok' : 'down', '', stt ? 'cyan' : 'red'),
       card('Kiosk', kiosk ? 'conn' : 'down', '', kiosk ? 'cyan' : 'red'),
       card('Audio', audio ? 'conn' : 'down', '', audio ? 'cyan' : 'red'),
-    ].join('');
+    ];
+    if (channelConfigured) {
+      const ok = !!channelOk;
+      cards.push(
+        card('Channel', ok ? 'ok' : 'fail', 'telegram', probeTone(ok)),
+      );
+    }
+    rootGrid.innerHTML = cards.join('');
 
     if (status.cpu != null) {
       cpuHist.push(Number(status.cpu));

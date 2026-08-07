@@ -1016,6 +1016,15 @@ no-op (logged, not an error to strangers).
 (default `127.0.0.1:8782`). When bound beyond loopback, `COMSTAR_CHANNEL_TOKEN`
 is required (`X-Comstar-Channel-Token` or `?token=`).
 
+Providers are registered in a **ChannelMux** (M11.2). Telegram is the only
+shipping provider; additional `Channel` implementations join the mux without
+rewriting the turn loop. Announce delivery fans out to **all** allowlisted
+sender ids for the recipient userid.
+
+Channel → AO sessions use `COMSTAR_AO_MTLS=1` + `COMSTAR_AO_MTLS_DIR` when Ada
+requires client certs (same PEM layout as ADR 0013). `AO_BASE_URL` must be
+`https://…` when mTLS is enabled.
+
 | Route | Method | Auth | Meaning |
 |---|---|---|---|
 | `/health` | GET | none | Liveness |

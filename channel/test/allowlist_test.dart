@@ -104,11 +104,15 @@ void main() {
     expect(allowlist.useridFor('111 '), isNull);
   });
 
-  test('senderIdFor reverses allowlist', () {
-    final allowlist = Allowlist({'111': 'zlatko', '222': 'other'});
+  test('senderIdsFor returns all mappings for userid', () {
+    final allowlist = Allowlist({
+      '111': 'zlatko',
+      '222': 'zlatko',
+      '333': 'other',
+    });
+    expect(allowlist.senderIdsFor('zlatko'), ['111', '222']);
     expect(allowlist.senderIdFor('zlatko'), '111');
-    expect(allowlist.senderIdFor('other'), '222');
-    expect(allowlist.senderIdFor('nobody'), isNull);
+    expect(allowlist.senderIdsFor('nobody'), isEmpty);
   });
 
   test('Allowlist.fromEnv parses inline JSON', () {

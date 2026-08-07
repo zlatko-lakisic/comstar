@@ -113,10 +113,10 @@ Living plan: `docs/PHASE2_PLAN_PROACTIVITY_AND_CHANNEL.md`.
 |---|---|---|
 | M11.0 session probe + ADR 0010 | `done` | Same session id unsafe → `comstar-<uid>-channel` |
 | M11.1 Ada placement + systemd | `done` | `deploy/systemd/comstar-channel.service` example |
-| M11.2 Channel abstraction | `done` | `channel/lib/channel.dart` + Telegram long-poll |
-| M11.3 Allowlist silence | `done` | tests: unknown = zero outbound |
-| M11.4 text_responder overlay | `done` | + `text_output` skill (markdown OK) |
-| M11.5 Session wiring | `done` | `ChannelSessionManager`, idle reap, SIGTERM stop |
+| M11.2 Channel abstraction | `done` | `Channel` + `ChannelMux` + Telegram long-poll |
+| M11.3 Allowlist silence | `done` | tests: unknown = zero outbound; multi-sender fan-out |
+| M11.4 text_responder overlay | `done` | + `text_output` skill (markdown OK); overlay constraint tests |
+| M11.5 Session wiring | `done` | `ChannelSessionManager`, idle reap, SIGTERM stop, **AO mTLS** |
 | M11.6 Announce → channel gate | `done` | bridge `evaluateChannelSurface` + Ada `/v1/announce`; CAS delivered-once |
 | M11.7 Rate limit | `done` | per-sender + daily cap tests |
-| M11.8 Docs / privacy | `done` | README + CONTRACTS §11 |
+| M11.8 Docs / privacy | `done` | README + CONTRACTS §11 + RUNBOOK §9c + admin Channel health |

@@ -1,4 +1,4 @@
-.PHONY: doctor bridge-dev kiosk-dev audio-sync deploy logs test stt-dev verify-cpai ao-hello site-dev site-build admin console pi-session plymouth soak road-vpn ao-mtls-enroll
+.PHONY: doctor bridge-dev kiosk-dev audio-sync deploy logs test stt-dev verify-cpai ao-hello site-dev site-build admin console pi-session plymouth soak road-vpn ao-mtls-enroll channel-test channel-dev
 
 ROOT := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 REMOTE ?= comstar
@@ -55,7 +55,18 @@ admin console:
 
 test:
 	cd terminal/bridge && dart test
+	cd channel && dart test
 	cd terminal/audio && python3 -m unittest test_capture test_stream test_wakeword test_vad test_devices
+
+channel-test:
+	cd channel && dart test
+
+# Ada-side text channel (Telegram). Requires TELEGRAM_BOT_TOKEN + allowlist.
+# Example:
+#   TELEGRAM_BOT_TOKEN=… COMSTAR_CHANNEL_ALLOWLIST='{"123":"zlatko"}' \
+#   AO_BASE_URL=https://127.0.0.1:8765 COMSTAR_AO_MTLS=1 make channel-dev
+channel-dev:
+	cd channel && dart run bin/comstar_channel.dart
 
 verify-cpai:
 	@CPAI_URL=$${CPAI_URL:-http://10.0.10.16:32168} ./scripts/verify_cpai.sh

@@ -10,6 +10,7 @@ import 'dart:io';
 import 'package:comstar_channel/announce_gate.dart';
 import 'package:comstar_channel/channel.dart';
 import 'package:comstar_channel/identity.dart';
+import 'package:comstar_channel/mux.dart';
 
 typedef AnnounceLog = void Function(
   String level,
@@ -149,8 +150,8 @@ class AnnounceHttpServer {
       return;
     }
 
-    final senderId = allowlist.senderIdFor(recipient);
-    if (senderId == null) {
+    final senderIds = allowlist.senderIdsFor(recipient);
+    if (senderIds.isEmpty) {
       _log('warn', 'announce_no_sender', 'No Telegram mapping for userid', {
         'userid': recipient,
         'id': id,
@@ -163,16 +164,45 @@ class AnnounceHttpServer {
       return;
     }
 
-    await channel.send(senderId, text);
+    final deliveredTo = <String>[];
+    Object? lastErr;
+    final mux = channel is ChannelMux ? channel as ChannelMux : null;
+    for (final senderId in senderIds) {
+      try {
+        if (mux != null) {
+          await mux.sendEverywhere(senderId, text);
+        } else {
+          await channel.send(senderId, text);
+        }
+        deliveredTo.add(senderId);
+      } catch (e) {
+        lastErr = e;
+        _log('warn', 'announce_send_fail', '$e', {
+          'senderId': senderId,
+          'id': id,
+        });
+      }
+    }
+    if (deliveredTo.isEmpty) {
+      await _json(req, 502, {
+        'ok': false,
+        'delivered': false,
+        'reason': 'send_failed',
+        'error': '$lastErr',
+      });
+      return;
+    }
     _log('info', 'announce_channel_sent', 'Announcement delivered on channel', {
       'id': id,
       'userid': recipient,
       'chars': text.length,
+      'senders': deliveredTo,
     });
     await _json(req, 200, {
       'ok': true,
       'delivered': true,
-      'sender_id': senderId,
+      'sender_id': deliveredTo.first,
+      'sender_ids': deliveredTo,
     });
   }
 

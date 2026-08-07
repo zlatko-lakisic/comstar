@@ -11,8 +11,13 @@
 ///   COMSTAR_CHANNEL_BIND        announce HTTP bind (default 127.0.0.1)
 ///   COMSTAR_CHANNEL_PORT        announce HTTP port (default 8782)
 ///   COMSTAR_CHANNEL_TOKEN       required when bind is non-loopback
+///   COMSTAR_AO_MTLS=1          use Reach mTLS (Ada AO ≥ 1.29)
+///   COMSTAR_AO_MTLS_DIR        PEM dir (default ~/.local/share/comstar/ao-mtls)
 ///
 /// Unknown senders: ZERO outbound (allowlist silence).
+///
+/// Providers: Telegram today (ChannelMux). Additional Channel implementations
+/// register beside Telegram without rewriting the turn loop.
 library;
 
 import 'dart:async';
@@ -25,6 +30,7 @@ import 'package:path/path.dart' as p;
 import 'package:comstar_channel/announce_http.dart';
 import 'package:comstar_channel/channel.dart';
 import 'package:comstar_channel/identity.dart';
+import 'package:comstar_channel/mux.dart';
 import 'package:comstar_channel/rate_limit.dart';
 import 'package:comstar_channel/session.dart';
 import 'package:comstar_channel/telegram.dart';
@@ -74,11 +80,20 @@ Future<void> main(List<String> args) async {
   final aoToken = Platform.environment['AO_TOKEN'] ??
       Platform.environment['COMSTAR_AO_TOKEN'] ??
       '';
+  final mtlsOn = aoMtlsEnabledFromEnv();
   final sessions = ChannelSessionManager(
     baseUrl: aoBaseUrlFromEnv(),
     overlayRoot: overlayRoot,
     token: aoToken,
+    mtlsEnabled: mtlsOn,
+    mtlsMaterialDir: aoMtlsDirFromEnv(),
   );
+  if (mtlsOn) {
+    _log('info', 'config', 'AO mTLS enabled for channel sessions', {
+      'materialDir': sessions.resolvedMtlsDir,
+      'ao': sessions.baseUrl,
+    });
+  }
 
   final perSenderMax =
       int.tryParse(Platform.environment['COMSTAR_CHANNEL_RATE_MAX'] ?? '') ??
@@ -88,7 +103,11 @@ Future<void> main(List<String> args) async {
           200;
   final limiter = RateLimiter(perSenderMax: perSenderMax, dailyCap: dailyCap);
 
-  final channel = TelegramChannel(botToken: token);
+  // M11.2: Telegram is the only provider today; mux is the integration point
+  // for additional Channel implementations.
+  final mux = ChannelMux([
+    TelegramChannel(botToken: token),
+  ]);
   late final StreamSubscription<ChannelInbound> sub;
 
   final announceBind =
@@ -97,7 +116,7 @@ Future<void> main(List<String> args) async {
       int.tryParse(Platform.environment['COMSTAR_CHANNEL_PORT'] ?? '') ?? 8782;
   final channelHttpToken = Platform.environment['COMSTAR_CHANNEL_TOKEN'] ?? '';
   final announceHttp = AnnounceHttpServer(
-    channel: channel,
+    channel: mux,
     allowlist: allowlist,
     token: channelHttpToken,
     bindHost: announceBind,
@@ -109,7 +128,7 @@ Future<void> main(List<String> args) async {
     _log('info', 'shutdown', 'stopping channel');
     await sub.cancel();
     await announceHttp.stop();
-    await channel.stop();
+    await mux.stop();
     await sessions.stopAll();
     exit(0);
   }
@@ -117,7 +136,7 @@ Future<void> main(List<String> args) async {
   ProcessSignal.sigterm.watch().listen((_) => shutdown());
   ProcessSignal.sigint.watch().listen((_) => shutdown());
 
-  sub = channel.inbound.listen((msg) async {
+  sub = mux.inbound.listen((msg) async {
     final userid = allowlist.useridFor(msg.senderId);
     if (userid == null) {
       // Security boundary: silence. Do not send(), do not reveal the bot lives.
@@ -131,9 +150,8 @@ Future<void> main(List<String> args) async {
         'senderId': msg.senderId,
         'userid': userid,
       });
-      // Soft signal only to known users — still no message to unknowns.
       try {
-        await channel.send(
+        await mux.send(
           msg.senderId,
           'Too many messages — try again later.',
         );
@@ -146,36 +164,36 @@ Future<void> main(List<String> args) async {
       'chars': msg.text.length,
     });
     try {
-      await channel.setTyping(msg.senderId, ChannelTyping.started);
+      await mux.setTyping(msg.senderId, ChannelTyping.started);
       final reply = await sessions.turn(userid, msg.text);
-      await channel.send(msg.senderId, reply);
+      await mux.send(msg.senderId, reply);
       _log('info', 'outbound', 'replied', {
         'userid': userid,
         'chars': reply.length,
       });
     } catch (e) {
       _log('error', 'turn_fail', '$e', {'userid': userid});
-      // Known user only: brief error. Unknowns already returned above.
       try {
-        await channel.send(msg.senderId, 'Sorry — something went wrong.');
+        await mux.send(msg.senderId, 'Sorry — something went wrong.');
       } catch (_) {}
     }
   });
 
-  await channel.start();
+  await mux.start();
   try {
     await announceHttp.start();
   } catch (e) {
     _log('error', 'announce_http_fail', '$e');
     exit(2);
   }
-  _log('info', 'ready', 'comstar-channel polling Telegram', {
+  _log('info', 'ready', 'comstar-channel polling providers', {
     'overlayRoot': overlayRoot,
     'ao': aoBaseUrlFromEnv(),
+    'mtls': mtlsOn,
+    'providers': ['telegram'],
     'announceHttp': '$announceBind:$announcePort',
   });
 
-  // Idle reaper
   Timer.periodic(const Duration(minutes: 15), (_) async {
     try {
       await sessions.reapIdle();
@@ -184,6 +202,5 @@ Future<void> main(List<String> args) async {
     }
   });
 
-  // Keep isolate alive.
   await Completer<void>().future;
 }

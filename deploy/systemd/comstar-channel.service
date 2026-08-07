@@ -1,5 +1,5 @@
 [Unit]
-Description=COMSTAR text channel (Telegram) — Ada / AI server
+Description=COMSTAR text channel (Telegram mux) — Ada / AI server
 Documentation=https://github.com/local/comstar/docs/adr/0010-text-channel.md
 After=network-online.target
 Wants=network-online.target
@@ -8,15 +8,17 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=/opt/comstar/src/channel
-Environment=AO_BASE_URL=http://127.0.0.1:8765
+Environment=AO_BASE_URL=https://127.0.0.1:8765
+Environment=COMSTAR_AO_MTLS=1
 Environment=COMSTAR_OVERLAY_ROOT=/opt/comstar/src/overlays/comstar
 # Secrets via drop-in or EnvironmentFile (never commit):
 # EnvironmentFile=-%h/.config/comstar/channel.env
 #   TELEGRAM_BOT_TOKEN=...
 #   COMSTAR_CHANNEL_ALLOWLIST={"123456789":"zlatko"}
-#   AO_TOKEN=...
-#   COMSTAR_CHANNEL_TOKEN=...          # required when binding beyond loopback
-#   COMSTAR_CHANNEL_BIND=0.0.0.0       # Pi bridge POSTs /v1/announce
+#   AO_TOKEN=...                     # optional transitional Warpgate
+#   COMSTAR_AO_MTLS_DIR=%h/.local/share/comstar/ao-mtls
+#   COMSTAR_CHANNEL_TOKEN=...        # required when binding beyond loopback
+#   COMSTAR_CHANNEL_BIND=0.0.0.0     # Pi bridge POSTs /v1/announce
 #   COMSTAR_CHANNEL_PORT=8782
 ExecStart=/usr/bin/dart run bin/comstar_channel.dart
 Restart=on-failure
