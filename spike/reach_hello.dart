@@ -36,6 +36,7 @@ system_prompt: |
   try {
     await bridge.start(
       config: ReachConnectionConfig(
+        appId: 'ComStar',
         baseUrl: baseUrl,
         headers: headers,
         ttlSeconds: 300,

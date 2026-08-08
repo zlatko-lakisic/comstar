@@ -164,6 +164,7 @@ Future<SessionBridge> _start({
   try {
     await bridge.start(
       config: ReachConnectionConfig(
+        appId: 'ComStar',
         baseUrl: baseUrl,
         headers: _headers(userid: userid, sessionId: sessionId, token: token),
         ttlSeconds: 600,

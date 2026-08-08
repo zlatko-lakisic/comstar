@@ -10,6 +10,7 @@ import 'package:comstar_bridge/google/token_store.dart';
 import 'package:comstar_bridge/log.dart';
 import 'package:comstar_bridge/nextcloud/token_store.dart';
 import 'package:comstar_bridge/phrase_bank.dart';
+import 'package:comstar_bridge/reach_app.dart';
 import 'package:comstar_bridge/speech_routing.dart';
 
 /// Thin interface over ao_reach [SessionBridge] for tests and stubs.
@@ -502,6 +503,7 @@ class ComstarSession {
       config: ReachConnectionConfig(
         baseUrl: config.orchestration.baseUrl,
         headers: headers,
+        appId: kComstarReachAppId,
         ttlSeconds: config.orchestration.ttlSeconds,
         questionIdPrefix: 'comstar',
         speechToken: speechTokenFromEnv(),

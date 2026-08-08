@@ -58,6 +58,7 @@ Future<void> main() async {
   try {
     await bridge.start(
       config: ReachConnectionConfig(
+        appId: 'ComStar',
         baseUrl: config.orchestration.baseUrl,
         headers: headers,
         ttlSeconds: 600,

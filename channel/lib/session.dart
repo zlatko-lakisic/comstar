@@ -12,6 +12,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:ao_reach/ao_reach.dart';
+import 'package:comstar_channel/reach_app.dart';
 import 'package:path/path.dart' as p;
 
 /// Long-lived channel sessions keyed by COMSTAR userid.
@@ -123,6 +124,7 @@ class ChannelSessionManager {
       config: ReachConnectionConfig(
         baseUrl: baseUrl,
         headers: headers,
+        appId: kComstarReachAppId,
         ttlSeconds: ttlSeconds,
         mtls: mtls,
       ),

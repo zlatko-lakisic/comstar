@@ -16,6 +16,7 @@ Future<void> main() async {
   try {
     await bridge.start(
       config: ReachConnectionConfig(
+        appId: 'ComStar',
         baseUrl: baseUrl,
         headers: {
           'x-agentic-user-name': userid,
@@ -65,6 +66,7 @@ Future<void> main() async {
     await bridge.stop();
     await bridge.start(
       config: ReachConnectionConfig(
+        appId: 'ComStar',
         baseUrl: baseUrl,
         headers: {
           'x-agentic-user-name': 'guest',

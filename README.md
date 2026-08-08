@@ -97,7 +97,7 @@ flowchart TB
 
   subgraph server ["AI server - RTX 4000 Ada"]
     direction TB
-    ao["agentic-orchestration v1.28+<br/>:8765<br/>planner / agents / session memory"]
+    ao["agentic-orchestration v2.0+<br/>:8765<br/>planner / agents / session memory"]
     stt["AO speech STT sidecar<br/>faster-whisper<br/>:8090"]
     tts["AO speech TTS sidecar<br/>Piper<br/>:8091"]
     cpai["CodeProject.AI<br/>:32168<br/>YOLO detect + Face recognize"]
@@ -163,7 +163,7 @@ Identity is cached with a TTL bound to continuous presence. Face recognition run
 
 | Layer | Choice | Rationale |
 |---|---|---|
-| Client SDK | `ao_reach` (Dart ^3.5) | Session overlays + reverse MCP tunnel, native to AO |
+| Client SDK | `ao_reach` ≥ 0.5.1 (Dart ^3.5) | Session overlays + reverse MCP; required `appId` (`ComStar`) |
 | Client shell | Dart bridge + Chromium kiosk | Bridge speaks REACH; kiosk renders the avatar; they talk over local WS |
 | Avatar (Phase 1) | Live SVG starburst in Chromium | State, mic level, speech amplitude; no WebGL yet |
 | Avatar (planned) | [TalkingHead.js](https://github.com/met4citizen/TalkingHead) + GLB | Lip-sync path reserved; GLB UAT still open |
@@ -172,7 +172,7 @@ Identity is cached with a TTL bound to continuous presence. Face recognition run
 | VAD | Energy VAD (Silero optional) | End-of-speech with start/continue hysteresis for fast talk |
 | STT | AO speech sidecar (Reach `SpeechClient`) or local faster-whisper | Prefer Ada when `hello.speech`; env URL fallback |
 | TTS | AO speech sidecar or local Piper/sherpa | OpenAI-compatible `/v1/audio/speech` |
-| Orchestration | [`agentic-orchestration`](https://github.com/zlatko-lakisic/agentic-orchestration) ≥ v1.28.0 | Planner, agents, MCP, KB; speech advertise ≥ 1.28 |
+| Orchestration | [`agentic-orchestration`](https://github.com/zlatko-lakisic/agentic-orchestration) ≥ v2.0.0 | Planner, agents, MCP, KB; Reach `appId` required; speech advertise ≥ 1.28 |
 
 ---
 

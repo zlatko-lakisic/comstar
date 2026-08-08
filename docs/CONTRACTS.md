@@ -434,6 +434,8 @@ Rules:
 - IdentityResolver votes on **faceId** only; LDAP is never on the per-frame path.
 - Session headers use **resolved `uid`**: `x-agentic-user-name: <uid>`,
   `x-agentic-session-id: comstar-<uid>`.
+- Reach `appId` is **`ComStar`** (normalized to `comstar`) on every
+  `session_overlay_register` (AO ≥ 2.0 / Reach ≥ 0.5).
 - Kiosk `state.displayName` and greeter prefer LDAP `displayName`/`cn`, else `uid`.
 - Biometrics are never stored in LDAP. Planner LDAP MCP is deferred
   (`guest_allowed: false` when added).
@@ -442,9 +444,9 @@ Rules:
 
 ## 4. Bridge → AO via `ao_reach`
 
-**Status:** VERIFIED — Reach `v0.4.1` / AO ≥ 1.29. Ada serves **HTTPS + client
-certs** on `:8765` (direct, not Warpgate). Historical cleartext checks used
-`http://10.0.10.16:8765` (AO v1.27.4, 2026-08-02). Host MCP catalog ids:
+**Status:** VERIFIED path — Reach `v0.5.1` / AO ≥ 2.0 (`appId` required; Ada
+may still be mid-upgrade). Ada serves **HTTPS + client certs** on `:8765`
+(direct, not Warpgate). Host MCP catalog ids:
 `fetch_url`, `filesystem_local`, `home_assistant`, `media_audio_transcribe`,
 `media_understand`, `media_video_analyze`. Do **not** request `memory` / `time` /
 `math` / `vision` on this host — AO rejects the turn.
@@ -473,6 +475,7 @@ final bridge = SessionBridge();
 await bridge.start(
   config: ReachConnectionConfig(
     baseUrl: cfg.orchestration.baseUrl, // https://… when mtls.enabled
+    appId: 'ComStar', // required AO ≥ 2.0 / Reach ≥ 0.5 → normalized `comstar`
     headers: {
       // identity.userid = FreeIPA uid after directory resolve (or faceId pass-through)
       'x-agentic-user-name': identity.userid,

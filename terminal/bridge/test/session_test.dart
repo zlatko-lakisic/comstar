@@ -164,6 +164,7 @@ void main() {
       expect(fake.lastConfig!.headers['x-agentic-user-name'], 'zlatko');
       expect(fake.lastConfig!.headers['x-agentic-session-id'], 'comstar-zlatko');
       expect(fake.lastConfig!.headers['x-warpgate-token'], 'test-token');
+      expect(fake.lastConfig!.appId, 'comstar');
       expect(fake.lastConfig!.mtls, isNull);
       expect(fake.lastOverlay, './overlays/comstar');
     });
