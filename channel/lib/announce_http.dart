@@ -1,14 +1,12 @@
 /// HTTP ingress for bridge → channel announce + QR pairing (M11.6 / ADR 0015).
 ///
-/// Listens on Ada; Pi bridge POSTs `/v1/announce` and `/v1/pairing/*`.
-/// Token required when bound beyond loopback. See CONTRACTS §11.
+/// Also hosts WhatsApp Cloud API webhook (`/v1/whatsapp/webhook`).
 library;
 
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:comstar_channel/announce_gate.dart';
-import 'package:comstar_channel/bindings.dart';
 import 'package:comstar_channel/channel.dart';
 import 'package:comstar_channel/identity_resolver.dart';
 import 'package:comstar_channel/mux.dart';
@@ -24,7 +22,7 @@ typedef AnnounceLog = void Function(
   Map<String, Object?>? data,
 ]);
 
-/// Serve announce, pairing, and health endpoints.
+/// Serve announce, pairing, WhatsApp webhook, and health endpoints.
 class AnnounceHttpServer {
   AnnounceHttpServer({
     required this.channel,
@@ -34,6 +32,9 @@ class AnnounceHttpServer {
     this.bindHost = '127.0.0.1',
     this.port = 8782,
     this.telegramBotUsername = '',
+    this.whatsappDisplayPhone = '',
+    this.signalAccount = '',
+    this.whatsapp,
     AnnounceLog? log,
   }) : _log = log ?? ((_, __, ___, [____]) {});
 
@@ -46,6 +47,16 @@ class AnnounceHttpServer {
 
   /// Telegram @username without @ (for deep links).
   String telegramBotUsername;
+
+  /// Digits for wa.me pairing QR.
+  String whatsappDisplayPhone;
+
+  /// E.164 for signal.me pairing QR.
+  String signalAccount;
+
+  /// Optional Cloud API channel for webhook ingest.
+  WhatsAppChannel? whatsapp;
+
   final AnnounceLog _log;
 
   HttpServer? _server;
@@ -85,6 +96,10 @@ class AnnounceHttpServer {
             'signal': signalConfiguredFromEnv(),
           },
         });
+        return;
+      }
+      if (path == '/v1/whatsapp/webhook') {
+        await _handleWhatsAppWebhook(req);
         return;
       }
       if (req.method == 'POST' && path == '/v1/announce') {
@@ -152,6 +167,47 @@ class AnnounceHttpServer {
     return header == token || q == token;
   }
 
+  Future<void> _handleWhatsAppWebhook(HttpRequest req) async {
+    final wa = whatsapp;
+    if (wa == null) {
+      await _json(req, 503, {'ok': false, 'error': 'whatsapp_not_configured'});
+      return;
+    }
+    if (req.method == 'GET') {
+      final mode = req.uri.queryParameters['hub.mode'] ?? '';
+      final token = req.uri.queryParameters['hub.verify_token'] ?? '';
+      final challenge = req.uri.queryParameters['hub.challenge'] ?? '';
+      final ok = wa.verifyWebhook(
+        mode: mode,
+        token: token,
+        challenge: challenge,
+      );
+      if (ok == null) {
+        req.response.statusCode = 403;
+        await req.response.close();
+        return;
+      }
+      req.response.statusCode = 200;
+      req.response.headers.contentType = ContentType.text;
+      req.response.write(ok);
+      await req.response.close();
+      return;
+    }
+    if (req.method == 'POST') {
+      final raw = await utf8.decoder.bind(req).join();
+      try {
+        final decoded = jsonDecode(raw.isEmpty ? '{}' : raw);
+        wa.ingestWebhook(decoded);
+      } catch (e) {
+        _log('warn', 'whatsapp_webhook_parse', '$e');
+      }
+      // Always 200 quickly so Meta does not retry-storm.
+      await _json(req, 200, {'ok': true});
+      return;
+    }
+    await _json(req, 405, {'ok': false, 'error': 'method_not_allowed'});
+  }
+
   Future<Map<String, dynamic>?> _readJson(HttpRequest req) async {
     final raw = await utf8.decoder.bind(req).join();
     try {
@@ -200,18 +256,60 @@ class AnnounceHttpServer {
       return;
     }
 
-    if (provider == 'whatsapp' && !whatsappConfiguredFromEnv()) {
-      await _json(req, 503, {'ok': false, 'error': 'whatsapp_not_configured'});
-      return;
-    }
-    if (provider == 'signal' && !signalConfiguredFromEnv()) {
-      await _json(req, 503, {'ok': false, 'error': 'signal_not_configured'});
+    if (provider == 'whatsapp') {
+      if (!whatsappConfiguredFromEnv()) {
+        await _json(req, 503, {'ok': false, 'error': 'whatsapp_not_configured'});
+        return;
+      }
+      final phone = whatsappDisplayPhone.trim().isNotEmpty
+          ? whatsappDisplayPhone
+          : (whatsappDisplayPhoneFromEnv() ?? '');
+      if (phone.isEmpty) {
+        await _json(req, 503, {
+          'ok': false,
+          'error': 'whatsapp_display_phone_missing',
+        });
+        return;
+      }
+      final attempt = await pairing.begin(
+        userid: userid,
+        provider: provider,
+        urlBuilder: (token) => PairingManager.whatsappPairUrl(
+          displayPhone: phone,
+          token: token,
+        ),
+      );
+      await _json(req, 200, {'ok': true, ...attempt.toPublicJson()});
       return;
     }
 
-    await _json(req, 501, {
+    if (provider == 'signal') {
+      if (!signalConfiguredFromEnv()) {
+        await _json(req, 503, {'ok': false, 'error': 'signal_not_configured'});
+        return;
+      }
+      final acct = signalAccount.trim().isNotEmpty
+          ? signalAccount
+          : (signalAccountFromEnv() ?? '');
+      if (acct.isEmpty) {
+        await _json(req, 503, {
+          'ok': false,
+          'error': 'signal_account_missing',
+        });
+        return;
+      }
+      final attempt = await pairing.begin(
+        userid: userid,
+        provider: provider,
+        urlBuilder: (_) => PairingManager.signalPairUrl(accountE164: acct),
+      );
+      await _json(req, 200, {'ok': true, ...attempt.toPublicJson()});
+      return;
+    }
+
+    await _json(req, 400, {
       'ok': false,
-      'error': 'provider_pairing_not_implemented',
+      'error': 'unknown_provider',
       'provider': provider,
     });
   }
@@ -273,8 +371,7 @@ class AnnounceHttpServer {
     await identity.bindings.load();
     final bindings = identity.bindings.bindingsFor(userid);
     final providers = <String>{
-      for (final b in bindings) b.provider,
-      if (identity.staticAllowlist.senderIdsFor(userid).isNotEmpty) 'telegram',
+      for (final d in identity.destinationsFor(userid)) d.provider,
     };
     await _json(req, 200, {
       'ok': true,
@@ -334,8 +431,8 @@ class AnnounceHttpServer {
     }
 
     await identity.bindings.load();
-    final senderIds = identity.senderIdsFor(recipient);
-    if (senderIds.isEmpty) {
+    final destinations = identity.destinationsFor(recipient);
+    if (destinations.isEmpty) {
       _log('warn', 'announce_no_sender', 'No channel mapping for userid', {
         'userid': recipient,
         'id': id,
@@ -351,18 +448,19 @@ class AnnounceHttpServer {
     final deliveredTo = <String>[];
     Object? lastErr;
     final mux = channel is ChannelMux ? channel as ChannelMux : null;
-    for (final senderId in senderIds) {
+    for (final dest in destinations) {
       try {
         if (mux != null) {
-          await mux.sendEverywhere(senderId, text);
+          await mux.sendOn(dest.provider, dest.senderId, text);
         } else {
-          await channel.send(senderId, text);
+          await channel.send(dest.senderId, text);
         }
-        deliveredTo.add(senderId);
+        deliveredTo.add('${dest.provider}:${dest.senderId}');
       } catch (e) {
         lastErr = e;
         _log('warn', 'announce_send_fail', '$e', {
-          'senderId': senderId,
+          'provider': dest.provider,
+          'senderId': dest.senderId,
           'id': id,
         });
       }

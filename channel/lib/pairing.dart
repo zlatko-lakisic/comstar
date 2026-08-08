@@ -68,6 +68,28 @@ class PairingManager {
     return 'https://t.me/$user?start=pair_$token';
   }
 
+  /// WhatsApp click-to-chat with prefilled `pair_<token>` (Cloud API).
+  ///
+  /// [displayPhone] is digits-only (country code + number, no +).
+  static String whatsappPairUrl({
+    required String displayPhone,
+    required String token,
+  }) {
+    final digits = displayPhone.replaceAll(RegExp(r'\D'), '');
+    final text = Uri.encodeComponent('pair_$token');
+    return 'https://wa.me/$digits?text=$text';
+  }
+
+  /// Signal chat deep link; user types `pair_<token>` (no prefill support).
+  static String signalPairUrl({
+    required String accountE164,
+  }) {
+    final e164 = accountE164.trim().startsWith('+')
+        ? accountE164.trim()
+        : '+${accountE164.replaceAll(RegExp(r'\D'), '')}';
+    return 'https://signal.me/#p/$e164';
+  }
+
   /// Spoken / on-screen code (same spirit as Google user codes).
   static String speakableUserCode(String code) {
     final chars = code.toUpperCase().split('');
@@ -208,6 +230,21 @@ class PairingManager {
     return a.userid;
   }
 
+  /// Try to complete pairing from free-form inbound text (any provider).
+  Future<String?> completeFromInboundText({
+    required String provider,
+    required String senderId,
+    required String text,
+  }) async {
+    final payload = extractPairPayload(text);
+    if (payload == null || payload.isEmpty) return null;
+    return completeFromStartPayload(
+      provider: provider,
+      senderId: senderId,
+      payload: payload,
+    );
+  }
+
   /// Parse Telegram `/start …` text → payload after /start, or null.
   static String? telegramStartPayload(String text) {
     final t = text.trim();
@@ -216,6 +253,23 @@ class PairingManager {
     if (m == null) return null;
     final payload = (m.group(1) ?? '').trim();
     return payload.isEmpty ? '' : payload;
+  }
+
+  /// Extract `pair_<token>` / `/start …` payload from inbound text.
+  static String? extractPairPayload(String text) {
+    final start = telegramStartPayload(text);
+    if (start != null) return start.isEmpty ? null : start;
+    final t = text.trim();
+    final m = RegExp(
+      r'(?:^|\s)pair[_:\s-]?([a-z0-9]{6,16})\b',
+      caseSensitive: false,
+    ).firstMatch(t);
+    if (m != null) return 'pair_${m.group(1)!.toLowerCase()}';
+    // Entire message is the opaque token.
+    if (RegExp(r'^[a-z0-9]{6,16}$', caseSensitive: false).hasMatch(t)) {
+      return t.toLowerCase();
+    }
+    return null;
   }
 
   /// Debug / tests.

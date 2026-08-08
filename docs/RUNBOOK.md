@@ -608,47 +608,73 @@ Environment=COMSTAR_AEC_REF_SOURCE=alsa_output.platform-….hdmi.monitor
 ## 9c. Text channel + dual-surface announce (M11 / ADR 0015)
 
 Runs on **Ada**, not the Pi (`deploy/systemd/comstar-channel.service`).
-Providers run under a `ChannelMux` (Telegram shipping; WhatsApp/Signal when
-backends are configured). **No OpenClaw** — COMSTAR owns the channels.
+`ChannelMux` providers: **Telegram Bot API**, **WhatsApp Cloud API**,
+**signal-cli** JSON-RPC. No OpenClaw; no unofficial WhatsApp clients.
 
-1. Set `TELEGRAM_BOT_TOKEN` (+ optional static `COMSTAR_CHANNEL_ALLOWLIST`).
-2. Point at AO with mTLS (Ada HTTPS):
-
-```bash
-AO_BASE_URL=https://127.0.0.1:8765
-COMSTAR_AO_MTLS=1
-# COMSTAR_AO_MTLS_DIR=~/.local/share/comstar/ao-mtls
-```
-
-3. For Pi → Ada announce + QR pairing: bind LAN and share a token:
+### Shared (all providers)
 
 ```bash
 # ~/.config/comstar/channel.env on Ada
 COMSTAR_CHANNEL_BIND=0.0.0.0
 COMSTAR_CHANNEL_PORT=8782
 COMSTAR_CHANNEL_TOKEN=<secret>
+AO_BASE_URL=https://127.0.0.1:8765
+COMSTAR_AO_MTLS=1
 ```
 
-4. On the Pi `comstar.yaml` (or env):
+Pi `comstar.yaml`:
 
 ```yaml
 announce:
   channel_url: http://10.0.10.16:8782
-  # channel_token via COMSTAR_CHANNEL_TOKEN preferred
 ```
 
-5. **Link a userid** at the hallway: say “link Telegram”. The kiosk shows the
-   same `pairing.qr` overlay as Google; scan with the phone. Bindings land in
-   `$COMSTAR_DATA_DIR/channel/bindings.json` on Ada. Unknown senders stay silent.
+At the hallway: **“link Telegram”** / **“link WhatsApp”** / **“link Signal”**
+→ kiosk `pairing.qr`. Bindings: `$COMSTAR_DATA_DIR/channel/bindings.json`.
 
-6. Urgent announcements while the recipient is **not** at the terminal POST
-   `/v1/announce` and mark delivered once (CAS). Admin Health shows a
-   **Channel** card when `channel_url` is set.
+### Telegram
 
-Local smoke: `make channel-test` · `make channel-dev`.
+```bash
+TELEGRAM_BOT_TOKEN=...
+# TELEGRAM_BOT_USERNAME=MyBot   # optional
+```
 
-WhatsApp / Signal: set `COMSTAR_WHATSAPP_*` / `COMSTAR_SIGNAL_*` when backends
-exist (ADR 0015). Until then voice reports “not set up”.
+### WhatsApp (Meta Cloud API)
+
+1. Create a WhatsApp Business Cloud app; note **phone number id** + token.
+2. Set env and point Meta webhook to Ada (or a tunnel):
+
+```bash
+COMSTAR_WHATSAPP_CLOUD_TOKEN=...
+COMSTAR_WHATSAPP_PHONE_NUMBER_ID=...
+COMSTAR_WHATSAPP_VERIFY_TOKEN=...
+COMSTAR_WHATSAPP_DISPLAY_PHONE=15551234567   # digits for wa.me
+# Webhook URL: https://<host>:8782/v1/whatsapp/webhook
+# Verify token: same as COMSTAR_WHATSAPP_VERIFY_TOKEN
+```
+
+Pairing QR opens WhatsApp with prefilled `pair_<token>`. This is a **Business**
+number, not personal WhatsApp Web.
+
+### Signal (signal-cli)
+
+```bash
+# One-time on Ada: install signal-cli, then link
+signal-cli link -n comstar-ada   # scan QR with Signal app
+# Run daemon (systemd recommended)
+signal-cli -a +15551234567 daemon --http 127.0.0.1:8080
+
+COMSTAR_SIGNAL_URL=http://127.0.0.1:8080
+COMSTAR_SIGNAL_ACCOUNT=+15551234567
+```
+
+User pairing QR opens `signal.me` chat with the COMSTAR number; user sends the
+spoken `pair_<token>` (Signal has no message prefill).
+
+### Announce + health
+
+Urgent+absent → `POST /v1/announce` (CAS). Admin Health shows **Channel** when
+`channel_url` is set. Local smoke: `make channel-test` · `make channel-dev`.
 
 ## 10. Google Workspace (mail / calendar / Drive)
 
@@ -707,6 +733,29 @@ Mac spike (optional, with a refresh token already in env):
 GOOGLE_CLIENT_ID=… GOOGLE_CLIENT_SECRET=… GOOGLE_REFRESH_TOKEN=… \
   npx -y mcp-server-google-workspace@0.2.6
 ```
+
+## 11. Nextcloud (files / notes / calendar / tasks / contacts / mail)
+
+Complements Google (ADR 0016) — different accounts. Off-the-shelf
+`nextcloud-mcp-server@0.166.0` via `uvx`, tunnelled as `client.nextcloud`.
+
+```bash
+# Bridge host needs uv (https://docs.astral.sh/uv/) or:
+#   pip install 'nextcloud-mcp-server==0.166.0'
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+export NEXTCLOUD_HOST=https://your.nextcloud.example
+# App password: Nextcloud → Settings → Security → Devices & sessions
+bash scripts/nextcloud_pair.sh zlatko
+# Or voice: “connect my Nextcloud” (Login Flow QR) after NEXTCLOUD_HOST is set
+# Or Admin: POST /admin/api/nextcloud {"action":"set","userid":"…","username":"…","app_password":"…"}
+
+cd terminal/bridge && dart run tool/nextcloud_ao_e2e.dart
+```
+
+Tokens: `~/.local/share/comstar/nextcloud/<userid>.json` (`0600`). Guests never
+get Nextcloud tools. Say **Nextcloud / my cloud / NAS files** so routing attaches
+`client.nextcloud` (generic “calendar” still goes to Google).
 
 ## Local STT note
 

@@ -10,6 +10,9 @@ class RecordingChannel implements Channel {
   final _inbound = StreamController<ChannelInbound>.broadcast();
 
   @override
+  String get providerId => 'telegram';
+
+  @override
   Stream<ChannelInbound> get inbound => _inbound.stream;
 
   @override

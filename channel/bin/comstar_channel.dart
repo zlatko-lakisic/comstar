@@ -1,25 +1,16 @@
 /// COMSTAR text channel daemon (Ada-side).
 ///
-/// Env:
-///   TELEGRAM_BOT_TOKEN          required (Telegram provider)
-///   TELEGRAM_BOT_USERNAME       optional; else resolved via getMe
-///   COMSTAR_CHANNEL_ALLOWLIST   JSON object or path to yaml/json (static seed)
-///   AO_BASE_URL / COMSTAR_AO_BASE_URL
-///   AO_TOKEN / COMSTAR_AO_TOKEN
-///   COMSTAR_OVERLAY_ROOT        default /opt/comstar/src/overlays/comstar
-///   COMSTAR_CHANNEL_RATE_MAX    per-sender max (default 20)
-///   COMSTAR_CHANNEL_DAILY_CAP   daily orchestration cap (default 200)
-///   COMSTAR_CHANNEL_BIND        announce HTTP bind (default 127.0.0.1)
-///   COMSTAR_CHANNEL_PORT        announce HTTP port (default 8782)
-///   COMSTAR_CHANNEL_TOKEN       required when bind is non-loopback
-///   COMSTAR_AO_MTLS=1          use Reach mTLS (Ada AO ≥ 1.29)
-///   COMSTAR_AO_MTLS_DIR        PEM dir (default ~/.local/share/comstar/ao-mtls)
-///   COMSTAR_DATA_DIR            bindings + pairing store root
+/// Env (at least one provider):
+///   TELEGRAM_BOT_TOKEN / TELEGRAM_BOT_USERNAME
+///   COMSTAR_WHATSAPP_CLOUD_TOKEN / COMSTAR_WHATSAPP_PHONE_NUMBER_ID
+///     (+ COMSTAR_WHATSAPP_VERIFY_TOKEN, COMSTAR_WHATSAPP_DISPLAY_PHONE)
+///   COMSTAR_SIGNAL_URL / COMSTAR_SIGNAL_ACCOUNT  (signal-cli HTTP daemon)
 ///
-/// Unknown senders: ZERO outbound (allowlist + QR bindings silence).
-/// Pairing: voice on Pi → POST /v1/pairing/begin → kiosk pairing.qr (ADR 0015).
+/// Shared:
+///   COMSTAR_CHANNEL_ALLOWLIST, AO_*, COMSTAR_CHANNEL_BIND/PORT/TOKEN,
+///   COMSTAR_AO_MTLS*, COMSTAR_DATA_DIR, rate limits
 ///
-/// Providers: Telegram shipping; WhatsApp/Signal stubs until backends configured.
+/// Unknown senders: ZERO outbound. Pairing via kiosk pairing.qr (ADR 0015).
 library;
 
 import 'dart:async';
@@ -63,9 +54,12 @@ Future<void> main(List<String> args) async {
     exit(0);
   }
 
-  final token = Platform.environment['TELEGRAM_BOT_TOKEN'] ?? '';
-  if (token.isEmpty) {
-    _log('error', 'config', 'TELEGRAM_BOT_TOKEN required');
+  final tgToken = Platform.environment['TELEGRAM_BOT_TOKEN'] ?? '';
+  final waOn = whatsappConfiguredFromEnv();
+  final signalOn = signalConfiguredFromEnv();
+  if (tgToken.isEmpty && !waOn && !signalOn) {
+    _log('error', 'config',
+        'Need TELEGRAM_BOT_TOKEN and/or WhatsApp Cloud env and/or COMSTAR_SIGNAL_URL');
     exit(2);
   }
 
@@ -114,17 +108,21 @@ Future<void> main(List<String> args) async {
           200;
   final limiter = RateLimiter(perSenderMax: perSenderMax, dailyCap: dailyCap);
 
-  final telegram = TelegramChannel(botToken: token);
-  final providers = <Channel>[telegram];
-  if (whatsappConfiguredFromEnv()) {
-    providers.add(WhatsAppChannel(
-      baseUrl: Platform.environment['COMSTAR_WHATSAPP_URL'] ?? '',
-    ));
+  final providers = <Channel>[];
+  TelegramChannel? telegram;
+  if (tgToken.isNotEmpty) {
+    telegram = TelegramChannel(botToken: tgToken);
+    providers.add(telegram);
   }
-  if (signalConfiguredFromEnv()) {
-    providers.add(SignalChannel(
-      baseUrl: Platform.environment['COMSTAR_SIGNAL_URL'] ?? '',
-    ));
+  WhatsAppChannel? whatsapp;
+  if (waOn) {
+    whatsapp = WhatsAppChannel.fromEnv();
+    providers.add(whatsapp);
+  }
+  SignalChannel? signal;
+  if (signalOn) {
+    signal = SignalChannel.fromEnv();
+    providers.add(signal);
   }
   final mux = ChannelMux(providers);
   final pairing = PairingManager(bindings: bindings);
@@ -142,6 +140,9 @@ Future<void> main(List<String> args) async {
     token: channelHttpToken,
     bindHost: announceBind,
     port: announcePort,
+    whatsapp: whatsapp,
+    whatsappDisplayPhone: whatsappDisplayPhoneFromEnv() ?? '',
+    signalAccount: signalAccountFromEnv() ?? '',
     log: _log,
   );
 
@@ -157,32 +158,39 @@ Future<void> main(List<String> args) async {
   ProcessSignal.sigterm.watch().listen((_) => shutdown());
   ProcessSignal.sigint.watch().listen((_) => shutdown());
 
+  Future<void> replyOn(ChannelInbound msg, String text) async {
+    try {
+      await mux.sendOn(msg.provider, msg.senderId, text);
+    } catch (_) {
+      try {
+        await mux.send(msg.senderId, text);
+      } catch (_) {}
+    }
+  }
+
   sub = mux.inbound.listen((msg) async {
-    // Pairing completion: /start pair_<token> (before allowlist silence).
-    final startPayload = PairingManager.telegramStartPayload(msg.text);
-    if (startPayload != null && startPayload.isNotEmpty) {
-      final linkedUser = await pairing.completeFromStartPayload(
-        provider: msg.provider,
-        senderId: msg.senderId,
-        payload: startPayload,
+    final linkedUser = await pairing.completeFromInboundText(
+      provider: msg.provider,
+      senderId: msg.senderId,
+      text: msg.text,
+    );
+    if (linkedUser != null) {
+      _log('info', 'pairing_complete', 'Channel linked via QR/start', {
+        'userid': linkedUser,
+        'provider': msg.provider,
+        'senderId': msg.senderId,
+      });
+      await replyOn(
+        msg,
+        'Linked to COMSTAR as $linkedUser. You can message me here.',
       );
-      if (linkedUser != null) {
-        _log('info', 'pairing_complete', 'Channel linked via QR/start', {
-          'userid': linkedUser,
-          'provider': msg.provider,
-          'senderId': msg.senderId,
-        });
-        try {
-          await mux.send(
-            msg.senderId,
-            'Linked to COMSTAR as *$linkedUser*. You can message me here.',
-          );
-        } catch (_) {}
-        return;
-      }
-      // Unknown / expired token — still silence (do not reveal bot).
+      return;
+    }
+    // Telegram /start with unknown token → silence (do not reveal bot).
+    if (PairingManager.telegramStartPayload(msg.text) != null) {
       _log('info', 'pairing_miss', 'start payload did not match pending', {
         'senderId': msg.senderId,
+        'provider': msg.provider,
       });
       return;
     }
@@ -198,17 +206,12 @@ Future<void> main(List<String> args) async {
       });
       return;
     }
-    if (!limiter.allow(msg.senderId)) {
+    if (!limiter.allow('${msg.provider}:${msg.senderId}')) {
       _log('warn', 'rate_limit', 'sender or daily cap hit', {
         'senderId': msg.senderId,
         'userid': userid,
       });
-      try {
-        await mux.send(
-          msg.senderId,
-          'Too many messages — try again later.',
-        );
-      } catch (_) {}
+      await replyOn(msg, 'Too many messages — try again later.');
       return;
     }
 
@@ -220,25 +223,25 @@ Future<void> main(List<String> args) async {
     try {
       await mux.setTyping(msg.senderId, ChannelTyping.started);
       final reply = await sessions.turn(userid, msg.text);
-      await mux.send(msg.senderId, reply);
+      await replyOn(msg, reply);
       _log('info', 'outbound', 'replied', {
         'userid': userid,
         'chars': reply.length,
       });
     } catch (e) {
       _log('error', 'turn_fail', '$e', {'userid': userid});
-      try {
-        await mux.send(msg.senderId, 'Sorry — something went wrong.');
-      } catch (_) {}
+      await replyOn(msg, 'Sorry — something went wrong.');
     }
   });
 
   await mux.start();
-  final botUser = await resolveTelegramBotUsername(telegram);
-  announceHttp.telegramBotUsername = botUser;
-  if (botUser.isEmpty) {
-    _log('warn', 'config',
-        'Telegram bot username unknown — QR pairing begin will fail until set');
+  if (telegram != null) {
+    final botUser = await resolveTelegramBotUsername(telegram);
+    announceHttp.telegramBotUsername = botUser;
+    if (botUser.isEmpty) {
+      _log('warn', 'config',
+          'Telegram bot username unknown — Telegram QR pairing needs TELEGRAM_BOT_USERNAME or getMe');
+    }
   }
 
   try {
@@ -252,11 +255,11 @@ Future<void> main(List<String> args) async {
     'ao': aoBaseUrlFromEnv(),
     'mtls': mtlsOn,
     'providers': [
-      'telegram',
-      if (whatsappConfiguredFromEnv()) 'whatsapp',
-      if (signalConfiguredFromEnv()) 'signal',
+      if (telegram != null) 'telegram',
+      if (whatsapp != null) 'whatsapp',
+      if (signal != null) 'signal',
     ],
-    'telegramBot': botUser,
+    'telegramBot': announceHttp.telegramBotUsername,
     'announceHttp': '$announceBind:$announcePort',
   });
 

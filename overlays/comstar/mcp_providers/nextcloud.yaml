@@ -1,0 +1,41 @@
+# Comstar overlay MCP — AO catalog metadata + COMSTAR tunnel bootstrap fields.
+# Reach OverlayPacker does not read this file; ComstarMcpBootstrap / mcp_yaml.dart does.
+# Session MCP id becomes client.nextcloud via tunnel://session-mcp/nextcloud.
+id: nextcloud
+description: >
+  Nextcloud (files, notes, calendar, tasks, contacts, mail) via Reach stdio tunnel
+capabilities: >
+  WebDAV files; Notes CRUD/search; CalDAV events + todos; CardDAV contacts;
+  Nextcloud Mail. Tool playbooks: nextcloud_voice + nc_*_voice skills.
+good_for: nextcloud, files, notes, calendar, tasks, contacts, mail, nas, cloud
+planner_hint: >
+  Attach for Nextcloud / home-cloud questions when the resident is linked.
+  Not Google Workspace — different account.
+user_goal_keywords:
+  - nextcloud
+  - cloud
+  - nas
+  - notes
+  - files
+  - documents
+  - calendar
+  - tasks
+  - contacts
+  - mail
+
+# COMSTAR bridge bootstrap (not AO stdio/streamable_http)
+transport: stdio_tunnel
+alias: nextcloud
+# Prefer uvx; bootstrap falls back to PATH nextcloud-mcp-server if uvx missing.
+command:
+  - uvx
+  - nextcloud-mcp-server@0.166.0
+  - run
+  - --transport
+  - stdio
+env_from:
+  - NEXTCLOUD_HOST
+  - NEXTCLOUD_USERNAME
+  - NEXTCLOUD_PASSWORD
+requires_tokens: true
+guest_allowed: false

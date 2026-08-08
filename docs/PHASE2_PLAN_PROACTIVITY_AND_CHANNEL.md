@@ -190,10 +190,10 @@ Every hold logs the *reason*. "Why didn't it tell me?" must be answerable from `
 **Goal:** messaging continuity away from the hallway — same household brain,
 allowlisted / QR-paired senders only.
 
-**Plane (ADR 0015):** native `ChannelMux` on Ada (`comstar-channel`). Telegram
-ships first with **kiosk QR pairing** (same `pairing.qr` UX as Google).
-WhatsApp and Signal join as additional `Channel` implementations when backends
-are configured. **Do not route messaging through OpenClaw.**
+**Plane (ADR 0015):** native `ChannelMux` on Ada — Telegram Bot API, WhatsApp
+Cloud API, signal-cli JSON-RPC. Kiosk QR pairing (same `pairing.qr` as Google).
+**Do not route messaging through OpenClaw.** Unofficial WhatsApp clients are
+out of scope.
 
 Original Telegram-first scaffold notes below remain the M11.0–M11.5 base;
 pairing + multi-provider extension is ADR 0015.

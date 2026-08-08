@@ -37,6 +37,9 @@ enum ChannelTyping { started, stopped }
 
 /// Messaging surface: inbound stream + send + typing.
 abstract class Channel {
+  /// Provider key: `telegram`, `whatsapp`, `signal`, …
+  String get providerId;
+
   /// Stream of inbound messages from the provider.
   Stream<ChannelInbound> get inbound;
 

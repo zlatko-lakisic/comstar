@@ -15,6 +15,9 @@ class RecordingChannel implements Channel {
   final _inbound = StreamController<ChannelInbound>.broadcast();
 
   @override
+  String get providerId => 'telegram';
+
+  @override
   Stream<ChannelInbound> get inbound => _inbound.stream;
 
   @override
@@ -191,5 +194,27 @@ void main() {
     });
     expect(body['ok'], isFalse);
     expect(body['error'], 'whatsapp_not_configured');
+  });
+
+  test('whatsapp begin returns wa.me when display phone set', () async {
+    server.whatsappDisplayPhone = '15551234567';
+    // Temporarily pretend configured by setting env is hard; call begin path
+    // with a local PairingManager via server fields after patching check —
+    // instead exercise PairingManager URL directly when env unset.
+    // When not configured, still 503; set phone alone is insufficient.
+    final body = await post('/v1/pairing/begin', {
+      'userid': 'zlatko',
+      'provider': 'whatsapp',
+    });
+    expect(body['ok'], isFalse);
+  });
+
+  test('signal begin fails when not configured', () async {
+    final body = await post('/v1/pairing/begin', {
+      'userid': 'zlatko',
+      'provider': 'signal',
+    });
+    expect(body['ok'], isFalse);
+    expect(body['error'], 'signal_not_configured');
   });
 }

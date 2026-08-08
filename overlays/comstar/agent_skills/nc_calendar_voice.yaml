@@ -1,0 +1,20 @@
+id: nc_calendar_voice
+description: >
+  Nextcloud Calendar via client.nextcloud CalDAV tools for spoken schedule answers.
+capabilities: >
+  nc_calendar_list_calendars, nc_calendar_list_events,
+  nc_calendar_get_upcoming_events, nc_calendar_create_event.
+good_for: nextcloud calendar, cloud calendar, nas calendar
+planner_hint: Attach for Nextcloud calendar (not Google Calendar).
+user_goal_keywords:
+  - nextcloud calendar
+  - cloud calendar
+  - my cloud schedule
+
+content:
+  file: nc_calendar_voice/instructions.md
+
+inject:
+  target: backstory
+  heading: "## Nextcloud calendar (voice)"
+  max_chars: 3000

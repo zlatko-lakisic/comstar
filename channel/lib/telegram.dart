@@ -29,12 +29,16 @@ class TelegramChannel implements Channel {
   bool _running = false;
   Future<void>? _loop;
 
-  Uri _api(String method) =>
-      Uri.parse('https://api.telegram.org/bot$botToken/$method');
-
   /// Bot @username without @ (from getMe or env). Cached after [resolveBotUsername].
   String? botUsername;
 
+  @override
+  String get providerId => 'telegram';
+
+  Uri _api(String method) =>
+      Uri.parse('https://api.telegram.org/bot$botToken/$method');
+
+  /// Resolve bot @username without @ (from getMe or env).
   Future<String?> resolveBotUsername() async {
     if (botUsername != null && botUsername!.isNotEmpty) return botUsername;
     final env = Platform.environment['TELEGRAM_BOT_USERNAME']?.trim();

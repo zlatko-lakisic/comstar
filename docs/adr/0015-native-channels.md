@@ -9,50 +9,49 @@
 ## Context
 
 Household messaging away from the hallway needs the same surfaces people already
-use (Telegram, WhatsApp, Signal, …). An earlier draft routed that plane through
-OpenClaw. Product direction is the opposite: **COMSTAR owns the channels** in
-the Ada `channel/` package, using the same kiosk QR pairing interaction already
-proven for Google Workspace.
+use (Telegram, WhatsApp, Signal). Product direction: **COMSTAR owns the channels**
+in the Ada `channel/` package, using the same kiosk QR pairing interaction
+already proven for Google Workspace — not OpenClaw.
 
 Constraints that still hold from ADR 0010:
 
 - Distinct AO session ids (`comstar-<uid>-channel` vs terminal).
 - Allowlist / silence for unknown senders.
-- Dual-surface announce (M11.6) via Ada HTTP, not a third-party gateway.
+- Dual-surface announce (M11.6) via Ada HTTP.
 
 ## Decision
 
-1. **No OpenClaw messaging plane.** Do not call `openclaw message send`, do not
-   treat OpenClaw plugins as the product channel stack, and do not document
-   OpenClaw as required for WhatsApp/Signal/Telegram.
-2. **Providers live in `ChannelMux`.** Telegram Bot API remains the first
-   shipping provider. WhatsApp and Signal join as additional `Channel`
-   implementations (official APIs and/or dedicated local sidecars — documented
-   per provider; ban-risk unofficial clients require an explicit operator opt-in).
-3. **Identity = QR pairing + bindings store.** Voice at the terminal
-   (“link Telegram / WhatsApp / Signal”) starts a short-lived pairing attempt.
-   The bridge shows the existing `pairing.qr` kiosk overlay (same contract as
-   Google device-code). On success Ada persists
-   `(provider, sender_id) → userid` under
-   `$COMSTAR_DATA_DIR/channel/bindings.json` (merged with static
-   `COMSTAR_CHANNEL_ALLOWLIST`). Guests cannot pair.
-4. **Telegram deep link first.** Pairing URL is
-   `https://t.me/<bot>?start=pair_<token>`; the channel daemon completes the
-   binding when that `/start` arrives. Spoken user code mirrors Google.
-5. **WhatsApp / Signal.** Operator must enable a provider backend (env + ADR
-   notes). User-facing pairing still uses `pairing.qr` once the backend can
-   emit a scan URL or session QR. Until configured, voice reports “not set up”.
+1. **No OpenClaw messaging plane.**
+2. **Providers live in `ChannelMux`** with these backends only:
+
+   | Provider | Backend | Notes |
+   |---|---|---|
+   | Telegram | Bot API long-poll | Shipping default |
+   | WhatsApp | **Meta Cloud API** | Official only; **no** Baileys/whatsmeow |
+   | Signal | **`signal-cli` HTTP JSON-RPC** | Operator links device once; COMSTAR uses daemon |
+
+3. **Identity = QR pairing + bindings store.** Voice (“link Telegram / WhatsApp /
+   Signal”) → `pairing.qr` → Ada `$COMSTAR_DATA_DIR/channel/bindings.json`.
+   Guests cannot pair.
+4. **Pairing URLs**
+   - Telegram: `https://t.me/<bot>?start=pair_<token>`
+   - WhatsApp: `https://wa.me/<digits>?text=pair_<token>`
+   - Signal: `https://signal.me/#p/<E164>` (user types `pair_<token>`; no prefill)
+5. **WhatsApp inbound** via Meta webhook on Ada
+   `POST/GET /v1/whatsapp/webhook` (same port as announce HTTP; must be
+   reachable from Meta or via a tunnel).
+6. **Signal inbound** via signal-cli SSE `/api/v1/events`; outbound via
+   `/api/v1/rpc` `send`.
 
 ## Consequences
 
-- CONTRACTS §11 describes native mux + pairing HTTP (`/v1/pairing/*`).
-- Bridge uses `announce.channel_url` only (no `openclaw_*` config).
-- README privacy: enabling any provider sends chat off-LAN via that network.
-- OpenClaw may still exist on the operator’s Mac for unrelated experiments; it
-  is not part of COMSTAR’s messaging architecture.
+- CONTRACTS §11 / RUNBOOK §9c document env vars per provider.
+- Unofficial WhatsApp clients are explicitly out of scope (ban risk).
+- Cloud API is a Business number (not personal WhatsApp Web session).
+- signal-cli must be linked and running before “link Signal” works for users.
 
 ## References
 
-- Package: `channel/`
-- Pairing UX reuse: `pairing.qr`, `qrSvg()`, Google coordinator lifecycle
+- Package: `channel/` (`whatsapp.dart`, `signal.dart`, `telegram.dart`)
+- Pairing UX: `pairing.qr`, `qrSvg()`
 - ADR 0010 (session isolation, silence model)

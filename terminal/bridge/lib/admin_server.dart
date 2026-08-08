@@ -265,6 +265,16 @@ class AdminServer {
         return;
       }
 
+      if (request.method == 'GET' && adminPath == '/admin/api/nextcloud') {
+        await _handleNextcloudGet(request);
+        return;
+      }
+
+      if (request.method == 'POST' && adminPath == '/admin/api/nextcloud') {
+        await _handleNextcloudPost(request);
+        return;
+      }
+
       if (request.method == 'POST' && adminPath == '/admin/inject') {
         await _handleInject(request);
         return;
@@ -634,6 +644,67 @@ class AdminServer {
       await _writeJson(request, 400, {'ok': false, 'error': e.message});
     } on StateError catch (e) {
       await _writeJson(request, 502, {'ok': false, 'error': e.message});
+    } on Object catch (e) {
+      await _writeJson(request, 502, {'ok': false, 'error': e.toString()});
+    }
+  }
+
+  Future<void> _handleNextcloudGet(HttpRequest request) async {
+    final userid =
+        request.uri.queryParameters['userid']?.trim() ??
+            coordinator.session.userid ??
+            '';
+    if (userid.isEmpty) {
+      await _writeJson(request, 400, {
+        'ok': false,
+        'error': 'userid required (query or active session)',
+      });
+      return;
+    }
+    final status = await coordinator.nextcloudTokens.status(userid);
+    await _writeJson(request, 200, {
+      'ok': true,
+      'host_env': Platform.environment['NEXTCLOUD_HOST'],
+      ...status,
+    });
+  }
+
+  Future<void> _handleNextcloudPost(HttpRequest request) async {
+    final body = await _readJson(request);
+    final action = body['action']?.toString().trim().toLowerCase() ?? 'set';
+    final userid = body['userid']?.toString().trim() ?? '';
+    if (userid.isEmpty) {
+      await _writeJson(request, 400, {'ok': false, 'error': 'userid required'});
+      return;
+    }
+    try {
+      if (action == 'clear' || action == 'unlink') {
+        await coordinator.nextcloudTokens.clear(userid);
+        await _writeJson(request, 200, {'ok': true, 'cleared': true, 'userid': userid});
+        return;
+      }
+      if (action != 'set') {
+        await _writeJson(request, 400, {
+          'ok': false,
+          'error': 'action must be set or clear',
+        });
+        return;
+      }
+      final username = body['username']?.toString() ?? '';
+      final appPassword = body['app_password']?.toString() ??
+          body['password']?.toString() ??
+          '';
+      final host = body['host']?.toString();
+      await coordinator.nextcloudTokens.writeCredentials(
+        userid,
+        username: username,
+        appPassword: appPassword,
+        host: host,
+      );
+      final status = await coordinator.nextcloudTokens.status(userid);
+      await _writeJson(request, 200, {'ok': true, ...status});
+    } on ArgumentError catch (e) {
+      await _writeJson(request, 400, {'ok': false, 'error': e.message});
     } on Object catch (e) {
       await _writeJson(request, 502, {'ok': false, 'error': e.toString()});
     }

@@ -23,6 +23,9 @@ class ChannelMux implements Channel {
   final _subs = <StreamSubscription<ChannelInbound>>[];
   var _started = false;
 
+  @override
+  String get providerId => 'mux';
+
   List<Channel> get channels => _channels;
 
   @override
@@ -68,6 +71,18 @@ class ChannelMux implements Channel {
   @override
   Future<void> setTyping(String senderId, ChannelTyping state) =>
       _route(senderId).setTyping(senderId, state);
+
+  /// Send on a specific provider (announce / pairing replies).
+  Future<void> sendOn(String provider, String senderId, String text) async {
+    for (final ch in _channels) {
+      if (ch.providerId == provider) {
+        await ch.send(senderId, text);
+        _senderHome[senderId] = ch;
+        return;
+      }
+    }
+    throw StateError('No channel registered for provider=$provider');
+  }
 
   /// Best-effort send on every channel that might own [senderId].
   ///

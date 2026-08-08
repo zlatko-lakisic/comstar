@@ -28,6 +28,10 @@ import 'package:comstar_bridge/google/token_store.dart';
 import 'package:comstar_bridge/google_intent.dart';
 import 'package:comstar_bridge/google_data_intent.dart';
 import 'package:comstar_bridge/google/workspace_client.dart';
+import 'package:comstar_bridge/nextcloud/login_flow.dart';
+import 'package:comstar_bridge/nextcloud/pairing_status.dart';
+import 'package:comstar_bridge/nextcloud/token_store.dart';
+import 'package:comstar_bridge/nextcloud_intent.dart';
 import 'package:comstar_bridge/ha_agent_client.dart';
 import 'package:comstar_bridge/home_data_intent.dart';
 import 'package:comstar_bridge/house_presence.dart';
@@ -74,6 +78,8 @@ class AttentionCoordinator {
     GoogleTokenStore? googleTokenStore,
     GoogleDevicePairing? googlePairing,
     GoogleDesktopUpgrade? googleDesktopUpgrade,
+    NextcloudTokenStore? nextcloudTokenStore,
+    NextcloudLoginFlow? nextcloudLoginFlow,
     DirectoryResolver? directory,
     ConversationMemory? conversationMemory,
     this.network,
@@ -83,6 +89,8 @@ class AttentionCoordinator {
         googleTokens = googleTokenStore ?? GoogleTokenStore(),
         googleOAuth = googlePairing ?? GoogleDevicePairing(),
         googleDesktop = googleDesktopUpgrade ?? GoogleDesktopUpgrade(),
+        nextcloudTokens = nextcloudTokenStore ?? NextcloudTokenStore(),
+        nextcloudOAuth = nextcloudLoginFlow ?? NextcloudLoginFlow(),
         directory = directory ??
             DirectoryResolver(
               config: config.directory,
@@ -115,6 +123,8 @@ class AttentionCoordinator {
   final GoogleTokenStore googleTokens;
   final GoogleDevicePairing googleOAuth;
   final GoogleDesktopUpgrade googleDesktop;
+  final NextcloudTokenStore nextcloudTokens;
+  final NextcloudLoginFlow nextcloudOAuth;
   final DirectoryResolver directory;
   final ConversationMemory conversationMemory;
   final Clock clock;
@@ -163,6 +173,10 @@ class AttentionCoordinator {
   var _googlePhase = GooglePairingPhase.idle;
   String? _googlePairingUserCode;
   String? _googleLastError;
+
+  Completer<void>? _nextcloudPairingCancel;
+  var _nextcloudPhase = NextcloudPairingPhase.idle;
+  String? _nextcloudLastError;
 
   ChannelPairingClient? _channelPairing;
   Completer<void>? _channelPairingCancel;
@@ -1505,6 +1519,9 @@ class AttentionCoordinator {
       final social = await _trySocialIntent(text, turnId);
       if (social) return;
 
+      final nextcloud = await _tryNextcloudIntent(text, turnId);
+      if (nextcloud) return;
+
       final google = await _tryGoogleIntent(text, turnId);
       if (google) return;
 
@@ -2016,6 +2033,259 @@ class AttentionCoordinator {
       return true;
     } finally {
       gw.close();
+    }
+  }
+
+  Future<bool> _tryNextcloudIntent(String text, String turnId) async {
+    final intent = parseNextcloudIntent(text);
+    if (intent == null) return false;
+
+    if (session.guest || session.userid == null) {
+      await _speakText(
+        'Nextcloud linking is only available when I recognize you.',
+        turnId,
+      );
+      return true;
+    }
+
+    final userid = session.userid!;
+    switch (intent.kind) {
+      case NextcloudIntentKind.status:
+        await _speakText(await _nextcloudStatusSpeech(userid), turnId);
+        return true;
+      case NextcloudIntentKind.cancel:
+        if (!_nextcloudPairingInFlight) {
+          await _speakText(
+            'There is no Nextcloud pairing in progress.',
+            turnId,
+          );
+          return true;
+        }
+        await _cancelNextcloudPairing(announce: false);
+        await _speakText(
+          'Okay, I cancelled Nextcloud pairing.',
+          turnId,
+        );
+        return true;
+      case NextcloudIntentKind.unlink:
+        final had = await nextcloudTokens.hasCredentials(userid);
+        await _cancelNextcloudPairing(announce: false);
+        await nextcloudTokens.clear(userid);
+        _nextcloudPhase = NextcloudPairingPhase.idle;
+        _nextcloudLastError = null;
+        try {
+          await session.ensureReady();
+        } catch (e) {
+          logWarn('nextcloud_unlink_session', e.toString());
+        }
+        await _speakText(
+          had
+              ? 'Okay, I disconnected Nextcloud for you.'
+              : 'Nextcloud was not connected.',
+          turnId,
+        );
+        return true;
+      case NextcloudIntentKind.connect:
+      case NextcloudIntentKind.reconnect:
+        if (!nextcloudOAuth.isConfigured) {
+          await _speakText(
+            'Nextcloud is not configured on this terminal. '
+            'Set NEXTCLOUD_HOST, then try again.',
+            turnId,
+          );
+          return true;
+        }
+        final linked = await nextcloudTokens.hasCredentials(userid);
+        if (linked && intent.kind == NextcloudIntentKind.connect) {
+          await _speakText(
+            '${await _nextcloudStatusSpeech(userid)} '
+            'Say reconnect Nextcloud if you want to link again.',
+            turnId,
+          );
+          return true;
+        }
+        if (_nextcloudPairingInFlight) {
+          await _speakText(
+            'Nextcloud pairing is already in progress. '
+            'Scan the QR on the screen, or say cancel connect to stop.',
+            turnId,
+          );
+          return true;
+        }
+        await _startNextcloudPairing(userid, turnId);
+        return true;
+    }
+  }
+
+  bool get _nextcloudPairingInFlight =>
+      _nextcloudPhase == NextcloudPairingPhase.awaitingUser ||
+      _nextcloudPhase == NextcloudPairingPhase.verifying;
+
+  Future<String> _nextcloudStatusSpeech(String userid) async {
+    final has = await nextcloudTokens.hasCredentials(userid);
+    if (_nextcloudPhase == NextcloudPairingPhase.awaitingUser) {
+      return 'Nextcloud pairing is waiting — scan the QR on the screen, '
+          'or say cancel connect to stop.';
+    }
+    if (_nextcloudPhase == NextcloudPairingPhase.verifying) {
+      return 'I am finishing Nextcloud pairing now.';
+    }
+    if (!has) {
+      if (_nextcloudPhase == NextcloudPairingPhase.failed &&
+          (_nextcloudLastError?.isNotEmpty ?? false)) {
+        return 'Nextcloud is not connected. Last attempt failed: '
+            '$_nextcloudLastError. Say connect my Nextcloud to try again.';
+      }
+      return 'Nextcloud is not connected. Say connect my Nextcloud to link it.';
+    }
+    _nextcloudPhase = NextcloudPairingPhase.linked;
+    return 'Nextcloud is connected.';
+  }
+
+  Future<void> _startNextcloudPairing(String userid, String turnId) async {
+    final cancel = Completer<void>();
+    _nextcloudPairingCancel = cancel;
+    _nextcloudLastError = null;
+
+    try {
+      final sessionFlow = await nextcloudOAuth.begin();
+      _nextcloudPhase = NextcloudPairingPhase.awaitingUser;
+      _broadcastPairingUi(
+        active: true,
+        phase: 'awaiting',
+        url: sessionFlow.loginUrl,
+        qrSvg: qrSvg(sessionFlow.loginUrl),
+      );
+
+      logInfo('nextcloud_pairing_start', 'Login Flow v2 issued', data: {
+        'userid': userid,
+        'host': nextcloudOAuth.resolvedHost(),
+      });
+      await _speakText(
+        'Scan the QR on the screen to approve Nextcloud on your phone. '
+        'I will keep watching and let you know when it is done. '
+        'Say cancel connect if you want to stop.',
+        turnId,
+      );
+      unawaited(_finishNextcloudPairing(userid, sessionFlow, cancel));
+    } catch (e) {
+      _nextcloudPhase = NextcloudPairingPhase.failed;
+      _nextcloudLastError = e.toString();
+      _broadcastPairingUi(active: false);
+      if (_nextcloudPairingCancel == cancel) {
+        _nextcloudPairingCancel = null;
+      }
+      logWarn('nextcloud_pairing_failed', e.toString(), data: {'userid': userid});
+      await _speakText(
+        'I could not start Nextcloud pairing. Check NEXTCLOUD_HOST.',
+        turnId,
+      );
+    }
+  }
+
+  Future<void> _finishNextcloudPairing(
+    String userid,
+    NextcloudLoginSession flow,
+    Completer<void> cancel,
+  ) async {
+    try {
+      final result = await nextcloudOAuth.waitForApproval(
+        flow,
+        cancel: cancel,
+      );
+      if (_nextcloudPairingCancel != cancel) return;
+
+      switch (result.outcome) {
+        case NextcloudPairingOutcome.denied:
+          _nextcloudPhase = NextcloudPairingPhase.idle;
+          _broadcastPairingUi(active: false);
+          return;
+        case NextcloudPairingOutcome.timeout:
+          _nextcloudPhase = NextcloudPairingPhase.failed;
+          _nextcloudLastError = 'pairing timed out';
+          _broadcastPairingUi(active: false);
+          unawaited(_announceEngaged(
+            'Nextcloud pairing timed out. Say connect my Nextcloud to try again.',
+          ));
+          return;
+        case NextcloudPairingOutcome.pending:
+        case NextcloudPairingOutcome.error:
+          _nextcloudPhase = NextcloudPairingPhase.failed;
+          _nextcloudLastError = result.message ?? 'unknown error';
+          _broadcastPairingUi(active: false);
+          unawaited(_announceEngaged(
+            'I could not finish Nextcloud pairing. $_nextcloudLastError. '
+            'Say connect my Nextcloud to try again.',
+          ));
+          return;
+        case NextcloudPairingOutcome.success:
+          final login = result.loginName?.trim() ?? '';
+          final pass = result.appPassword?.trim() ?? '';
+          if (login.isEmpty || pass.isEmpty) {
+            _nextcloudPhase = NextcloudPairingPhase.failed;
+            _nextcloudLastError = 'no app password returned';
+            _broadcastPairingUi(active: false);
+            unawaited(_announceEngaged(
+              'Nextcloud pairing failed — no credentials returned.',
+            ));
+            return;
+          }
+          _nextcloudPhase = NextcloudPairingPhase.verifying;
+          _broadcastPairingUi(active: true, phase: 'verifying');
+          await nextcloudTokens.writeCredentials(
+            userid,
+            username: login,
+            appPassword: pass,
+            host: result.server,
+          );
+          try {
+            await session.open(userid: userid, guest: false);
+          } catch (e) {
+            logWarn('nextcloud_pair_session', e.toString());
+            _nextcloudPhase = NextcloudPairingPhase.failed;
+            _nextcloudLastError = 'saved credentials but session refresh failed';
+            _broadcastPairingUi(active: false);
+            unawaited(_announceEngaged(
+              'I saved Nextcloud credentials but could not refresh the session. '
+              'Try again in a moment.',
+            ));
+            return;
+          }
+          _broadcastPairingUi(active: false);
+          _nextcloudPhase = NextcloudPairingPhase.linked;
+          unawaited(_announceEngaged('Nextcloud is connected.'));
+          return;
+      }
+    } catch (e) {
+      _nextcloudPhase = NextcloudPairingPhase.failed;
+      _nextcloudLastError = e.toString();
+      _broadcastPairingUi(active: false);
+      logWarn('nextcloud_pairing_finish', e.toString());
+      unawaited(_announceEngaged(
+        'Nextcloud pairing failed. Say connect my Nextcloud to try again.',
+      ));
+    } finally {
+      if (_nextcloudPairingCancel == cancel) {
+        _nextcloudPairingCancel = null;
+      }
+    }
+  }
+
+  Future<void> _cancelNextcloudPairing({required bool announce}) async {
+    final c = _nextcloudPairingCancel;
+    if (c != null && !c.isCompleted) {
+      c.complete();
+    }
+    _nextcloudPairingCancel = null;
+    if (_nextcloudPhase == NextcloudPairingPhase.awaitingUser ||
+        _nextcloudPhase == NextcloudPairingPhase.verifying) {
+      _nextcloudPhase = NextcloudPairingPhase.idle;
+    }
+    _broadcastPairingUi(active: false);
+    if (announce) {
+      unawaited(
+        _announceEngaged('Okay, I cancelled Nextcloud pairing.'),
+      );
     }
   }
 
@@ -2533,8 +2803,12 @@ class AttentionCoordinator {
       final speech = switch (err) {
         'whatsapp_not_configured' =>
           'WhatsApp is not set up on the channel server yet.',
+        'whatsapp_display_phone_missing' =>
+          'WhatsApp is configured, but the display phone for the QR link is missing.',
         'signal_not_configured' =>
           'Signal is not set up on the channel server yet.',
+        'signal_account_missing' =>
+          'Signal is configured, but the account number for the QR link is missing.',
         'telegram_bot_username_unknown' =>
           'I could not resolve the Telegram bot name for the QR link.',
         'provider_pairing_not_implemented' =>

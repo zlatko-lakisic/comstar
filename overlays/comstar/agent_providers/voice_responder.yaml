@@ -28,6 +28,7 @@ model: qwen2.5:14b-instruct
 mcp_providers:
   - home_assistant
   - client.google_workspace
+  - client.nextcloud
   - ldap_directory
   - vision_comstar
 
@@ -48,5 +49,12 @@ skills:
   - calendar_voice
   - gmail_voice
   - drive_voice
+  - nextcloud_voice
+  - nc_files_voice
+  - nc_calendar_voice
+  - nc_tasks_voice
+  - nc_contacts_voice
+  - nc_notes_voice
+  - nc_mail_voice
   - ldap_directory_voice
   - vision_comstar_voice

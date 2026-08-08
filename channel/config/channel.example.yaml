@@ -1,25 +1,35 @@
 # COMSTAR text channel (Ada) — example config
 #
-# Native ChannelMux (ADR 0015). Telegram ships; WhatsApp/Signal when backends
-# are configured. Pairing: voice “link Telegram” → kiosk pairing.qr.
+# Native ChannelMux (ADR 0015):
+#   Telegram Bot API | WhatsApp Cloud API | signal-cli JSON-RPC
+# Pairing: voice “link Telegram/WhatsApp/Signal” → kiosk pairing.qr
 #
-# Copy to a private path (never commit real tokens / allowlist of real ids).
-# Prefer env vars for secrets; this file documents the shape.
+# Copy to a private path (never commit real tokens). Prefer env for secrets.
 
 ao:
-  # Co-located with AO on Ada (HTTPS + mTLS when AO ≥ 1.29)
   base_url: https://127.0.0.1:8765
-  # token: set AO_TOKEN / COMSTAR_AO_TOKEN instead
-  # mtls: COMSTAR_AO_MTLS=1 + COMSTAR_AO_MTLS_DIR
+  # COMSTAR_AO_MTLS=1 + COMSTAR_AO_MTLS_DIR
 
 overlay_root: /opt/comstar/src/overlays/comstar
 
 telegram:
-  # Prefer TELEGRAM_BOT_TOKEN env
-  # bot_token: "..."
+  # TELEGRAM_BOT_TOKEN=
+  # TELEGRAM_BOT_USERNAME=  # optional; else getMe
 
-# Map Telegram user id (string) → COMSTAR userid (FreeIPA uid).
-# Also accepted via COMSTAR_CHANNEL_ALLOWLIST as JSON or a path to this file.
+whatsapp:
+  # Meta Cloud API (official only — no Baileys)
+  # COMSTAR_WHATSAPP_CLOUD_TOKEN=
+  # COMSTAR_WHATSAPP_PHONE_NUMBER_ID=
+  # COMSTAR_WHATSAPP_VERIFY_TOKEN=
+  # COMSTAR_WHATSAPP_DISPLAY_PHONE=15551234567   # digits for wa.me QR
+  # Webhook: https://<ada-public-or-tunnel>:8782/v1/whatsapp/webhook
+
+signal:
+  # signal-cli -a +15551234567 daemon --http 127.0.0.1:8080
+  # COMSTAR_SIGNAL_URL=http://127.0.0.1:8080
+  # COMSTAR_SIGNAL_ACCOUNT=+15551234567
+
+# Optional static seed (Telegram ids or provider:sender). Prefer QR pairing.
 allowlist:
   "123456789": zlatko
 
@@ -29,10 +39,8 @@ rate_limit:
   daily_cap: 200
 
 session:
-  # Product id: comstar-<uid>-channel (never share terminal comstar-<uid>)
   idle_ttl_hours: 6
 
-# Announce ingress from the Pi bridge (M11.6). Env overrides preferred.
 # COMSTAR_CHANNEL_BIND=0.0.0.0
 # COMSTAR_CHANNEL_PORT=8782
 # COMSTAR_CHANNEL_TOKEN=...

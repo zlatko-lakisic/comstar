@@ -75,5 +75,22 @@ irrigation / network via HA agent HTTP when AO tool loops stall.
 Wire all four on `client.voice_responder` (plus HA / spoken_output). Desktop OAuth is
 required for Gmail and full Drive; TV device-code is Calendar (+ limited Drive).
 
+### Nextcloud voice skills (`nextcloud-mcp-server@0.166.0`)
+
+Complements Google (different accounts). Tunnel MCP `client.nextcloud`.
+
+| Skill | Tools covered |
+|-------|----------------|
+| `nextcloud_voice` | Auth / pairing / routing vs Google |
+| `nc_files_voice` | `nc_webdav_*` |
+| `nc_calendar_voice` | `nc_calendar_*` events |
+| `nc_tasks_voice` | todos / `nc_calendar_*_todo*` |
+| `nc_contacts_voice` | CardDAV contacts |
+| `nc_notes_voice` | `nc_notes_*` |
+| `nc_mail_voice` | Nextcloud Mail (`nc_mail_*`) |
+
+Pair: voice Login Flow v2 (“connect my Nextcloud”) or `scripts/nextcloud_pair.sh`.
+Requires `NEXTCLOUD_HOST` and `uvx` (or PATH `nextcloud-mcp-server`).
+
 Live eval pack: `harnesses/voice_google/` (reads, clarification probes, optional
 disposable writes named **COMSTAR harness probe** — see that pack’s README).

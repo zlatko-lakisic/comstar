@@ -1,0 +1,21 @@
+id: nc_files_voice
+description: >
+  Nextcloud files/docs via client.nextcloud WebDAV tools for spoken answers.
+capabilities: >
+  nc_webdav_list_directory, nc_webdav_read_file; careful writes only when asked.
+good_for: nextcloud files, documents, nas files, cloud files
+planner_hint: Attach for Nextcloud / NAS file questions.
+user_goal_keywords:
+  - nextcloud files
+  - cloud files
+  - nas
+  - documents
+  - folder
+
+content:
+  file: nc_files_voice/instructions.md
+
+inject:
+  target: backstory
+  heading: "## Nextcloud files (voice)"
+  max_chars: 2800

@@ -61,6 +61,29 @@ class IdentityResolver {
     return out;
   }
 
+  /// All outbound destinations for [userid] (provider + sender).
+  List<({String provider, String senderId})> destinationsFor(String userid) {
+    final out = <({String provider, String senderId})>[];
+    final seen = <String>{};
+    void add(String provider, String senderId) {
+      final k = '$provider:$senderId';
+      if (seen.add(k)) out.add((provider: provider, senderId: senderId));
+    }
+
+    for (final id in staticAllowlist.senderIdsFor(userid)) {
+      if (id.contains(':')) {
+        final i = id.indexOf(':');
+        add(id.substring(0, i), id.substring(i + 1));
+      } else {
+        add('telegram', id);
+      }
+    }
+    for (final b in bindings.bindingsFor(userid)) {
+      add(b.provider, b.senderId);
+    }
+    return out;
+  }
+
   bool isLinked(String userid, String provider) =>
-      senderIdsFor(userid, provider: provider).isNotEmpty;
+      destinationsFor(userid).any((d) => d.provider == provider);
 }

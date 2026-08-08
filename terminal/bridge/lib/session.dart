@@ -8,6 +8,7 @@ import 'package:comstar_bridge/config.dart';
 import 'package:comstar_bridge/google/mcp_yaml.dart';
 import 'package:comstar_bridge/google/token_store.dart';
 import 'package:comstar_bridge/log.dart';
+import 'package:comstar_bridge/nextcloud/token_store.dart';
 import 'package:comstar_bridge/phrase_bank.dart';
 import 'package:comstar_bridge/speech_routing.dart';
 
@@ -106,15 +107,18 @@ class ComstarMcpBootstrap implements SessionMcpBootstrap {
   ComstarMcpBootstrap(
     this.config, {
     GoogleTokenStore? tokenStore,
-  }) : tokenStore = tokenStore ?? GoogleTokenStore();
+    NextcloudTokenStore? nextcloudTokenStore,
+  })  : tokenStore = tokenStore ?? GoogleTokenStore(),
+        nextcloudTokens = nextcloudTokenStore ?? NextcloudTokenStore();
 
   final ComstarConfig config;
   final GoogleTokenStore tokenStore;
+  final NextcloudTokenStore nextcloudTokens;
 
   /// When true, skip all tunnel MCP registration (CONTRACTS §5 guests).
   bool guest = false;
 
-  /// Active face userid (for per-user Google refresh tokens).
+  /// Active face userid (for per-user Google / Nextcloud credentials).
   String? userid;
 
   @override
@@ -257,6 +261,29 @@ class ComstarMcpBootstrap implements SessionMcpBootstrap {
             }
             continue;
           }
+          if (key == 'NEXTCLOUD_HOST' ||
+              key == 'NEXTCLOUD_USERNAME' ||
+              key == 'NEXTCLOUD_PASSWORD') {
+            final uid = userid;
+            if (uid == null || uid.isEmpty) {
+              warnings.add('${def.id}: no userid for Nextcloud credentials');
+              skip = true;
+              break;
+            }
+            final creds = await nextcloudTokens.readCredentials(uid);
+            if (creds == null) {
+              warnings.add(
+                '${def.id}: no Nextcloud credentials for $uid '
+                '(say connect my Nextcloud)',
+              );
+              skip = true;
+              break;
+            }
+            extraEnv['NEXTCLOUD_HOST'] = creds.host;
+            extraEnv['NEXTCLOUD_USERNAME'] = creds.username;
+            extraEnv['NEXTCLOUD_PASSWORD'] = creds.appPassword;
+            continue;
+          }
           if (extraEnv.containsKey(key)) continue;
           final v = Platform.environment[key]?.trim() ?? '';
           if (v.isEmpty) {
@@ -267,17 +294,38 @@ class ComstarMcpBootstrap implements SessionMcpBootstrap {
           extraEnv[key] = v;
         }
         if (skip) continue;
-        if (def.requiresTokens && !extraEnv.containsKey('GOOGLE_REFRESH_TOKEN')) {
-          warnings.add('${def.id}: requires_tokens but no refresh token env');
-          continue;
+        if (def.requiresTokens) {
+          final googleOk = extraEnv.containsKey('GOOGLE_REFRESH_TOKEN');
+          final ncOk = extraEnv.containsKey('NEXTCLOUD_PASSWORD');
+          if (!googleOk && !ncOk) {
+            warnings.add('${def.id}: requires_tokens but no credentials in env');
+            continue;
+          }
         }
 
-        await host.startNpxPackage(
-          alias: def.alias,
-          package: def.npxPackage,
-          extraEnv: extraEnv,
-          readyTimeout: const Duration(seconds: 90),
-        );
+        if (def.usesCommand) {
+          final argv = await _resolveOverlayCommand(def.command);
+          if (argv == null) {
+            warnings.add(
+              '${def.id}: command not available '
+              '(install uv / nextcloud-mcp-server)',
+            );
+            continue;
+          }
+          await host.startStdioCommand(
+            alias: def.alias,
+            command: argv,
+            extraEnv: extraEnv,
+            readyTimeout: const Duration(seconds: 120),
+          );
+        } else {
+          await host.startNpxPackage(
+            alias: def.alias,
+            package: def.npxPackage,
+            extraEnv: extraEnv,
+            readyTimeout: const Duration(seconds: 90),
+          );
+        }
         mcps.add(
           sessionTunnelMcpEntry(
             clientId: def.clientId,
@@ -286,18 +334,50 @@ class ComstarMcpBootstrap implements SessionMcpBootstrap {
           ),
         );
         aliases.add(def.alias);
-        final localEntry =
-            await host.resolveInstalledPackageEntry(def.npxPackage);
         logInfo('mcp_overlay_ready', 'Overlay MCP started', data: {
           'id': def.clientId,
           'alias': def.alias,
-          'package': def.npxPackage,
-          'entry': localEntry ?? 'npx',
+          'package': def.usesCommand ? def.command.join(' ') : def.npxPackage,
+          'via': def.usesCommand ? 'stdio_command' : 'npx',
         });
       } catch (e) {
         logWarn('mcp_overlay_bootstrap', 'Overlay MCP ${def.id} unavailable: $e');
         warnings.add('${def.id} soft-fail: $e');
       }
+    }
+  }
+
+  /// Resolve overlay `command:` argv; prefer `uvx`, fall back to PATH binary.
+  Future<List<String>?> _resolveOverlayCommand(List<String> command) async {
+    if (command.isEmpty) return null;
+    final exe = command.first;
+    if (exe == 'uvx' || exe == 'uv') {
+      final uvx = await _which('uvx');
+      if (uvx != null) {
+        return [uvx, ...command.skip(1)];
+      }
+      // Fall back: `nextcloud-mcp-server run --transport stdio` on PATH.
+      if (command.length >= 2 && command[1].startsWith('nextcloud-mcp-server')) {
+        final bin = await _which('nextcloud-mcp-server');
+        if (bin != null) {
+          return [bin, ...command.skip(2)];
+        }
+      }
+      return null;
+    }
+    final resolved = await _which(exe);
+    if (resolved == null) return null;
+    return [resolved, ...command.skip(1)];
+  }
+
+  Future<String?> _which(String name) async {
+    try {
+      final r = await Process.run('which', [name]);
+      if (r.exitCode != 0) return null;
+      final path = (r.stdout as String).trim().split('\n').first.trim();
+      return path.isEmpty ? null : path;
+    } catch (_) {
+      return null;
     }
   }
 
@@ -600,6 +680,12 @@ class ComstarSession {
   List<String> mcpProvidersForVoice({String? utterance}) {
     if (_guest) return List.unmodifiable(guestMcpProviders);
     final registered = _bridge.registeredMcpIds;
+    // Nextcloud before Google — "cloud calendar" must not steal to Gmail path.
+    if (utterance != null && _looksLikeNextcloud(utterance)) {
+      if (registered.contains('client.nextcloud')) {
+        return const ['client.nextcloud'];
+      }
+    }
     // Workspace questions: Google alone (HA discovery races the tunnel).
     if (utterance != null && _looksLikeGoogleWorkspace(utterance)) {
       if (registered.contains('client.google_workspace')) {
@@ -625,8 +711,19 @@ class ComstarSession {
     ];
   }
 
+  static bool _looksLikeNextcloud(String text) {
+    final t = text.toLowerCase();
+    return RegExp(
+      r'\b(nextcloud|next cloud)\b|'
+      r'\bmy cloud\b|'
+      r'\bnas (files?|docs?|notes?|calendar|contacts?|tasks?|mail|email)\b|'
+      r'\bcloud (files?|docs?|notes?|calendar|contacts?|tasks?|mail|email)\b',
+    ).hasMatch(t);
+  }
+
   static bool _looksLikeGoogleWorkspace(String text) {
     final t = text.toLowerCase();
+    if (_looksLikeNextcloud(t)) return false;
     return RegExp(
       r'\b(google|gmail|calendar|g-?cal|drive|workspace|inbox|email|e-?mail|'
       r'meeting|appointments?|schedule|planned)\b',
@@ -665,11 +762,16 @@ class ComstarSession {
     await ensureReady();
     final mcps = mcpProvidersForVoice(utterance: text);
     final googleOnly = mcps.length == 1 && mcps.first == 'client.google_workspace';
+    final nextcloudOnly = mcps.length == 1 && mcps.first == 'client.nextcloud';
     final haOnly = mcps.length == 1 && mcps.first == 'home_assistant';
     final ldapOnly = mcps.length == 1 && mcps.first == 'ldap_directory';
     final visionOnly = mcps.length == 1 && mcps.first == 'vision_comstar';
-    final needsTools =
-        googleOnly || haOnly || ldapOnly || visionOnly || mcps.length > 1;
+    final needsTools = googleOnly ||
+        nextcloudOnly ||
+        haOnly ||
+        ldapOnly ||
+        visionOnly ||
+        mcps.length > 1;
     final timeoutSec = needsTools && config.orchestration.timeoutSeconds < 60
         ? 60
         : config.orchestration.timeoutSeconds;
@@ -728,6 +830,12 @@ class ComstarSession {
     if (mcps.contains('client.google_workspace')) {
       return 'Google Workspace tools are attached. Call the matching Gmail, '
           'Calendar, or Drive tools before answering. Do not invent data.\n\n'
+          'Resident said: $trimmed';
+    }
+    if (mcps.contains('client.nextcloud')) {
+      return 'Nextcloud tools are attached (nc_*). Call the matching files, '
+          'notes, calendar, tasks, contacts, or mail tools before answering. '
+          'This is not Google — do not invent data.\n\n'
           'Resident said: $trimmed';
     }
     if (mcps.contains('ldap_directory')) {

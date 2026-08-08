@@ -1,0 +1,24 @@
+id: nextcloud_voice
+description: >
+  Auth and routing for client.nextcloud — pair with nc_files_voice,
+  nc_calendar_voice, nc_tasks_voice, nc_contacts_voice, nc_notes_voice,
+  nc_mail_voice.
+capabilities: >
+  Scope/pairing guidance; force tool-use before inventing Nextcloud data;
+  disambiguate vs Google Workspace.
+good_for: nextcloud, connect nextcloud, my cloud
+planner_hint: >
+  Attach with nc_*_voice skills when Nextcloud MCP is on the turn.
+user_goal_keywords:
+  - nextcloud
+  - connect nextcloud
+  - my cloud
+  - nas
+
+content:
+  file: nextcloud_voice/instructions.md
+
+inject:
+  target: backstory
+  heading: "## Nextcloud (voice)"
+  max_chars: 2200

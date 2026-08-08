@@ -1,0 +1,17 @@
+id: nc_mail_voice
+description: Nextcloud Mail via client.nextcloud (not Gmail).
+capabilities: list mailboxes/messages, read, send when clearly asked.
+good_for: nextcloud mail, cloud email, nas mail
+planner_hint: Attach for Nextcloud Mail — never for Gmail.
+user_goal_keywords:
+  - nextcloud mail
+  - nextcloud email
+  - cloud mail
+
+content:
+  file: nc_mail_voice/instructions.md
+
+inject:
+  target: backstory
+  heading: "## Nextcloud mail (voice)"
+  max_chars: 2800

@@ -382,6 +382,25 @@ void main() {
       expect(fake.lastMcpIds, equals(['client.google_workspace']));
     });
 
+    test('nextcloud utterance uses nextcloud MCP only', () async {
+      fake.fakeRegisteredMcpIds = const [
+        'client.nextcloud',
+        'client.google_workspace',
+        'client.terminal',
+      ];
+      await session.open(userid: 'zlatko', guest: false);
+      expect(
+        session.mcpProvidersForVoice(
+          utterance: "What's on my Nextcloud calendar?",
+        ),
+        equals(['client.nextcloud']),
+      );
+      expect(
+        session.mcpProvidersForVoice(utterance: 'List my cloud notes'),
+        equals(['client.nextcloud']),
+      );
+    });
+
     test('directory lookup utterance uses ldap_directory MCP', () async {
       fake.fakeRegisteredMcpIds = const [
         'home_assistant',

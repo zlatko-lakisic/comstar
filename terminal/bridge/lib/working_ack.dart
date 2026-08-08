@@ -57,6 +57,8 @@ final _toolHeavy = RegExp(
   // Google / workspace.
   r'\b(google|gmail|calendar|g-?cal|drive|workspace|inbox|email|e-?mail|'
   r'meeting|appointments?|schedule|compose)\b|'
+  // Nextcloud / home cloud.
+  r'\b(nextcloud|next cloud|my cloud|nas (files?|notes?))\b|'
   // Explicit lookup / list / check queries.
   r'\b(look ?up|search|find|list|check|fetch|download|torrent|torrents|'
   r'what( s| is)? (on|in) my|how many|status of|report on)\b|'

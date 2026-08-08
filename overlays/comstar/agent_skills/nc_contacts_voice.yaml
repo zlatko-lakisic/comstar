@@ -1,0 +1,17 @@
+id: nc_contacts_voice
+description: Nextcloud Contacts (CardDAV) via client.nextcloud.
+capabilities: list address books, search/read contacts.
+good_for: nextcloud contacts, cloud address book
+planner_hint: Attach for Nextcloud contacts (not FreeIPA directory).
+user_goal_keywords:
+  - nextcloud contacts
+  - address book
+  - phone number
+
+content:
+  file: nc_contacts_voice/instructions.md
+
+inject:
+  target: backstory
+  heading: "## Nextcloud contacts (voice)"
+  max_chars: 2200

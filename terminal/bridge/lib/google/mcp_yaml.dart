@@ -11,6 +11,7 @@ class OverlayMcpDefinition {
     required this.transport,
     required this.alias,
     required this.npxPackage,
+    required this.command,
     required this.envFrom,
     required this.requiresTokens,
     required this.guestAllowed,
@@ -21,13 +22,21 @@ class OverlayMcpDefinition {
   final String description;
   final String transport;
   final String alias;
+
+  /// npm package for [LocalMcpHost.startNpxPackage] (empty when [command] set).
   final String npxPackage;
+
+  /// Explicit argv for [LocalMcpHost.startStdioCommand] (empty → use npx).
+  final List<String> command;
+
   final List<String> envFrom;
   final bool requiresTokens;
   final bool guestAllowed;
   final String sourcePath;
 
   String get clientId => id.startsWith('client.') ? id : 'client.$id';
+
+  bool get usesCommand => command.isNotEmpty;
 }
 
 /// Loads Comstar-owned overlay MCP YAML (Reach packer does not read this dir).
@@ -54,7 +63,15 @@ List<OverlayMcpDefinition> loadOverlayMcpProviders(String overlayRoot) {
         ? map['alias'].toString().trim()
         : id;
     final npx = map['npx_package']?.toString().trim() ?? '';
-    if (transport == 'stdio_tunnel' && npx.isEmpty) {
+    final command = <String>[];
+    final rawCmd = map['command'];
+    if (rawCmd is YamlList) {
+      for (final e in rawCmd) {
+        final s = e.toString().trim();
+        if (s.isNotEmpty) command.add(s);
+      }
+    }
+    if (transport == 'stdio_tunnel' && npx.isEmpty && command.isEmpty) {
       continue;
     }
     final envFrom = <String>[];
@@ -72,6 +89,7 @@ List<OverlayMcpDefinition> loadOverlayMcpProviders(String overlayRoot) {
         transport: transport,
         alias: alias,
         npxPackage: npx,
+        command: command,
         envFrom: envFrom,
         requiresTokens: map['requires_tokens'] == true,
         guestAllowed: map['guest_allowed'] == true,

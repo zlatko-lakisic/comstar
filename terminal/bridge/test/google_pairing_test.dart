@@ -19,9 +19,17 @@ void main() {
       expect(gw.alias, 'google_workspace');
       expect(gw.clientId, 'client.google_workspace');
       expect(gw.npxPackage, contains('mcp-server-google-workspace@'));
+      expect(gw.command, isEmpty);
       expect(gw.requiresTokens, isTrue);
       expect(gw.guestAllowed, isFalse);
       expect(gw.envFrom, contains('GOOGLE_REFRESH_TOKEN'));
+
+      final nc = defs.firstWhere((d) => d.id == 'nextcloud');
+      expect(nc.clientId, 'client.nextcloud');
+      expect(nc.usesCommand, isTrue);
+      expect(nc.command.first, 'uvx');
+      expect(nc.envFrom, contains('NEXTCLOUD_PASSWORD'));
+      expect(nc.guestAllowed, isFalse);
     });
   });
 

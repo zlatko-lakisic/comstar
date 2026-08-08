@@ -700,6 +700,29 @@ granted. Env: `COMSTAR_SMTP_*`, `GOOGLE_DESKTOP_CLIENT_ID` /
 `COMSTAR_OAUTH_BIND_LAN=1`. Callback listens on port **8781**. Token JSON may
 include `"client":"tv"|"desktop"` so MCP refresh uses the matching client
 secrets.
+
+### Tunnelled Nextcloud (off-the-shelf MCP)
+
+**No custom Nextcloud MCP in this repo.** Comstar pairs Login Flow v2 (voice +
+QR) or Admin inject, stores a per-userid app password (`0600`), starts pinned
+`nextcloud-mcp-server` via `LocalMcpHost.startStdioCommand` (`uvx` preferred),
+and registers it on the Reach session overlay as `client.nextcloud`
+(`tunnel://session-mcp/nextcloud`). Complements Google — different accounts
+(ADR 0016).
+
+| piece | location |
+|---|---|
+| MCP definition | `mcp_providers/nextcloud.yaml` (tunnel bootstrap + `command:`) |
+| Agent allowlist | `voice_responder.yaml` / `text_responder.yaml` → `client.nextcloud` + NC skills |
+| Bootstrap | `ComstarMcpBootstrap` → `extraMcps` when credentials exist |
+| Tokens | `~/.local/share/comstar/nextcloud/<userid>.json` (or `COMSTAR_DATA_DIR`) |
+| Instance URL | env `NEXTCLOUD_HOST` (optional per-user `host` in token JSON) |
+| Admin | `GET`/`POST` `/admin/api/nextcloud` (set / clear credentials) |
+
+Guests never get Nextcloud MCP ids. Missing credentials soft-skip the MCP.
+Utterances that mention Nextcloud / “my cloud” / NAS files attach
+`client.nextcloud` alone (same tunnel-name workaround as Google).
+
 ## 6. Audio routing decision
 
 **Status:** Resolved 2026-08-02 — **(a) Kiosk is the audio sink.** See
@@ -1029,9 +1052,10 @@ overlay; only one may run at a time.
 (default `127.0.0.1:8782`). When bound beyond loopback, `COMSTAR_CHANNEL_TOKEN`
 is required (`X-Comstar-Channel-Token` or `?token=`).
 
-Providers register in a **ChannelMux**. Telegram ships today; WhatsApp/Signal
-join when backends are configured (env gates). Announce fans out to **all**
-mapped sender ids for the recipient userid.
+Providers register in a **ChannelMux**. Backends (ADR 0015): Telegram Bot API,
+WhatsApp **Cloud API** (webhook `/v1/whatsapp/webhook`), Signal via
+**signal-cli** JSON-RPC HTTP. Announce fans out to **all** mapped destinations
+`(provider, sender_id)` for the recipient userid.
 
 Channel → AO sessions use `COMSTAR_AO_MTLS=1` + `COMSTAR_AO_MTLS_DIR` when Ada
 requires client certs (ADR 0013).
@@ -1040,6 +1064,7 @@ requires client certs (ADR 0013).
 |---|---|---|---|
 | `/health` | GET | none | Liveness + provider flags |
 | `/v1/announce` | POST | token if non-loopback | Deliver one announcement |
+| `/v1/whatsapp/webhook` | GET/POST | Meta verify token (GET) | Cloud API inbound |
 | `/v1/pairing/begin` | POST | token if non-loopback | Start QR pairing `{userid,provider}` |
 | `/v1/pairing/status` | GET | token if non-loopback | `?id=` → pending/approved/… |
 | `/v1/pairing/cancel` | POST | token if non-loopback | Cancel pending attempt |

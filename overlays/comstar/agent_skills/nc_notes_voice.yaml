@@ -1,0 +1,17 @@
+id: nc_notes_voice
+description: Nextcloud Notes via client.nextcloud.
+capabilities: nc_notes_search_notes, create/update/append notes.
+good_for: nextcloud notes, cloud notes
+planner_hint: Attach for Nextcloud Notes app questions.
+user_goal_keywords:
+  - nextcloud notes
+  - cloud notes
+  - my notes
+
+content:
+  file: nc_notes_voice/instructions.md
+
+inject:
+  target: backstory
+  heading: "## Nextcloud notes (voice)"
+  max_chars: 2500

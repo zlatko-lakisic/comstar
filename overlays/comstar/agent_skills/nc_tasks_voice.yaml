@@ -1,0 +1,18 @@
+id: nc_tasks_voice
+description: Nextcloud Tasks (VTODO) via client.nextcloud for spoken to-dos.
+capabilities: nc_calendar_list_todos, nc_calendar_complete_todo, create/update todos.
+good_for: nextcloud tasks, cloud todos, my tasks
+planner_hint: Attach for Nextcloud task lists.
+user_goal_keywords:
+  - nextcloud tasks
+  - todos
+  - to-dos
+  - task list
+
+content:
+  file: nc_tasks_voice/instructions.md
+
+inject:
+  target: backstory
+  heading: "## Nextcloud tasks (voice)"
+  max_chars: 2500

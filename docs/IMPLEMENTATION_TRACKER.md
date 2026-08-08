@@ -121,4 +121,4 @@ Living plan: `docs/PHASE2_PLAN_PROACTIVITY_AND_CHANNEL.md`.
 | M11.6 Announce → channel gate | `done` | bridge `evaluateChannelSurface` + Ada `/v1/announce`; CAS delivered-once |
 | M11.7 Rate limit | `done` | per-sender + daily cap tests |
 | M11.8 Docs / privacy | `done` | README + CONTRACTS §11 + RUNBOOK §9c + admin Channel health |
-| ADR 0015 QR pairing | `done` | Voice → `pairing.qr` → Telegram deep link; bindings store; WA/Signal stubs |
+| ADR 0015 QR pairing | `done` | TG + WA Cloud + signal-cli; kiosk `pairing.qr`; bindings store |
