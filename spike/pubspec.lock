@@ -7,7 +7,7 @@ packages:
       path: "../vendor/agentic-orchestration-reach"
       relative: true
     source: path
-    version: "0.5.0"
+    version: "0.5.2"
   async:
     dependency: transitive
     description:

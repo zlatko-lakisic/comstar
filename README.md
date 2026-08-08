@@ -163,7 +163,7 @@ Identity is cached with a TTL bound to continuous presence. Face recognition run
 
 | Layer | Choice | Rationale |
 |---|---|---|
-| Client SDK | `ao_reach` ≥ 0.5.1 (Dart ^3.5) | Session overlays + reverse MCP; required `appId` (`ComStar`) |
+| Client SDK | `ao_reach` ≥ 0.5.2 (Dart ^3.5) | Session overlays + reverse MCP; required `appId` (`ComStar`) |
 | Client shell | Dart bridge + Chromium kiosk | Bridge speaks REACH; kiosk renders the avatar; they talk over local WS |
 | Avatar (Phase 1) | Live SVG starburst in Chromium | State, mic level, speech amplitude; no WebGL yet |
 | Avatar (planned) | [TalkingHead.js](https://github.com/met4citizen/TalkingHead) + GLB | Lip-sync path reserved; GLB UAT still open |

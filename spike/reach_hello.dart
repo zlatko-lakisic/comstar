@@ -4,8 +4,13 @@ import 'dart:io';
 import 'package:ao_reach/ao_reach.dart';
 
 Future<void> main(List<String> args) async {
-  final baseUrl = Platform.environment['AO_BASE_URL'] ?? 'http://10.0.10.16:8765';
+  final mtlsOn = (Platform.environment['COMSTAR_AO_MTLS'] ?? '') == '1';
+  final defaultBase =
+      mtlsOn ? 'https://10.0.10.16:8765' : 'http://10.0.10.16:8765';
+  final baseUrl = Platform.environment['AO_BASE_URL'] ?? defaultBase;
   final token = Platform.environment['AO_TOKEN'] ?? '';
+  final mtlsDir = Platform.environment['COMSTAR_AO_MTLS_DIR'] ??
+      '${Platform.environment['HOME']}/.local/share/comstar/ao-mtls';
   final overlay = Directory('overlays/hello');
   Directory('${overlay.path}/agent_providers').createSync(recursive: true);
   File('${overlay.path}/agent_providers/hello.yaml').writeAsStringSync('''
@@ -31,8 +36,14 @@ system_prompt: |
   };
   if (token.isNotEmpty) headers['x-warpgate-token'] = token;
 
+  ReachMtlsConfig? mtls;
+  if (mtlsOn || Directory(mtlsDir).existsSync()) {
+    mtls = ReachMtlsConfig(materialDir: mtlsDir);
+    stdout.writeln('Using mTLS material at $mtlsDir');
+  }
+
   final bridge = SessionBridge();
-  stdout.writeln('Connecting to $baseUrl …');
+  stdout.writeln('Connecting to $baseUrl (appId=ComStar) …');
   try {
     await bridge.start(
       config: ReachConnectionConfig(
@@ -40,6 +51,7 @@ system_prompt: |
         baseUrl: baseUrl,
         headers: headers,
         ttlSeconds: 300,
+        mtls: mtls,
       ),
       overlayRoot: overlay.path,
     );

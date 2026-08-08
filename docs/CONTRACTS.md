@@ -444,7 +444,7 @@ Rules:
 
 ## 4. Bridge → AO via `ao_reach`
 
-**Status:** VERIFIED path — Reach `v0.5.1` / AO ≥ 2.0 (`appId` required; Ada
+**Status:** VERIFIED path — Reach `v0.5.2` / AO ≥ 2.0 (`appId` required; Ada
 may still be mid-upgrade). Ada serves **HTTPS + client certs** on `:8765`
 (direct, not Warpgate). Host MCP catalog ids:
 `fetch_url`, `filesystem_local`, `home_assistant`, `media_audio_transcribe`,
