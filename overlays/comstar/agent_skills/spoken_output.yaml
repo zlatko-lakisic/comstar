@@ -17,6 +17,8 @@ content:
       Korean, Cyrillic, Arabic, or mixed-script answers. If you drift, rewrite
       the whole reply in English before responding.
     - Plain conversational sentences only.
+    - Never reply with JSON, YAML, key/value dumps, or code fences — TTS reads
+      them aloud. Speak the meaning in natural sentences.
     - No markdown, no bullet lists, no numbered lists.
     - No URLs, no code blocks, no special formatting.
     - Target about 40 words unless the user explicitly asks for detail.

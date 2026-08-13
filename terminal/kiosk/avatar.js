@@ -614,19 +614,25 @@ export class ComstarAvatar {
 
     const coreScale = base * (1 + this.amplitude * 0.16);
     this.core.setAttribute('transform', `scale(${coreScale.toFixed(4)})`);
-    this.core.setAttribute('opacity', Math.min(1, this.cur.op + this.amplitude * 0.4).toFixed(3));
+    // Thinking opacity ping: slightly opaque ↔ full.
+    let opMul = 1;
+    if (this.thinking) {
+      opMul = 0.72 + 0.28 * (0.5 + 0.5 * Math.sin(this._t * 3.2));
+    }
+    const coreOp = Math.min(1, (this.cur.op + this.amplitude * 0.4) * opMul);
+    this.core.setAttribute('opacity', coreOp.toFixed(3));
     if (useHalo) {
       const haloScale = base * (1 + this.amplitude * 0.30 + mic * 0.12);
       this.halo.setAttribute('transform', `scale(${haloScale.toFixed(4)})`);
       this.halo.setAttribute('opacity',
-        Math.min(0.62, this.cur.op * 0.22 + this.amplitude * 0.34 + mic * 0.26).toFixed(3));
+        Math.min(0.62, (this.cur.op * 0.22 + this.amplitude * 0.34 + mic * 0.26) * opMul).toFixed(3));
     }
     // Stage glow tracks the same fade — no floor, or sleep never looks dim.
     if (this.glow) {
-      this.glow.style.opacity = Math.max(0, this.cur.op * 0.85).toFixed(3);
+      this.glow.style.opacity = Math.max(0, this.cur.op * 0.85 * opMul).toFixed(3);
     }
     // Whole emblem group dims (stroke stays visible at low op on IPS panels).
-    this.shift.setAttribute('opacity', this.cur.op.toFixed(3));
+    this.shift.setAttribute('opacity', (this.cur.op * opMul).toFixed(3));
 
     this.meter.setAttribute('opacity', this.state === 'listening' ? 1 : 0);
     if (this.state === 'listening') {

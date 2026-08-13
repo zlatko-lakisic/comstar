@@ -186,6 +186,7 @@ Future<void> main(List<String> arguments) async {
     road: road,
     network: network,
     aoMtls: aoMtls,
+    agentsStore: session.agentsStore,
   );
   await admin.start();
   await coordinator.googleDesktop.start(sharedServer: true);

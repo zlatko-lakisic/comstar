@@ -5,6 +5,8 @@ import 'dart:io';
 import 'package:ao_reach/ao_reach.dart';
 import 'package:path/path.dart' as p;
 
+import 'package:comstar_bridge/agents/store.dart';
+import 'package:comstar_bridge/agents/reach_catalog.dart';
 import 'package:comstar_bridge/announce/types.dart';
 import 'package:comstar_bridge/attention/clock.dart';
 import 'package:comstar_bridge/attention/coordinator.dart';
@@ -37,6 +39,7 @@ class AdminServer {
     this.road,
     this.network,
     this.aoMtls,
+    this.agentsStore,
     this.port = 8781,
     this.httpClientFactory,
     Future<Process> Function(String executable, List<String> arguments)?
@@ -53,6 +56,7 @@ class AdminServer {
   final RoadService? road;
   final NetworkService? network;
   final AoMtlsService? aoMtls;
+  final AgentsStore? agentsStore;
   final int port;
 
   /// Injectable for tests.
@@ -262,6 +266,16 @@ class AdminServer {
 
       if (request.method == 'POST' && adminPath == '/admin/api/ao_mtls') {
         await _handleAoMtlsPost(request);
+        return;
+      }
+
+      if (request.method == 'GET' && adminPath == '/admin/api/agents') {
+        await _handleAgentsGet(request);
+        return;
+      }
+
+      if (request.method == 'POST' && adminPath == '/admin/api/agents') {
+        await _handleAgentsPost(request);
         return;
       }
 
@@ -640,6 +654,155 @@ class AdminServer {
       final result = await svc.handleAction(body);
       final code = result['ok'] == true ? 200 : 502;
       await _writeJson(request, code, result);
+    } on ArgumentError catch (e) {
+      await _writeJson(request, 400, {'ok': false, 'error': e.message});
+    } on StateError catch (e) {
+      await _writeJson(request, 502, {'ok': false, 'error': e.message});
+    } on Object catch (e) {
+      await _writeJson(request, 502, {'ok': false, 'error': e.toString()});
+    }
+  }
+
+  AgentsStore get _agents =>
+      agentsStore ?? coordinator.session.agentsStore;
+
+  Future<Map<String, dynamic>> _agentsStatusWithCatalog() async {
+    final catalog = await fetchReachCatalog(config);
+    return _agents.statusPayload(
+      yaml: config.orchestration,
+      sessionActive: coordinator.session.isOpen,
+      catalog: catalog,
+      aoProgress: coordinator.latestAoProgress,
+    );
+  }
+
+  Future<void> _handleAgentsGet(HttpRequest request) async {
+    final payload = await _agentsStatusWithCatalog();
+    await _writeJson(request, 200, payload);
+  }
+
+  List<String>? _parseIdList(Object? raw) {
+    if (raw is! List) return null;
+    return [
+      for (final e in raw)
+        if (e != null && e.toString().trim().isNotEmpty) e.toString().trim(),
+    ];
+  }
+
+  Future<void> _handleAgentsPost(HttpRequest request) async {
+    final body = await _readJson(request);
+    final action = body['action']?.toString().trim().toLowerCase() ?? '';
+    try {
+      switch (action) {
+        case 'configure':
+        case 'apply':
+          final mode = body['default_run_mode']?.toString().trim();
+          final dyn = body['dynamic_planning'] is bool
+              ? body['dynamic_planning'] as bool
+              : (body['enabled'] is bool ? body['enabled'] as bool : null);
+          final hasConfig = dyn != null ||
+              (mode != null && mode.isNotEmpty) ||
+              body.containsKey('enabled_agent_ids') ||
+              body.containsKey('enabled_mcp_ids') ||
+              body.containsKey('enabled_skill_ids');
+          if (hasConfig) {
+            await _agents.configure(
+              dynamicPlanning: dyn,
+              defaultRunMode: (mode != null && mode.isNotEmpty) ? mode : null,
+              enabledAgentIds: _parseIdList(body['enabled_agent_ids']),
+              enabledMcpIds: _parseIdList(body['enabled_mcp_ids']),
+              enabledSkillIds: _parseIdList(body['enabled_skill_ids']),
+            );
+          }
+          if (action == 'configure') {
+            await _writeJson(request, 200, await _agentsStatusWithCatalog());
+            return;
+          }
+          final refreshed = await coordinator.session.applyAgentsRefresh();
+          final payload = await _agentsStatusWithCatalog();
+          payload['session_reopened'] = refreshed;
+          payload['apply'] = {
+            ...Map<String, dynamic>.from(payload['apply'] as Map? ?? {}),
+            'refreshed': refreshed,
+          };
+          await _writeJson(request, 200, payload);
+          return;
+        case 'set_secrets':
+          Map<String, String>? env;
+          final rawEnv = body['env'];
+          if (rawEnv is Map) {
+            env = {
+              for (final e in rawEnv.entries)
+                if (e.key.toString().trim().isNotEmpty &&
+                    (e.value?.toString().trim().isNotEmpty ?? false))
+                  e.key.toString().trim(): e.value.toString().trim(),
+            };
+          }
+          await _agents.setSecrets(
+            openaiApiKey: body['openai_api_key']?.toString(),
+            anthropicApiKey: body['anthropic_api_key']?.toString(),
+            env: env,
+          );
+          await _writeJson(request, 200, await _agentsStatusWithCatalog());
+          return;
+        case 'clear_secret':
+          final provider = body['provider']?.toString() ?? '';
+          final name = body['name']?.toString() ??
+              (body['env'] is String ? body['env'].toString() : null);
+          await _agents.clearSecret(provider, name: name);
+          await _writeJson(request, 200, await _agentsStatusWithCatalog());
+          return;
+        case 'test_secret':
+          final provider = body['provider']?.toString() ?? '';
+          final envAsName =
+              body['env'] is String ? body['env'].toString() : '';
+          final name = (body['name']?.toString() ?? '').trim().isNotEmpty
+              ? body['name'].toString()
+              : envAsName;
+          final typedValue = body['value']?.toString();
+          final p = provider.isNotEmpty
+              ? provider
+              : (name == 'OPENAI_API_KEY' || name == 'openai_api_key'
+                  ? 'openai'
+                  : name == 'ANTHROPIC_API_KEY' || name == 'anthropic_api_key'
+                      ? 'anthropic'
+                      : '');
+          if (p.isEmpty) {
+            await _writeJson(request, 400, {
+              'ok': false,
+              'error': 'test_secret only supports openai/anthropic',
+            });
+            return;
+          }
+          String? typedOpenai = body['openai_api_key']?.toString();
+          String? typedAnthropic = body['anthropic_api_key']?.toString();
+          if (typedValue != null && typedValue.trim().isNotEmpty) {
+            if (p == 'openai') typedOpenai ??= typedValue;
+            if (p == 'anthropic') typedAnthropic ??= typedValue;
+          }
+          if (body['env'] is Map) {
+            final envMap = body['env'] as Map;
+            typedOpenai ??= envMap['OPENAI_API_KEY']?.toString();
+            typedAnthropic ??= envMap['ANTHROPIC_API_KEY']?.toString();
+          }
+          final probe = await _agents.testSecret(
+            p,
+            openaiApiKey: typedOpenai,
+            anthropicApiKey: typedAnthropic,
+          );
+          final payload = await _agentsStatusWithCatalog();
+          payload['ok'] = probe['valid'] == true;
+          payload['test'] = probe;
+          payload['error'] = probe['error'];
+          await _writeJson(request, 200, payload);
+          return;
+        default:
+          await _writeJson(request, 400, {
+            'ok': false,
+            'error':
+                'unknown action (configure|set_secrets|clear_secret|test_secret|apply)',
+          });
+      }
     } on ArgumentError catch (e) {
       await _writeJson(request, 400, {'ok': false, 'error': e.message});
     } on StateError catch (e) {

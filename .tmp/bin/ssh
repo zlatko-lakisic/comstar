@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+exec /usr/bin/ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o IdentitiesOnly=yes -i /c/Users/Zlatko.Lakisic/.ssh/id_rsa "$@"

@@ -293,6 +293,7 @@ class LocalWs {
       'speak.cancel',
       'listening',
       'thinking',
+      'ao.progress',
       'phase',
       'error',
       'config',

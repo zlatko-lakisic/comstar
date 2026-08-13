@@ -52,6 +52,23 @@ void main() {
       expect(prompt, contains('[hall]'));
     });
 
+    test('wrapForAgent drops timeout apology spam', () async {
+      await memory.recordExchange(
+        userid: 'zlatko',
+        userText: 'Do some research on private networks',
+        assistantText: 'Sorry, I could not get an answer in time.',
+      );
+      await memory.recordExchange(
+        userid: 'zlatko',
+        userText: 'Try again',
+        assistantText: 'Private networks isolate traffic with VLANs.',
+      );
+      final prompt = await memory.wrapForAgent('zlatko', 'Summarize that');
+      expect(prompt, contains('Current request:'));
+      expect(prompt, contains('Private networks isolate'));
+      expect(prompt, isNot(contains('could not get an answer in time')));
+    });
+
     test('trims to maxTurns', () async {
       for (var i = 0; i < 5; i++) {
         await memory.recordExchange(

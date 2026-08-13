@@ -424,8 +424,8 @@ void main() {
       _engageAndListen(m);
       _apply(m, const SpeechEnd(500));
       _apply(m, const TranscriptReady('hello'));
-      // Floor is 90s so HA tool turns are not cut off by the 15s chat timeout.
-      clock.advance(91 * 1000);
+      // Floor tracks orchestration.aoRespondingTimeoutMs (dynamic budget).
+      clock.advance(m.context.config.orchestration.aoRespondingTimeoutMs + 1000);
       final t = m.handle(const Tick());
       expect(t.to, isA<Engaged>());
       expect(_hasEffectType<SpeakFallback>(t.effects), isTrue);

@@ -23,7 +23,7 @@ packages:
       path: "../vendor/agentic-orchestration-reach"
       relative: true
     source: path
-    version: "0.5.2"
+    version: "0.7.1"
   args:
     dependency: "direct main"
     description:

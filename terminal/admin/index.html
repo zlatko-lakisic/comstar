@@ -44,6 +44,7 @@
     <div class="layout">
       <aside class="rail panel">
         <div id="railEmblem" class="rail__emblem"></div>
+        <div id="railAoActivity" class="rail__ao-activity" aria-live="polite"></div>
         <div class="rail__state" id="railState">—</div>
         <div class="rail__user mono" id="railUser"></div>
         <dl class="rail__kv" id="railKv"></dl>
@@ -77,6 +78,12 @@
                   <span class="tab__status-dot" id="aoTabDot"></span>
                 </span>
               </button>
+              <button type="button" class="tab" role="tab" aria-selected="false" data-tab="agents" id="tabAgents">
+                Agents
+                <span class="tab__status-pill" id="agentsTabPill" title="Dynamic agents" aria-hidden="true">
+                  <span class="tab__status-dot" id="agentsTabDot"></span>
+                </span>
+              </button>
               <button type="button" class="tab" role="tab" aria-selected="false" data-tab="logs" id="tabLogs">Logs</button>
             </div>
             <span class="freshness mono" id="opsFresh">—</span>
@@ -93,6 +100,9 @@
             </div>
             <div class="tab-pane" id="aoPane" role="tabpanel" data-pane="ao" hidden>
               <div id="aoMtlsRoot"></div>
+            </div>
+            <div class="tab-pane" id="agentsPane" role="tabpanel" data-pane="agents" hidden>
+              <div id="agentsRoot"></div>
             </div>
             <div class="tab-pane tab-pane--logs" id="logsPane" role="tabpanel" data-pane="logs" hidden>
               <div class="logs-pane-head">

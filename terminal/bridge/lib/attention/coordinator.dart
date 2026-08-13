@@ -3,8 +3,10 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:ao_reach/ao_reach.dart' show ReachRunStatus;
 import 'package:comstar_bridge/announce/channel_pairing_client.dart';
 import 'package:comstar_bridge/announce/gate.dart';
+import 'package:comstar_bridge/agents/routing.dart';
 import 'package:comstar_bridge/announce/service.dart';
 import 'package:comstar_bridge/attention/clock.dart';
 import 'package:comstar_bridge/channel_intent.dart';
@@ -44,6 +46,7 @@ import 'package:comstar_bridge/phrase_bank.dart';
 import 'package:comstar_bridge/session.dart';
 import 'package:comstar_bridge/social_intent.dart';
 import 'package:comstar_bridge/spoken_language.dart';
+import 'package:comstar_bridge/spoken_reply.dart';
 import 'package:comstar_bridge/stt.dart';
 import 'package:comstar_bridge/utterance_gate.dart';
 import 'package:comstar_bridge/admin_ops.dart';
@@ -145,6 +148,7 @@ class AttentionCoordinator {
         'kiosk_connected': ws.hasRole('kiosk'),
         'audio_connected': ws.hasRole('audio'),
         'sleeping': machine.state is Sleeping,
+        'thinking': machine.context.directAgentInFlight,
         'announce': announce != null,
         'phrase_bank': {
           for (final c in PhraseCategory.all) c: phraseBank.count(c),
@@ -154,7 +158,11 @@ class AttentionCoordinator {
           'enabled': conversationMemory.enabled,
           'userid': _memoryUserid,
         },
+        'ao_progress': latestAoProgress,
       };
+
+  /// Latest Reach run status for Admin poll (null when idle).
+  Map<String, Object?>? latestAoProgress;
   final AttentionMachine machine;
   final EffectRunner runner;
 
@@ -392,6 +400,8 @@ class AttentionCoordinator {
         );
         if (active) {
           _broadcastPhase('thinking', detail: 'Talking to AO…');
+        } else {
+          _clearAoProgress();
         }
       case Speak(:final text, :final audioUrl, :final turnId, :final mood):
         if (audioUrl.startsWith('announce://')) {
@@ -425,6 +435,7 @@ class AttentionCoordinator {
         _broadcastKiosk(
           Envelope.create(type: 'thinking', data: {'active': false}),
         );
+        _clearAoProgress();
         _beginSpeakWatchdog();
         final sleepAck = machine.state is Sleeping;
         // Sleep ack: keep Sleeping HUD/avatar dim while the line plays.
@@ -1544,15 +1555,40 @@ class AttentionCoordinator {
       final agentText = memoryUser != null
           ? await conversationMemory.wrapForAgent(memoryUser, text)
           : text;
-      logInfo('direct_agent', 'Calling voice agent', data: {
-        'turn_id': turnId,
-        'text': clipped,
-        'memory': memoryUser != null,
-        'mcp': mcp,
-      });
-      _armWorkingAck(turnId: turnId, mcpProviders: mcp, utterance: text);
-      var response = await session.directVoice(agentText);
+      final useDynamic = shouldUseDynamicChat(
+        dynamicPlanning: await session.effectiveDynamicPlanning(),
+        voiceBackend: session.config.orchestration.voiceBackend,
+        utterance: text,
+        mcpProviders: mcp,
+      );
+      logInfo(
+        useDynamic ? 'dynamic_chat' : 'direct_agent',
+        useDynamic ? 'Calling dynamic chat' : 'Calling voice agent',
+        data: {
+          'turn_id': turnId,
+          'text': clipped,
+          'memory': memoryUser != null,
+          'mcp': mcp,
+          'voice_backend': session.config.orchestration.voiceBackend,
+        },
+      );
+      _armWorkingAck(
+        turnId: turnId,
+        mcpProviders: mcp,
+        utterance: text,
+        force: useDynamic,
+      );
+      void onStatus(ReachRunStatus status) {
+        _onAoRunStatus(status, turnId: turnId);
+      }
+      var response = useDynamic
+          ? await session.chatVoice(
+              _steerDynamicChat(agentText, text),
+              onStatus: onStatus,
+            )
+          : await session.directVoice(agentText, onStatus: onStatus);
       _cancelWorkingAckTimer();
+      response = unwrapSpokenReply(response);
       if (_looksLikeToolStallProse(response)) {
         logWarn('direct_agent_tool_stall', 'AO returned tool-loop stall prose', data: {
           'turn_id': turnId,
@@ -1619,6 +1655,7 @@ class AttentionCoordinator {
       handle(ResponseReady(response, audioUrl));
     } catch (e) {
       logWarn('direct_agent_failed', e.toString(), data: {'turn_id': turnId});
+      _clearAoProgress();
       await _speakFallback(
         'Sorry, I could not get an answer in time.',
         turnId,
@@ -1629,10 +1666,47 @@ class AttentionCoordinator {
     }
   }
 
+  String? _lastAoProgressMessage;
+
+  void _onAoRunStatus(ReachRunStatus status, {required String turnId}) {
+    machine.extendAoDeadline();
+    final message = status.message.trim();
+    if (message.isEmpty) return;
+    if (message == _lastAoProgressMessage && status.processing) return;
+    _lastAoProgressMessage = message;
+    final payload = <String, dynamic>{
+      'active': true,
+      'message': message,
+      'phase': status.phase,
+      'processing': status.processing,
+      if (status.step != null) 'step': status.step,
+      if (status.stepCount != null) 'step_count': status.stepCount,
+      if (status.agentProviderId != null)
+        'agent_provider_id': status.agentProviderId,
+    };
+    latestAoProgress = payload;
+    _broadcastKiosk(
+      Envelope.create(type: 'ao.progress', data: payload, turnId: turnId),
+    );
+  }
+
+  void _clearAoProgress() {
+    _lastAoProgressMessage = null;
+    _broadcastKiosk(
+      Envelope.create(
+        type: 'ao.progress',
+        data: {'active': false, 'processing': false},
+      ),
+    );
+    // Admin polls this snapshot; null when idle so hold/exit runs once.
+    latestAoProgress = null;
+  }
+
   void _armWorkingAck({
     required String turnId,
     required List<String> mcpProviders,
     required String utterance,
+    bool force = false,
   }) {
     _cancelWorkingAckTimer();
     if (_workingAckSpokenTurnId == turnId) return;
@@ -1641,16 +1715,34 @@ class AttentionCoordinator {
       workingAckOnTools: config.attention.workingAckOnTools,
       workingAckMs: config.attention.workingAckMs,
       utterance: utterance,
+      force: force,
     )) {
       return;
     }
-    final delayMs = config.attention.workingAckMs;
+    // Dynamic/research: ack sooner so the hallway does not look dead during plan.
+    final delayMs = force && config.attention.workingAckMs > 2500
+        ? 2500
+        : config.attention.workingAckMs;
     _workingAckTimer = Timer(Duration(milliseconds: delayMs), () {
       if (machine.context.turnId != turnId) return;
       if (!machine.context.directAgentInFlight) return;
       if (machine.state is! Responding) return;
       unawaited(_speakWorkingAck(turnId));
     });
+  }
+
+  /// Steer Reach chat toward stock research agents without renaming AO's
+  /// `Current request:` extraction marker.
+  static String _steerDynamicChat(String wrapped, String utterance) {
+    if (!looksLikeResearch(utterance)) return wrapped;
+    const steer =
+        'For this request prefer stock research agents gpt_research and/or '
+        'claude_research when available. Produce a factual spoken answer; '
+        'do not only acknowledge the request.';
+    if (wrapped.contains('Current request:')) {
+      return '$steer\n\n$wrapped';
+    }
+    return '$steer\n\nCurrent request:\n${wrapped.trim()}';
   }
 
   void _cancelWorkingAckTimer() {
@@ -1682,6 +1774,8 @@ class AttentionCoordinator {
     if (!machine.context.directAgentInFlight) return;
     if (machine.state is! Responding) return;
     if (machine.context.turnId != turnId) return;
+    // Progress means AO is still working — do not treat planner time as silence.
+    machine.extendAoDeadline();
 
     final line = _phraseFor(
       PhraseCategory.working,

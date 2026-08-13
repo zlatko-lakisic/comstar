@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:ao_reach/ao_reach.dart';
+import 'package:comstar_bridge/agents/store.dart';
 import 'package:comstar_bridge/ao_mtls/service.dart';
 import 'package:comstar_bridge/backoff.dart';
 import 'package:comstar_bridge/config.dart';
@@ -42,6 +43,17 @@ abstract class ReachSessionBridge {
     required String text,
     List<String>? mcpProviderIds,
     Duration? timeout,
+    void Function(ReachRunStatus status)? onStatus,
+  });
+
+  /// AO dynamic planning (`type: chat`).
+  Future<Map<String, dynamic>> chat({
+    required String text,
+    String? questionId,
+    List<String>? selectedAgentProviderIds,
+    String? runMode,
+    Duration? timeout,
+    void Function(ReachRunStatus status)? onStatus,
   });
 
   /// Re-register session overlay agents (extends AO overlay TTL).
@@ -91,12 +103,32 @@ class AoReachSessionBridge implements ReachSessionBridge {
     required String text,
     List<String>? mcpProviderIds,
     Duration? timeout,
+    void Function(ReachRunStatus status)? onStatus,
   }) =>
       _inner.directAgent(
         agentProviderId: agentProviderId,
         text: text,
         mcpProviderIds: mcpProviderIds,
         timeout: timeout ?? const Duration(minutes: 5),
+        onStatus: onStatus,
+      );
+
+  @override
+  Future<Map<String, dynamic>> chat({
+    required String text,
+    String? questionId,
+    List<String>? selectedAgentProviderIds,
+    String? runMode,
+    Duration? timeout,
+    void Function(ReachRunStatus status)? onStatus,
+  }) =>
+      _inner.chat(
+        text: text,
+        questionId: questionId,
+        selectedAgentProviderIds: selectedAgentProviderIds,
+        runMode: runMode,
+        timeout: timeout ?? const Duration(minutes: 10),
+        onStatus: onStatus,
       );
 
   @override
@@ -407,10 +439,13 @@ class ComstarSession {
     required this.config,
     ReachSessionBridge? bridge,
     SessionMcpBootstrap? mcpBootstrap,
+    AgentsStore? agentsStore,
   })  : _bridge = bridge ?? AoReachSessionBridge(),
-        _mcpBootstrap = mcpBootstrap ?? ComstarMcpBootstrap(config);
+        _mcpBootstrap = mcpBootstrap ?? ComstarMcpBootstrap(config),
+        agentsStore = agentsStore ?? AgentsStore();
 
   final ComstarConfig config;
+  final AgentsStore agentsStore;
   final ReachSessionBridge _bridge;
   final SessionMcpBootstrap _mcpBootstrap;
 
@@ -499,19 +534,41 @@ class ComstarSession {
       'mtls': mtls != null,
     });
 
+    final orch = config.orchestration;
+    final runtime = await agentsStore.loadRuntime();
+    final dynamicPlanning =
+        agentsStore.effectiveDynamicPlanning(orch, runtime);
+    final defaultRunMode =
+        agentsStore.effectiveDefaultRunMode(orch, runtime);
+    final allowedIds = await agentsStore.effectiveAllowedIds(
+      orch,
+      runtime: runtime,
+    );
+    final allowedMcps = await agentsStore.effectiveAllowedMcpIds(runtime: runtime);
+    final allowedSkills =
+        await agentsStore.effectiveAllowedSkillIds(runtime: runtime);
+    final sessionEnv = await agentsStore.sessionEnvMap();
+
     await _bridge.start(
       config: ReachConnectionConfig(
-        baseUrl: config.orchestration.baseUrl,
+        baseUrl: orch.baseUrl,
         headers: headers,
         appId: kComstarReachAppId,
-        ttlSeconds: config.orchestration.ttlSeconds,
+        ttlSeconds: orch.ttlSeconds,
         questionIdPrefix: 'comstar',
         speechToken: speechTokenFromEnv(),
         speechSttBaseUrlOverride: speechSttOverrideFromEnv(),
         speechTtsBaseUrlOverride: speechTtsOverrideFromEnv(),
+        dynamicPlanning: dynamicPlanning,
+        defaultRunMode: defaultRunMode,
+        allowedAgentProviderIds:
+            allowedIds.isEmpty ? null : allowedIds,
+        allowedMcpProviderIds: allowedMcps.isEmpty ? null : allowedMcps,
+        allowedSkillIds: allowedSkills.isEmpty ? null : allowedSkills,
+        sessionEnv: sessionEnv.isEmpty ? null : sessionEnv,
         mtls: mtls,
       ),
-      overlayRoot: config.orchestration.overlayRoot,
+      overlayRoot: orch.overlayRoot,
       mcpBootstrap: _mcpBootstrap,
     );
 
@@ -520,6 +577,11 @@ class ComstarSession {
       'agents': _bridge.registeredAgentIds,
       'voice': mcpProvidersForVoice(),
       'expires_at': _bridge.expiresAt,
+      'dynamic_planning': dynamicPlanning,
+      'allowed_agents': allowedIds,
+      'allowed_mcps': allowedMcps,
+      'allowed_skills': allowedSkills,
+      'session_env_keys': sessionEnv.keys.toList(),
     });
 
     if (_bridge.speechClient != null) {
@@ -760,7 +822,10 @@ class ComstarSession {
     ).hasMatch(t);
   }
 
-  Future<String> directVoice(String text) async {
+  Future<String> directVoice(
+    String text, {
+    void Function(ReachRunStatus status)? onStatus,
+  }) async {
     await ensureReady();
     final mcps = mcpProvidersForVoice(utterance: text);
     final googleOnly = mcps.length == 1 && mcps.first == 'client.google_workspace';
@@ -784,6 +849,7 @@ class ComstarSession {
         text: prompt,
         mcpProviderIds: mcps,
         timeout: Duration(seconds: timeoutSec),
+        onStatus: onStatus,
       );
       return result['text']?.toString() ?? '';
     } catch (e) {
@@ -809,9 +875,70 @@ class ComstarSession {
         ),
         mcpProviderIds: mcpProvidersForVoice(utterance: text),
         timeout: Duration(seconds: timeoutSec),
+        onStatus: onStatus,
       );
       return result['text']?.toString() ?? '';
     }
+  }
+
+  /// Dynamic planning turn (`SessionBridge.chat`).
+  Future<String> chatVoice(
+    String text, {
+    void Function(ReachRunStatus status)? onStatus,
+  }) async {
+    await ensureReady();
+    final orch = config.orchestration;
+    final runtime = await agentsStore.loadRuntime();
+    final timeoutSec = orch.dynamicTimeoutSeconds;
+    final runMode = agentsStore.effectiveDefaultRunMode(orch, runtime);
+    try {
+      final result = await _bridge.chat(
+        text: text,
+        runMode: runMode,
+        timeout: Duration(seconds: timeoutSec),
+        onStatus: onStatus,
+      );
+      return result['text']?.toString() ?? '';
+    } catch (e) {
+      final msg = e.toString();
+      final bridgeDead = msg.contains('not active') ||
+          msg.contains('session bridge') ||
+          msg.contains('disconnected');
+      if (!bridgeDead) rethrow;
+      logWarn(
+        'session_renew_retry',
+        'AO chat failed; renewing session and retrying',
+        data: {'error': msg},
+      );
+      await _reopen(userid: _userid!, guest: _guest);
+      final result = await _bridge.chat(
+        text: text,
+        runMode: runMode,
+        timeout: Duration(seconds: timeoutSec),
+        onStatus: onStatus,
+      );
+      return result['text']?.toString() ?? '';
+    }
+  }
+
+  /// Force re-register overlay with current Agents store (Admin Apply).
+  Future<bool> applyAgentsRefresh() async {
+    final userid = _userid;
+    if (userid == null || !_bridge.isActive) {
+      agentsStore.markApplied();
+      return false;
+    }
+    await _reopen(userid: userid, guest: _guest);
+    agentsStore.markApplied();
+    return true;
+  }
+
+  Future<bool> effectiveDynamicPlanning() async {
+    final runtime = await agentsStore.loadRuntime();
+    return agentsStore.effectiveDynamicPlanning(
+      config.orchestration,
+      runtime,
+    );
   }
 
   /// Steer qwen tool-use: bare questions often skip MCP and invent "no access".

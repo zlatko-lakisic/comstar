@@ -68,6 +68,11 @@ class ComstarConfig {
     'timeout_seconds',
     'overlay_root',
     'mtls',
+    'dynamic_planning',
+    'default_run_mode',
+    'allowed_agent_provider_ids',
+    'voice_backend',
+    'dynamic_timeout_seconds',
   };
 
   static const _orchestrationMtlsKeys = {
@@ -339,6 +344,23 @@ class ComstarConfig {
         );
       }
     }
+    final runMode = (_optionalString(map, 'default_run_mode') ?? 'dynamic')
+        .trim()
+        .toLowerCase();
+    const runModes = {'dynamic', 'dynamic-iterative'};
+    if (!runModes.contains(runMode)) {
+      throw ConfigError(
+        'orchestration.default_run_mode must be one of: ${runModes.join(', ')}',
+      );
+    }
+    final voiceBackend =
+        (_optionalString(map, 'voice_backend') ?? 'hybrid').trim().toLowerCase();
+    const voiceBackends = {'hybrid', 'direct', 'dynamic'};
+    if (!voiceBackends.contains(voiceBackend)) {
+      throw ConfigError(
+        'orchestration.voice_backend must be one of: ${voiceBackends.join(', ')}',
+      );
+    }
     return OrchestrationConfig(
       baseUrl: baseUrl,
       token: _optionalString(map, 'token') ?? '',
@@ -347,6 +369,25 @@ class ComstarConfig {
           _requireInt(map, 'timeout_seconds', 'orchestration'),
       overlayRoot: _requireString(map, 'overlay_root', 'orchestration'),
       mtls: mtls,
+      dynamicPlanning: _optionalBool(map, 'dynamic_planning') ?? false,
+      defaultRunMode: runMode,
+      allowedAgentProviderIds: _optionalStringList(
+            map,
+            'allowed_agent_provider_ids',
+          ) ??
+          const [
+            'gpt_research',
+            'gpt_reason',
+            'gpt_write',
+            'claude_research',
+            'claude_reason',
+            'claude_write',
+            'ollama_qwen2_5_14b_instruct',
+          ],
+      voiceBackend: voiceBackend,
+      dynamicTimeoutSeconds: map.containsKey('dynamic_timeout_seconds')
+          ? _requireInt(map, 'dynamic_timeout_seconds', 'orchestration')
+          : 300,
     );
   }
 
@@ -658,6 +699,12 @@ class ComstarConfig {
       5,
       60,
     );
+    _rangeInt(
+      'orchestration.dynamic_timeout_seconds',
+      orchestration.dynamicTimeoutSeconds,
+      15,
+      600,
+    );
 
     const strangerModes = {'restricted', 'greet', 'ignore'};
     if (!strangerModes.contains(attention.strangerMode)) {
@@ -789,6 +836,18 @@ class ComstarConfig {
     return value.toString();
   }
 
+  static List<String>? _optionalStringList(Map<String, dynamic> map, String key) {
+    final value = map[key];
+    if (value == null) return null;
+    if (value is! List) {
+      throw ConfigError('$key must be a list of strings');
+    }
+    return [
+      for (final e in value)
+        if (e != null && e.toString().trim().isNotEmpty) e.toString().trim(),
+    ];
+  }
+
   static int _requireInt(
     Map<String, dynamic> map,
     String key,
@@ -870,6 +929,19 @@ class OrchestrationConfig {
     required this.timeoutSeconds,
     required this.overlayRoot,
     this.mtls = const OrchestrationMtlsConfig(),
+    this.dynamicPlanning = false,
+    this.defaultRunMode = 'dynamic',
+    this.allowedAgentProviderIds = const [
+      'gpt_research',
+      'gpt_reason',
+      'gpt_write',
+      'claude_research',
+      'claude_reason',
+      'claude_write',
+      'ollama_qwen2_5_14b_instruct',
+    ],
+    this.voiceBackend = 'hybrid',
+    this.dynamicTimeoutSeconds = 300,
   });
 
   final String baseUrl;
@@ -878,6 +950,33 @@ class OrchestrationConfig {
   final int timeoutSeconds;
   final String overlayRoot;
   final OrchestrationMtlsConfig mtls;
+
+  /// Yaml default; Admin Agents runtime overlay may override.
+  final bool dynamicPlanning;
+
+  /// `dynamic` | `dynamic-iterative`
+  final String defaultRunMode;
+
+  /// Curated stock agent ids passed to Reach `allowedAgentProviderIds`.
+  final List<String> allowedAgentProviderIds;
+
+  /// `hybrid` | `direct` | `dynamic`
+  final String voiceBackend;
+
+  /// Wall-clock budget for Reach `chat` / dynamic planning turns (seconds).
+  final int dynamicTimeoutSeconds;
+
+  /// Responding-state Tick deadline for in-flight AO turns (ms).
+  ///
+  /// Uses the larger of the direct-agent floor (max(configured, 90s) for HA
+  /// tools) and [dynamicTimeoutSeconds], so research/chat is not cut off by
+  /// the short `timeout_seconds` chat default while the Future is still waiting.
+  int get aoRespondingTimeoutMs {
+    final directConfigured = timeoutSeconds * 1000;
+    final directFloor = directConfigured < 90000 ? 90000 : directConfigured;
+    final dynamicMs = dynamicTimeoutSeconds * 1000;
+    return directFloor > dynamicMs ? directFloor : dynamicMs;
+  }
 }
 
 class VisionConfig {

@@ -496,6 +496,9 @@ class ConversationMemory {
   }
 
   /// Render history for the model; drop oldest lines if over [maxChars].
+  ///
+  /// Strips repeated timeout / empty-reply apologies so they do not bias the
+  /// local planner toward acknowledging instead of researching.
   static String formatHistoryBlock(
     List<ConversationTurn> turns, {
     required int maxChars,
@@ -503,6 +506,7 @@ class ConversationMemory {
     if (turns.isEmpty || maxChars <= 0) return '';
     final lines = <String>[];
     for (final t in turns) {
+      if (t.role == 'assistant' && isTimeoutApology(t.text)) continue;
       final who = t.role == 'user' ? 'Resident' : 'COMSTAR';
       final where =
           (t.terminal != null && t.terminal!.trim().isNotEmpty)
@@ -510,11 +514,22 @@ class ConversationMemory {
               : '';
       lines.add('$who$where: ${t.text}');
     }
+    if (lines.isEmpty) return '';
     var joined = lines.join('\n');
     while (joined.length > maxChars && lines.isNotEmpty) {
       lines.removeAt(0);
       joined = lines.join('\n');
     }
     return joined;
+  }
+
+  /// Prior hallway timeout / empty-reply lines that poison research prompts.
+  static bool isTimeoutApology(String text) {
+    final t = text.toLowerCase().trim();
+    if (t.isEmpty) return false;
+    return t.contains('could not get an answer in time') ||
+        t.contains("don't have a reply right now") ||
+        t.contains('dont have a reply right now') ||
+        t.contains('i do not have a reply right now');
   }
 }

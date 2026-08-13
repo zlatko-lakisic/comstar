@@ -17,6 +17,11 @@ void main() {
       expect(config.vision.engagedFps, 3);
       expect(config.orchestration.timeoutSeconds, 15);
       expect(config.orchestration.mtls.enabled, isFalse);
+      expect(config.orchestration.dynamicPlanning, isFalse);
+      expect(config.orchestration.voiceBackend, 'hybrid');
+      expect(config.orchestration.dynamicTimeoutSeconds, 300);
+      expect(config.orchestration.aoRespondingTimeoutMs, 300000);
+      expect(config.orchestration.allowedAgentProviderIds, isNotEmpty);
       expect(config.attention.strangerMode, 'restricted');
       expect(config.attention.workingAckMs, 4500);
       expect(config.attention.workingAckOnTools, isTrue);

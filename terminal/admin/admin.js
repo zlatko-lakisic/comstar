@@ -8,6 +8,7 @@ import { createInject } from './components/inject.js';
 import { createRoad } from './components/road.js';
 import { createNetwork } from './components/network.js';
 import { createAoMtls } from './components/ao_mtls.js';
+import { createAgents } from './components/agents.js';
 
 const params = new URLSearchParams(location.search);
 let token = params.get('token') || sessionStorage.getItem('comstar_lan_token') || '';
@@ -26,6 +27,7 @@ const els = {
   liveDot: document.getElementById('liveDot'),
   clock: document.getElementById('clock'),
   railEmblem: document.getElementById('railEmblem'),
+  railAoActivity: document.getElementById('railAoActivity'),
   railState: document.getElementById('railState'),
   railUser: document.getElementById('railUser'),
   railKv: document.getElementById('railKv'),
@@ -40,18 +42,22 @@ const els = {
   roadRoot: document.getElementById('roadRoot'),
   networkRoot: document.getElementById('networkRoot'),
   aoMtlsRoot: document.getElementById('aoMtlsRoot'),
+  agentsRoot: document.getElementById('agentsRoot'),
   actionsPane: document.getElementById('actionsPane'),
   roadPane: document.getElementById('roadPane'),
   networkPane: document.getElementById('networkPane'),
   aoPane: document.getElementById('aoPane'),
+  agentsPane: document.getElementById('agentsPane'),
   logsPane: document.getElementById('logsPane'),
   tabActions: document.getElementById('tabActions'),
   tabRoad: document.getElementById('tabRoad'),
   tabNetwork: document.getElementById('tabNetwork'),
   tabAo: document.getElementById('tabAo'),
+  tabAgents: document.getElementById('tabAgents'),
   tabLogs: document.getElementById('tabLogs'),
   roadTabDot: document.getElementById('roadTabDot'),
   aoTabDot: document.getElementById('aoTabDot'),
+  agentsTabDot: document.getElementById('agentsTabDot'),
   injectRoot: document.getElementById('injectRoot'),
   logsControls: document.getElementById('logsControls'),
   logsRoot: document.getElementById('logsRoot'),
@@ -138,12 +144,37 @@ function setAoTabDot({ enabled, paired, openssl_ok } = {}) {
   if (pill) pill.title = 'AO mTLS not paired';
 }
 
+function setAgentsTabDot({ dynamic_planning, needs_refresh, ready_count } = {}) {
+  const dot = els.agentsTabDot;
+  if (!dot) return;
+  dot.classList.remove('is-off', 'is-down', 'is-connecting', 'is-up', 'is-home');
+  const pill = dot.parentElement;
+  if (!dynamic_planning) {
+    dot.classList.add('is-off');
+    if (pill) pill.title = 'Dynamic planning off';
+    return;
+  }
+  if (needs_refresh) {
+    dot.classList.add('is-connecting');
+    if (pill) pill.title = 'Agents changed — Apply to live session';
+    return;
+  }
+  if ((ready_count ?? 0) > 0) {
+    dot.classList.add('is-up');
+    if (pill) pill.title = 'Dynamic planning on';
+    return;
+  }
+  dot.classList.add('is-down');
+  if (pill) pill.title = 'Dynamic planning on — no ready stock agents';
+}
+
 function selectTab(name) {
   const tabs = [
     { name: 'actions', tab: els.tabActions, pane: els.actionsPane },
     { name: 'road', tab: els.tabRoad, pane: els.roadPane },
     { name: 'network', tab: els.tabNetwork, pane: els.networkPane },
     { name: 'ao', tab: els.tabAo, pane: els.aoPane },
+    { name: 'agents', tab: els.tabAgents, pane: els.agentsPane },
     { name: 'logs', tab: els.tabLogs, pane: els.logsPane },
   ];
   const active = tabs.some((t) => t.name === name) ? name : 'actions';
@@ -163,15 +194,17 @@ function selectTab(name) {
   }
   if (active === 'network') network?.onShow?.();
   if (active === 'ao') aoMtls?.onShow?.();
+  if (active === 'agents') agents?.onShow?.();
 }
 
 els.tabActions?.addEventListener('click', () => selectTab('actions'));
 els.tabRoad?.addEventListener('click', () => selectTab('road'));
 els.tabNetwork?.addEventListener('click', () => selectTab('network'));
 els.tabAo?.addEventListener('click', () => selectTab('ao'));
+els.tabAgents?.addEventListener('click', () => selectTab('agents'));
 els.tabLogs?.addEventListener('click', () => selectTab('logs'));
 
-const rail = createRailEmblem(els.railEmblem);
+const rail = createRailEmblem(els.railEmblem, { activityRoot: els.railAoActivity });
 const health = createHealth(els.healthGrid, els.metricsRow);
 createActions(els.actionsRoot, els.modalRoot, {
   api,
@@ -186,6 +219,10 @@ const aoMtls = createAoMtls(els.aoMtlsRoot, {
   api,
   onStatus: setAoTabDot,
 });
+const agents = createAgents(els.agentsRoot, {
+  api,
+  onStatus: setAgentsTabDot,
+});
 const logs = createLogs(els.logsRoot, els.logsControls, {
   apiUrl: api.url,
   authHeaders: api.authHeaders,
@@ -194,7 +231,9 @@ const logs = createLogs(els.logsRoot, els.logsControls, {
 
 const savedTab = sessionStorage.getItem('comstar_ops_tab');
 selectTab(
-  ['actions', 'road', 'network', 'ao', 'logs'].includes(savedTab) ? savedTab : 'actions',
+  ['actions', 'road', 'network', 'ao', 'agents', 'logs'].includes(savedTab)
+    ? savedTab
+    : 'actions',
 );
 
 els.gateToken.value = token;

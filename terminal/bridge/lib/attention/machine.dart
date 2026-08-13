@@ -30,6 +30,7 @@ class MachineContext {
     this.identityExpiresAtMs,
     this.listeningStartedAtMs = 0,
     this.respondingStartedAtMs = 0,
+    this.aoDeadlineAtMs,
     this.engagedEnteredAtMs = 0,
     this.sttPending = false,
     this.lastGreeterUserid,
@@ -64,6 +65,8 @@ class MachineContext {
   int? identityExpiresAtMs;
   int listeningStartedAtMs;
   int respondingStartedAtMs;
+  /// Absolute ms deadline for in-flight AO; null → derive from started + budget.
+  int? aoDeadlineAtMs;
   int engagedEnteredAtMs;
   bool sttPending;
   String? lastGreeterUserid;
@@ -111,6 +114,7 @@ class MachineContext {
         identityExpiresAtMs: identityExpiresAtMs,
         listeningStartedAtMs: listeningStartedAtMs,
         respondingStartedAtMs: respondingStartedAtMs,
+        aoDeadlineAtMs: aoDeadlineAtMs,
         engagedEnteredAtMs: engagedEnteredAtMs,
         sttPending: sttPending,
         lastGreeterUserid: lastGreeterUserid,
@@ -450,6 +454,7 @@ class AttentionMachine {
           context.state = const Responding();
           context.respondingStartedAtMs = context.clock.nowMs;
           context.directAgentInFlight = true;
+          _armAoDeadline();
           // Mic off for the whole think+speak half-duplex turn. Wake stays
           // armed per invariants until ResponseReady sets playing.
           context.wakeEnabled = true;
@@ -468,6 +473,7 @@ class AttentionMachine {
         context.state = const Responding();
         context.respondingStartedAtMs = context.clock.nowMs;
         context.directAgentInFlight = false;
+        context.aoDeadlineAtMs = null;
         context.playing = true;
         context.turnId ??= _uuid.v4();
         if (context.halfDuplex) {
@@ -533,17 +539,12 @@ class AttentionMachine {
         effects.add(const OpenFollowUpWindow());
       case Tick():
         if (context.directAgentInFlight) {
-          final elapsedMs =
-              context.clock.nowMs - context.respondingStartedAtMs;
-          // AO + Home Assistant tool turns often exceed the chat timeout (15s).
-          // Keep waiting long enough that SpeakFallback does not fire mid-call
-          // and leave Responding before the real reply arrives.
-          final configuredMs =
-              context.config.orchestration.timeoutSeconds * 1000;
-          final timeoutMs =
-              configuredMs < 90000 ? 90000 : configuredMs;
-          if (elapsedMs > timeoutMs) {
+          final budgetMs = context.config.orchestration.aoRespondingTimeoutMs;
+          final deadline = context.aoDeadlineAtMs ??
+              (context.respondingStartedAtMs + budgetMs);
+          if (context.clock.nowMs > deadline) {
             context.directAgentInFlight = false;
+            context.aoDeadlineAtMs = null;
             effects.add(
               SpeakFallback(
                 'Sorry, I could not get an answer in time.',
@@ -631,6 +632,7 @@ class AttentionMachine {
     context.turnId = _uuid.v4();
     context.respondingStartedAtMs = context.clock.nowMs;
     context.directAgentInFlight = true;
+    _armAoDeadline();
     context.sttPending = false;
     context.playing = false;
     context.followUpOpen = false;
@@ -973,6 +975,25 @@ class AttentionMachine {
     effects.add(const SetThinking(false));
   }
 
+  void _armAoDeadline() {
+    context.aoDeadlineAtMs = context.clock.nowMs +
+        context.config.orchestration.aoRespondingTimeoutMs;
+  }
+
+  /// Spoken progress while AO is still planning/running — extend deadline so
+  /// planner-only time is not treated as "no answer" yet.
+  void extendAoDeadline({int graceMs = 90000}) {
+    if (!context.directAgentInFlight) return;
+    final now = context.clock.nowMs;
+    final budget = context.config.orchestration.aoRespondingTimeoutMs;
+    final start = context.respondingStartedAtMs;
+    final cap = start + budget + 120000; // +2 min beyond configured budget
+    final next = now + graceMs;
+    final cur = context.aoDeadlineAtMs ?? (start + budget);
+    final extended = next > cur ? next : cur;
+    context.aoDeadlineAtMs = extended > cap ? cap : extended;
+  }
+
   void _returnAmbient(List<Effect> effects, {required bool closeSession}) {
     context.state = const Ambient();
     context.turnId = null;
@@ -980,6 +1001,7 @@ class AttentionMachine {
     context.playing = false;
     context.followUpOpen = false;
     context.directAgentInFlight = false;
+    context.aoDeadlineAtMs = null;
     context.absentFrames = 0;
     context.announcedThisEngage = false;
     context.presence.clear();

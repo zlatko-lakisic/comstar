@@ -7,6 +7,20 @@ orchestration:
   ttl_seconds: 86400                         # overlay TTL (AO max); refresh before expiry
   timeout_seconds: 15                        # 5–60 per CONTRACTS §7
   overlay_root: ./overlays/comstar
+  # Dynamic planning (AO ≥ 2.2 / Reach ≥ 0.7). Admin Agents tab can override
+  # enables + store provider keys; keys go to AO via Reach sessionEnv only.
+  dynamic_planning: true
+  default_run_mode: dynamic                  # dynamic | dynamic-iterative
+  voice_backend: hybrid                      # hybrid | direct | dynamic
+  dynamic_timeout_seconds: 300               # 15–600; research/chat budget (Reach chat default ~300s)
+  allowed_agent_provider_ids:
+    - gpt_research
+    - gpt_reason
+    - gpt_write
+    - claude_research
+    - claude_reason
+    - claude_write
+    - ollama_qwen2_5_14b_instruct
   # Ada HTTPS + client certs (ADR 0013). When enabled, base_url must be https://…
   # mtls:
   #   enabled: true

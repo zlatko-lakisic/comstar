@@ -63,6 +63,7 @@ never require the admin token.
 | `/admin/api/road` | GET/POST | token if LAN-bound | Road VPN status / configure / connect (ADR 0011) |
 | `/admin/api/network` | GET/POST | token if LAN-bound | Host Wi‑Fi + IPv4 (DHCP/static) via nmcli (ADR 0012) |
 | `/admin/api/ao_mtls` | GET/POST | token if LAN-bound | AO Reach mTLS pairing status / enroll / clear (ADR 0013) |
+| `/admin/api/agents` | GET/POST | token if LAN-bound | Dynamic planning + curated stock agents / provider API keys |
 | `/admin/inject` | POST | token if LAN-bound | Attention event inject; **403 unless `COMSTAR_ENV=dev`** |
 | `/oauth/google/*` | * | none | Desktop OAuth start/callback/resend |
 
@@ -210,6 +211,66 @@ Operator control of **Wi‑Fi** and **IPv4** on ethernet/wlan via NetworkManager
 IPv4 fields are validated (dotted quad / CIDR prefix). Wrong static config can
 lock out LAN admin — operator responsibility.
 
+#### Dynamic agents (`GET/POST /admin/api/agents`) — SPEC
+
+Reach dynamic planning for `appId` `ComStar` → `comstar`. Runtime overlay +
+secrets under `$COMSTAR_DATA_DIR/agents` (default
+`~/.local/share/comstar/agents`): `runtime.json` (toggles / allowlists) and
+`secrets.json` (provider / catalog env keys, chmod 0600). Does **not** rewrite
+`comstar.yaml`. Keys are published to AO only via Reach
+`session_overlay_register.env` (session-scoped). Enable lists become Reach
+`allowedAgentProviderIds` / `allowedMcpProviderIds` / `allowedSkillIds`.
+
+**GET `/admin/api/agents`** returns (no raw secrets):
+
+```json
+{
+  "ok": true,
+  "dynamic_planning": true,
+  "default_run_mode": "dynamic",
+  "voice_backend": "hybrid",
+  "enabled_agent_ids": ["gpt_research"],
+  "enabled_mcp_ids": [],
+  "enabled_skill_ids": [],
+  "agents": [{ "id": "gpt_research", "label": "GPT Research", "enabled": true, "ready": true }],
+  "mcps": [],
+  "skills": [],
+  "harnesses": [],
+  "catalog": { "agents": [], "mcps": [], "skills": [], "harnesses": [] },
+  "secrets": {
+    "OPENAI_API_KEY": { "configured": true, "hint": "sk-…xxxx", "masked": "sk-••••••••••••xxxx", "valid": true, "label": "OpenAI API key" },
+    "openai": { "configured": true, "hint": "sk-…xxxx", "masked": "sk-••••••••••••xxxx", "valid": true, "from_env": false }
+  },
+  "ao_progress": null,
+  "apply": { "needs_session_refresh": false, "session_active": true }
+}
+```
+
+`catalog` is proxied from AO `GET /api/v1/catalog` (Reach `ReachCatalogClient`,
+mTLS when configured). Empty catalog on fetch failure still allows configure of
+known ids. Harnesses are informational only (not a session allowlist).
+
+`ready` = enabled and required secrets present (Admin or env). `masked` /
+`hint` never include the raw key. `valid` is last in-process probe (`true` /
+`false` / `null`).
+
+**GET `/admin/api/status`** may include `ao_progress` (latest Reach status
+snapshot or `null`) and `thinking` for the Admin rail.
+
+**POST** body `{ "action": "<name>", ... }`:
+
+| action | Fields | Effect |
+|---|---|---|
+| `configure` | `dynamic_planning?`, `enabled_agent_ids?`, `enabled_mcp_ids?`, `enabled_skill_ids?`, `default_run_mode?` | Write `runtime.json`; set `needs_session_refresh` |
+| `set_secrets` | `openai_api_key?`, `anthropic_api_key?`, and/or `env` map of catalog secret names → values (blank/omit = keep) | Write `secrets.json` 0600 |
+| `clear_secret` | `provider`: `openai` \| `anthropic`, or `name`: env key | Remove that key |
+| `test_secret` | `provider` or `name`; optional typed value to probe before save | HTTP probe when known (OpenAI/Anthropic); updates `valid` |
+| `apply` | — | Re-open active Reach session so allowlists/`sessionEnv` take effect |
+
+Default seed when runtime has no enables: curated research pack
+(`gpt_research`, …, `ollama_qwen2_5_14b_instruct`). Overlay `client.*` agents /
+MCPs stay always available.
+
 #### AO mTLS pairing (`GET/POST /admin/api/ao_mtls`) — SPEC
 
 One-time client cert enrollment against Ada AO (ADR 0013). Material under
@@ -269,7 +330,8 @@ ignored, never fatal — this is how we ship kiosk and bridge independently.
 | `speak` | `{text, audioUrl, visemes?, mood?}` | Render this utterance. `audioUrl` is a loopback HTTP URL served by the bridge. |
 | `speak.cancel` | `{}` | Barge-in or timeout. Stop immediately, return to idle. |
 | `listening` | `{active, level?}` | Show/hide listening indicator; `level` 0–1 for a mic meter. |
-| `thinking` | `{active}` | Orchestration in flight. Kiosk shows a subtle working state. Optional bridge UX: after `attention.working_ack_ms` (default 4500; `0` off) while AO is still in flight — only when `attention.working_ack_on_tools` (default true) sees a non-empty `mcpProvidersForVoice` **and** the utterance looks like real tool/query work (lights, calendar, lookup, camera, etc.) — the bridge may speak a one-shot phrase-bank `working` line without completing the turn; if that ack played, the final AO reply is prefixed with `result_ready`. Casual continuity (“okay, good to know”) never arms. No new WS types. |
+| `thinking` | `{active}` | Orchestration in flight. Kiosk emblem opacity pulses (~0.72↔1.0) and phase shows “Talking to AO…”. Optional bridge UX: after `attention.working_ack_ms` (default 4500; `0` off) while AO is still in flight — for tool/query turns **or** dynamic/research turns — the bridge may speak a one-shot phrase-bank `working` line without completing the turn; if that ack played, the final AO reply is prefixed with `result_ready`. Working ack also extends the AO Responding deadline so planner time is not treated as a silent failure. Casual continuity (“okay, good to know”) never arms. |
+| `ao.progress` | `{active, message?, phase?, processing?, step?, step_count?, agent_provider_id?}` | Live AO run status (Reach `ReachRunStatus`). Hallway shows a centered activity card under the avatar (slide-replace; blink while `processing`). `active:false` starts client hold (~1.8s) then exit. Admin polls the same snapshot via `/admin/api/status` → `ao_progress`. |
 | `pairing.qr` | `{active, phase?, url?, userCode?, qrSvg?}` | Show/hide QR overlay for **Google** device-code OAuth **or** messaging-channel pairing (ADR 0015). `phase` is `awaiting` \| `verifying` \| `idle`. Same attempt as the spoken user code. `active:false` clears the overlay. |
 | `admin.qr` | `{active, url?, qrSvg?, ip?, iface?, port?, type?, hotspot?, ssid?}` | Debug / `COMSTAR_ENV=dev`, or **fallback SoftAP** (ADR 0014): small QR opening `http://<ip>:8781/admin/?token=…`. Prefer ethernet, then Wi‑Fi client, then hotspot `10.87.65.1`. When `hotspot` is true, `ssid` is the temporary AP name (shown under the QR). `active:false` clears. Never log the token. |
 | `error` | `{code, message}` | Display a non-fatal error affordance. |
@@ -444,8 +506,8 @@ Rules:
 
 ## 4. Bridge → AO via `ao_reach`
 
-**Status:** VERIFIED path — Reach `v0.5.2` / AO ≥ 2.0 (`appId` required; Ada
-may still be mid-upgrade). Ada serves **HTTPS + client certs** on `:8765`
+**Status:** VERIFIED path — Reach ≥ `v0.7.1` / AO ≥ `2.2.0` (`appId` required;
+dynamic planning + session env). Ada serves **HTTPS + client certs** on `:8765`
 (direct, not Warpgate). Host MCP catalog ids:
 `fetch_url`, `filesystem_local`, `home_assistant`, `media_audio_transcribe`,
 `media_understand`, `media_video_analyze`. Do **not** request `memory` / `time` /
@@ -467,6 +529,14 @@ When `speechClient == null` (older AO, speech disabled, or session not started),
 fall back to `COMSTAR_STT_URL` / `COMSTAR_TTS_URL` (local Pi or Mac bring-up).
 Speech sidecars remain cleartext HTTP (out of mTLS scope).
 
+**Dynamic planning (AO ≥ 2.1 / Reach ≥ 0.6; session env AO ≥ 2.2 / Reach ≥ 0.7):**
+when effective `orchestration.dynamic_planning` (yaml + Admin runtime) is true,
+open-ended turns use `SessionBridge.chat` / `runMode: dynamic` instead of
+`direct_agent`. Home/tool turns stay on `direct_agent` → `client.voice_responder`
+when `voice_backend: hybrid` (default). Stock allowlist + provider keys:
+`allowedAgentProviderIds` + `sessionEnv` on register (Admin Agents tab / env
+fallback). Overlay `client.*` agents always remain available.
+
 ### Connection
 
 ```dart
@@ -485,6 +555,10 @@ await bridge.start(
         'x-warpgate-token': cfg.orchestration.token,
     },
     ttlSeconds: cfg.orchestration.ttlSeconds,
+    dynamicPlanning: effectiveDynamicPlanning, // yaml + Admin runtime
+    defaultRunMode: effectiveDefaultRunMode,   // dynamic | dynamic-iterative
+    allowedAgentProviderIds: effectiveAllowedIds,
+    sessionEnv: sessionEnvMap, // OPENAI_API_KEY / ANTHROPIC_API_KEY when set
     mtls: cfg.orchestration.mtls.enabled
         ? ReachMtlsConfig(materialDir: cfg.orchestration.mtls.resolvedMaterialDir())
         : null,
@@ -498,11 +572,21 @@ await bridge.start(
 
 ### Turn
 
+Hybrid (`voice_backend: hybrid`): specialty MCP / home-control → `direct_agent`;
+otherwise when dynamic planning is on → `chat`.
+
 ```dart
+// Home / tools
 final result = await bridge.directAgent(
   agentProviderId: 'client.voice_responder',
   text: transcript,
-  mcpProviderIds: ['client.terminal', 'vision', 'memory', 'home_assistant', 'time', 'math'],
+  mcpProviderIds: mcpProvidersForVoice(utterance: transcript),
+);
+
+// Open-ended (dynamic planning)
+final planned = await bridge.chat(
+  text: transcript,
+  runMode: 'dynamic',
 );
 ```
 
@@ -771,7 +855,11 @@ See `config/comstar.example.yaml` for the annotated version. Validation rules:
 | `audio.wakeword_threshold` | 0.2 ≤ x ≤ 0.95 |
 | `audio.vad_silence_ms` | 300 ≤ x ≤ 2000 |
 | `audio.followup_window_seconds` | 0 ≤ x ≤ 30 |
-| `orchestration.timeout_seconds` | 5 ≤ x ≤ 60 |
+| `orchestration.timeout_seconds` | 5 ≤ x ≤ 60 (direct_agent / chat default) |
+| `orchestration.dynamic_timeout_seconds` | 15 ≤ x ≤ 600; Reach `chat` / dynamic research budget (default **300**). Responding Tick uses `max(direct≥90s, dynamic)` so hallway does not SpeakFallback while AO research is still running. |
+| `orchestration.dynamic_planning` | bool; Reach sticky dynamic planning |
+| `orchestration.allowed_agent_provider_ids` | curated stock ids (`gpt_research`, `claude_research`, …) → Reach `allowedAgentProviderIds` |
+| `orchestration.voice_backend` | `hybrid` \| `direct` \| `dynamic` |
 | `orchestration.mtls.enabled` | when true, `base_url` must be `https://…` |
 | `orchestration.mtls.material_dir` | optional; default `~/.local/share/comstar/ao-mtls` |
 | `orchestration.mtls.client_name` | optional CN for enroll (default hostname) |
@@ -918,7 +1006,7 @@ While engaged, vision may keep recognizing at a reduced rate. The machine tracks
 | listening | TranscriptReady | text empty | engaged | play `error` tone, `listen.stop` |
 | responding | ResponseReady | — | responding | `speak` to kiosk |
 | responding | PlaybackEnded | — | engaged | open follow-up window, re-enable wake |
-| responding | Tick | elapsed > orchestration timeout | engaged | speak fallback line, re-enable wake |
+| responding | Tick | now > AO deadline (`orchestration.aoRespondingTimeoutMs`, default dynamic 300s; working ack may extend) | engaged | speak fallback line, re-enable wake |
 | engaged | AnnouncementReady | gate passed, not playing, !announcedThisEngage | responding | `speak` (TTS), mark delivered, set announcedThisEngage |
 | any (not sleeping) | EnterSleep | — | sleeping | stop listen, cancel follow-up, wake armed, ignore vision |
 | sleeping | WakeWord | score ≥ threshold, wake-only utterance | listening (or engaged+follow-up) | `listen.start` (keep session if open) |

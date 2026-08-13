@@ -227,18 +227,22 @@ export function mountEmblem(container, opts = {}) {
     }
 
     const desat = frozen ? 0.35 : 1;
+    let thinkMul = 1;
+    if (thinking && !frozen) {
+      thinkMul = 0.72 + 0.28 * (0.5 + 0.5 * Math.sin(t * 3.2));
+    }
     core.setAttribute('transform', `scale(${(base * (1 + amplitude * 0.16)).toFixed(4)})`);
     core.setAttribute('opacity',
-      Math.min(1, cur.op + amplitude * 0.4).toFixed(3));
+      Math.min(1, (cur.op + amplitude * 0.4) * thinkMul).toFixed(3));
     if (bloom > 0) {
       halo.setAttribute('transform',
         `scale(${(base * (1 + amplitude * 0.30 + mic * 0.12)).toFixed(4)})`);
       halo.setAttribute('opacity',
-        Math.min(0.62, cur.op * 0.22 + amplitude * 0.34 + mic * 0.26).toFixed(3));
+        Math.min(0.62, (cur.op * 0.22 + amplitude * 0.34 + mic * 0.26) * thinkMul).toFixed(3));
     }
-    glow.style.opacity = Math.max(0, cur.op * 0.85 * desat).toFixed(3);
+    glow.style.opacity = Math.max(0, cur.op * 0.85 * desat * thinkMul).toFixed(3);
     glow.style.filter = frozen ? 'grayscale(1)' : (target.amber ? 'sepia(0.35) saturate(1.4)' : '');
-    shift.setAttribute('opacity', (cur.op * desat).toFixed(3));
+    shift.setAttribute('opacity', (cur.op * desat * thinkMul).toFixed(3));
     if (frozen) {
       svg.style.filter = 'grayscale(1) brightness(0.85)';
     } else if (target.amber) {

@@ -419,6 +419,31 @@ Admin **Probe /health**, or
 Restart bridge (or wait for next session open) so Reach uses the cert.
 Cert ~365d — re-pair from Admin when near expiry.
 
+### Dynamic agents + provider keys
+
+Admin → **Agents** (`GET/POST /admin/api/agents`, CONTRACTS § Admin console):
+
+1. Enable **Dynamic planning** and the stock agents you want (`gpt_research`,
+   `claude_research`, other `gpt_*` / `claude_*`, local Qwen).
+2. Paste OpenAI / Anthropic API keys (stored under
+   `~/.local/share/comstar/agents/secrets.json`, chmod 0600 — never in yaml).
+   Use **Test** so the valid checkbox lights up.
+3. Click **Apply to live session** so Reach re-registers with
+   `allowedAgentProviderIds` + `sessionEnv` (AO uses keys for this COMSTAR
+   session only — not Ada host env).
+
+**Timeouts:** `orchestration.timeout_seconds` (≤60) is the direct_agent budget;
+`orchestration.dynamic_timeout_seconds` (default **300**) is the Reach `chat`
+research budget. Hallway Responding uses the larger of those (with a ≥90s floor
+for HA tools) so “Sorry, I could not get an answer in time” does not fire while
+AO is still planning/running. Working acks speak earlier on dynamic turns and
+extend that deadline.
+
+Hybrid routing: home/tool phrases stay on `client.voice_responder`; open-ended
+questions use Reach `chat`. Optional Ada sticky prefs:
+Admin → Access → Dynamic planning by app → `comstar`. Requires AO ≥ 2.2 and
+Reach ≥ 0.7.1.
+
 ### Host network (Wi‑Fi + IPv4)
 
 Admin **Network** tab (`GET/POST /admin/api/network`, ADR 0012) uses the same

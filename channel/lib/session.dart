@@ -12,6 +12,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:ao_reach/ao_reach.dart';
+import 'package:comstar_channel/agents_prefs.dart';
 import 'package:comstar_channel/reach_app.dart';
 import 'package:path/path.dart' as p;
 
@@ -26,7 +27,8 @@ class ChannelSessionManager {
     this.agentProviderId = 'client.text_responder',
     this.mtlsEnabled = false,
     this.mtlsMaterialDir = '',
-  });
+    ChannelAgentsPrefs? agentsPrefs,
+  }) : agentsPrefs = agentsPrefs ?? ChannelAgentsPrefs();
 
   final String baseUrl;
   final String overlayRoot;
@@ -36,6 +38,7 @@ class ChannelSessionManager {
   final String agentProviderId;
   final bool mtlsEnabled;
   final String mtlsMaterialDir;
+  final ChannelAgentsPrefs agentsPrefs;
 
   final Map<String, _Held> _byUser = {};
 
@@ -87,14 +90,33 @@ class ChannelSessionManager {
   Future<String> turn(String userid, String text) async {
     final held = await _ensure(userid);
     held.lastUsed = DateTime.now();
-    final result = await held.bridge.directAgent(
-      agentProviderId: agentProviderId,
-      text: text,
-      timeout: const Duration(seconds: 120),
+    final dynamicOn = await agentsPrefs.dynamicPlanning();
+    final useChat = shouldUseDynamicChatForText(
+      dynamicPlanning: dynamicOn,
+      utterance: text,
     );
+    final Map<String, dynamic> result;
+    if (useChat) {
+      final mode = await agentsPrefs.defaultRunMode();
+      result = await held.bridge.chat(
+        text: text,
+        runMode: mode,
+        timeout: const Duration(seconds: 120),
+      );
+    } else {
+      result = await held.bridge.directAgent(
+        agentProviderId: agentProviderId,
+        text: text,
+        timeout: const Duration(seconds: 120),
+      );
+    }
     final body = '${result['text'] ?? ''}'.trim();
     if (result['ok'] != true || body.isEmpty) {
-      throw StateError('text_responder turn failed for $userid');
+      throw StateError(
+        useChat
+            ? 'dynamic chat turn failed for $userid'
+            : 'text_responder turn failed for $userid',
+      );
     }
     return body;
   }
@@ -119,6 +141,10 @@ class ChannelSessionManager {
     };
     if (token.isNotEmpty) headers['x-warpgate-token'] = token;
     final mtls = _mtlsOrThrow();
+    final dynamicPlanning = await agentsPrefs.dynamicPlanning();
+    final allowed = await agentsPrefs.allowedAgentIds();
+    final sessionEnv = await agentsPrefs.sessionEnv();
+    final runMode = await agentsPrefs.defaultRunMode();
 
     await bridge.start(
       config: ReachConnectionConfig(
@@ -126,6 +152,10 @@ class ChannelSessionManager {
         headers: headers,
         appId: kComstarReachAppId,
         ttlSeconds: ttlSeconds,
+        dynamicPlanning: dynamicPlanning,
+        defaultRunMode: runMode,
+        allowedAgentProviderIds: allowed.isEmpty ? null : allowed,
+        sessionEnv: sessionEnv.isEmpty ? null : sessionEnv,
         mtls: mtls,
       ),
       overlayRoot: overlayRoot,

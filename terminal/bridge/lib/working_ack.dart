@@ -2,17 +2,21 @@
 
 /// Whether to arm the working-ack timer for this AO voice call.
 ///
-/// When [workingAckOnTools] is true, providers must be non-empty **and** the
-/// utterance must look like real tool/query work. Casual conversation
-/// ("okay that's good to know") must not get a "give me a minute" — HA is
-/// often attached by default even when no tools will run.
+/// When [force] is true (dynamic/research turns), arm even without MCP tools.
+/// When [workingAckOnTools] is true and [force] is false, providers must be
+/// non-empty **and** the utterance must look like real tool/query work.
+/// Casual conversation ("okay that's good to know") must not get a
+/// "give me a minute" — HA is often attached by default even when no tools
+/// will run.
 bool shouldArmWorkingAck({
   required List<String> mcpProviders,
   required bool workingAckOnTools,
   required int workingAckMs,
   String? utterance,
+  bool force = false,
 }) {
   if (workingAckMs <= 0) return false;
+  if (force) return true;
   if (workingAckOnTools && mcpProviders.isEmpty) return false;
   if (!looksLikeLongToolQuery(utterance ?? '')) return false;
   return true;
@@ -33,7 +37,24 @@ bool looksLikeLongToolQuery(String text) {
   // Pure conversational follow-ups / acknowledgements — never a "long query".
   if (_conversationalContinuity.hasMatch(t)) return false;
 
-  return _toolHeavy.hasMatch(t);
+  return _toolHeavy.hasMatch(t) || looksLikeResearch(t);
+}
+
+/// Open-ended research / explain intents (dynamic planning / stock research).
+bool looksLikeResearch(String text) {
+  final t = text
+      .toLowerCase()
+      .replaceAll(RegExp(r"['\u2019]"), '')
+      .replaceAll(RegExp(r'[^\w\s]'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+  if (t.isEmpty) return false;
+  return RegExp(
+    r'\b(research|investigate|look (this|that|it) up|look up|'
+    r'find out (about|what|how|why)|tell me about|explain|'
+    r'what (is|are|was|were)|how (does|do|did|can)|why (is|are|do|does)|'
+    r'do some research|dig into|background on)\b',
+  ).hasMatch(t);
 }
 
 final _conversationalContinuity = RegExp(

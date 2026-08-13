@@ -60,12 +60,16 @@ class FakeReachBridge implements ReachSessionBridge {
     fakeExpiresAt = null;
   }
 
+  void Function(ReachRunStatus status)? lastOnStatus;
+  List<ReachRunStatus> statusEvents = [];
+
   @override
   Future<Map<String, dynamic>> directAgent({
     required String agentProviderId,
     required String text,
     List<String>? mcpProviderIds,
     Duration? timeout,
+    void Function(ReachRunStatus status)? onStatus,
   }) async {
     if (directAgentError != null) {
       final err = directAgentError!;
@@ -75,7 +79,48 @@ class FakeReachBridge implements ReachSessionBridge {
     lastAgentId = agentProviderId;
     lastText = text;
     lastMcpIds = mcpProviderIds;
+    lastOnStatus = onStatus;
+    if (onStatus != null) {
+      final st = ReachRunStatus(
+        questionId: 'q-test',
+        processing: true,
+        phase: 'working',
+        message: 'Searching…',
+      );
+      statusEvents.add(st);
+      onStatus(st);
+    }
     return {'ok': true, 'text': 'hello'};
+  }
+
+  String? lastChatText;
+  String? lastChatRunMode;
+  int chatCount = 0;
+
+  @override
+  Future<Map<String, dynamic>> chat({
+    required String text,
+    String? questionId,
+    List<String>? selectedAgentProviderIds,
+    String? runMode,
+    Duration? timeout,
+    void Function(ReachRunStatus status)? onStatus,
+  }) async {
+    chatCount++;
+    lastChatText = text;
+    lastChatRunMode = runMode;
+    lastOnStatus = onStatus;
+    if (onStatus != null) {
+      final st = ReachRunStatus(
+        questionId: questionId ?? 'q-chat',
+        processing: true,
+        phase: 'planning',
+        message: 'Planning…',
+      );
+      statusEvents.add(st);
+      onStatus(st);
+    }
+    return {'ok': true, 'text': 'planned hello'};
   }
 
   @override
@@ -331,6 +376,28 @@ void main() {
 
       expect(fake.lastMcpIds, isNot(contains('home_assistant')));
       expect(fake.lastMcpIds, isEmpty);
+    });
+
+    test('directVoice forwards onStatus callbacks', () async {
+      await session.open(userid: 'zlatko', guest: false);
+      final seen = <String>[];
+      await session.directVoice(
+        'hello',
+        onStatus: (s) => seen.add(s.message),
+      );
+      expect(fake.lastOnStatus, isNotNull);
+      expect(seen, contains('Searching…'));
+    });
+
+    test('chatVoice forwards onStatus callbacks', () async {
+      await session.open(userid: 'zlatko', guest: false);
+      final seen = <String>[];
+      await session.chatVoice(
+        'research something',
+        onStatus: (s) => seen.add(s.message),
+      );
+      expect(fake.lastOnStatus, isNotNull);
+      expect(seen, contains('Planning…'));
     });
 
 
