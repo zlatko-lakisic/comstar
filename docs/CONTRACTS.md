@@ -246,9 +246,13 @@ secrets under `$COMSTAR_DATA_DIR/agents` (default
 }
 ```
 
-`catalog` is proxied from AO `GET /api/v1/catalog` (Reach `ReachCatalogClient`,
-mTLS when configured). Empty catalog on fetch failure still allows configure of
-known ids. Harnesses are informational only (not a session allowlist).
+`catalog` merges live AO `GET /api/v1/catalog` (currently *available*
+providers on the host) with the full AO stock `agent_providers` pack shipped
+in COMSTAR (`kAoStockAgents`), so Admin can enable stock ids even when Ada is
+not advertising them. Live rows are flagged `available`/`onAo`; stock-only
+rows are still enableable via `allowedAgentProviderIds` + `sessionEnv`.
+Empty/failed live fetch still returns the stock agent pack. Harnesses are
+informational only (not a session allowlist).
 
 `ready` = enabled and required secrets present (Admin or env). `masked` /
 `hint` never include the raw key. `valid` is last in-process probe (`true` /

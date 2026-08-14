@@ -50,34 +50,44 @@ function matchesFilter(e, q) {
   return hay.includes(q);
 }
 
-/** Merge status agents + AO catalog + enabled ids into one toggleable list. */
+/** Merge status agents + AO catalog (live+stock) + enabled ids into one list. */
 function buildAgentPool(snapshot, draftIds) {
   const byId = new Map();
-  const catalogIds = new Set((snapshot.catalog?.agents || []).map((a) => a.id));
+  const catalogAgents = snapshot.catalog?.agents || [];
+  const liveIds = new Set(
+    catalogAgents.filter((a) => a.available || a.onAo).map((a) => a.id),
+  );
 
   function upsert(raw, source) {
     if (!raw?.id) return;
     const prev = byId.get(raw.id) || {};
+    const onAo = !!(raw.onAo || raw.available || liveIds.has(raw.id) || prev.onAo);
     byId.set(raw.id, {
       id: raw.id,
       label: raw.label || prev.label || entryLabel(raw),
       description: raw.description || prev.description || '',
       provider: raw.provider || prev.provider || raw.type || '',
       role: raw.role || prev.role || '',
+      model: raw.model || prev.model || '',
       requiredSecrets: raw.requiredSecrets || prev.requiredSecrets || [],
       ready: raw.ready ?? prev.ready,
-      onAo: catalogIds.has(raw.id) || prev.onAo === true,
-      source: prev.source || source,
+      onAo,
+      available: onAo,
+      source: raw.source || prev.source || source,
     });
   }
 
+  for (const a of catalogAgents) upsert(a, a.source || 'catalog');
   for (const a of snapshot.agents || []) upsert(a, 'curated');
-  for (const a of snapshot.catalog?.agents || []) upsert({ ...a, onAo: true }, 'catalog');
   for (const id of draftIds || []) {
-    if (!byId.has(id)) upsert({ id, label: id, onAo: catalogIds.has(id) }, 'custom');
+    if (!byId.has(id)) upsert({ id, label: id, onAo: liveIds.has(id) }, 'custom');
   }
 
-  return [...byId.values()].sort((a, b) => a.id.localeCompare(b.id));
+  return [...byId.values()].sort((a, b) => {
+    // Available first, then alphabetical.
+    if (!!a.onAo !== !!b.onAo) return a.onAo ? -1 : 1;
+    return a.id.localeCompare(b.id);
+  });
 }
 
 function buildPool(catalogList, draftIds) {
@@ -154,9 +164,9 @@ export function createAgents(root, { api, onStatus } = {}) {
         const badges = [];
         if (opts.showAoBadge) {
           badges.push(
-            e.onAo
-              ? '<span class="agents-badge is-on-ao">on AO</span>'
-              : '<span class="agents-badge is-off-ao">not on AO</span>',
+            e.onAo || e.available
+              ? '<span class="agents-badge is-on-ao">available on AO</span>'
+              : '<span class="agents-badge is-off-ao">stock (not advertised)</span>',
           );
         }
         if (on && !ready) badges.push('<span class="agents-badge is-blocked">needs secret</span>');
@@ -271,13 +281,14 @@ export function createAgents(root, { api, onStatus } = {}) {
         <span>MCPs: <strong>${(snapshot.session_allowed_mcp_ids || []).length}</strong></span>
         <span>Skills: <strong>${(snapshot.session_allowed_skill_ids || []).length}</strong></span>
         <span class="muted">${snapshot.session_open ? 'session open' : 'session closed'}</span>
-        ${cat.ok === false ? `<span class="agents-warn">catalog: ${escapeHtml(cat.error || 'failed')}</span>` : ''}
+        ${cat.ok === false ? `<span class="agents-warn">live catalog: ${escapeHtml(cat.error || 'failed')}</span>` : ''}
+        <span class="muted">AO live ${Number(cat.live_agent_count) || 0} · stock ${Number(cat.stock_agent_count) || agentsPool.length}</span>
       </div>`;
 
     body.innerHTML = `
       <section class="agents-section">
         <h3>Agents</h3>
-        <p class="muted">Curated COMSTAR pack + AO catalog. Enable ids even when AO is not advertising them (allowlist is still sent on Apply).</p>
+        <p class="muted">Full AO stock pack (${agentsPool.length} agents) plus whatever Ada is advertising live. Enable any id — Apply sends allowlists + secrets even when AO is not currently advertising that provider.</p>
         ${renderPicker('agents', agentsPool, { showAoBadge: true, allowCustom: true })}
       </section>
       <section class="agents-section">

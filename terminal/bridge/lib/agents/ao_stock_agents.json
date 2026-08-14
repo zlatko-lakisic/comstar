@@ -1,0 +1,4066 @@
+{
+  "agents": [
+    {
+      "id": "claude_reason",
+      "kind": "agent",
+      "label": "Staff Engineer",
+      "role": "Staff Engineer",
+      "description": "Anthropic Claude\u2014trade-offs, architecture choices, structured reasoning, and recommendations under constraints.",
+      "provider": "anthropic",
+      "model": "claude-3-5-sonnet-20241022",
+      "harnessProfile": "reason",
+      "requiredSecrets": [
+        {
+          "name": "ANTHROPIC_API_KEY",
+          "label": "Anthropic API key",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "claude_research",
+      "kind": "agent",
+      "label": "Research Analyst",
+      "role": "Research Analyst",
+      "description": "Anthropic Claude\u2014research, comparisons, grounded summaries, and structured factual explanations.",
+      "provider": "anthropic",
+      "model": "claude-3-5-haiku-20241022",
+      "harnessProfile": "research",
+      "requiredSecrets": [
+        {
+          "name": "ANTHROPIC_API_KEY",
+          "label": "Anthropic API key",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "claude_write",
+      "kind": "agent",
+      "label": "Technical Writer",
+      "role": "Technical Writer",
+      "description": "Anthropic Claude\u2014polish prose, briefings, executive summaries, and clear technical writing.",
+      "provider": "anthropic",
+      "model": "claude-3-5-haiku-20241022",
+      "harnessProfile": "write",
+      "requiredSecrets": [
+        {
+          "name": "ANTHROPIC_API_KEY",
+          "label": "Anthropic API key",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "gpt_reason",
+      "kind": "agent",
+      "label": "Staff Engineer",
+      "role": "Staff Engineer",
+      "description": "OpenAI API\u2014trade-offs, architecture choices, structured reasoning, and recommendations under constraints.",
+      "provider": "openai",
+      "model": "gpt-4o",
+      "harnessProfile": "reason",
+      "requiredSecrets": [
+        {
+          "name": "OPENAI_API_KEY",
+          "label": "OpenAI API key",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "gpt_research",
+      "kind": "agent",
+      "label": "Research Analyst",
+      "role": "Research Analyst",
+      "description": "OpenAI API\u2014research, comparisons, grounded summaries, and structured factual explanations.",
+      "provider": "openai",
+      "model": "gpt-4o-mini",
+      "harnessProfile": "research",
+      "requiredSecrets": [
+        {
+          "name": "OPENAI_API_KEY",
+          "label": "OpenAI API key",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "gpt_write",
+      "kind": "agent",
+      "label": "Technical Writer",
+      "role": "Technical Writer",
+      "description": "OpenAI API\u2014polish prose, briefings, executive summaries, and clear technical writing.",
+      "provider": "openai",
+      "model": "gpt-4o-mini",
+      "harnessProfile": "write",
+      "requiredSecrets": [
+        {
+          "name": "OPENAI_API_KEY",
+          "label": "OpenAI API key",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_codellama_7b",
+      "kind": "agent",
+      "label": "Code Specialist",
+      "role": "Code Specialist",
+      "description": "HF Hub\u2014Code Llama 7B instruct.",
+      "provider": "huggingface",
+      "model": "codellama/CodeLlama-7b-Instruct-hf",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_cohere_aya_8b",
+      "kind": "agent",
+      "label": "Multilingual Specialist",
+      "role": "Multilingual Specialist",
+      "description": "HF Hub\u2014Cohere Aya 8B multilingual.",
+      "provider": "huggingface",
+      "model": "CohereForAI/aya-expanse-8b",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_cohere_command_r",
+      "kind": "agent",
+      "label": "RAG-Friendly Assistant",
+      "role": "RAG-Friendly Assistant",
+      "description": "HF Hub\u2014Cohere Command R (7B Dec\u201924 route via Inference Providers); RAG-style and long tasks.",
+      "provider": "huggingface",
+      "model": "CohereLabs/c4ai-command-r7b-12-2024",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_deepseek_coder_6_7b",
+      "kind": "agent",
+      "label": "Coder",
+      "role": "Coder",
+      "description": "HF Hub\u2014DeepSeek Coder 6.7B for code-heavy tasks.",
+      "provider": "huggingface",
+      "model": "deepseek-ai/deepseek-coder-6.7b-instruct",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_deepseek_r1_distill_llama_8b",
+      "kind": "agent",
+      "label": "Reasoning Assistant",
+      "role": "Reasoning Assistant",
+      "description": "HF Hub\u2014R1-distilled Llama; good for math-like steps.",
+      "provider": "huggingface",
+      "model": "deepseek-ai/DeepSeek-R1-Distill-Llama-8B",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_deepseek_r1_distill_qwen_7b",
+      "kind": "agent",
+      "label": "Reasoning Assistant",
+      "role": "Reasoning Assistant",
+      "description": "HF Hub\u2014R1-distilled Qwen; concise chain-of-thought style.",
+      "provider": "huggingface",
+      "model": "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_deepseek_v25",
+      "kind": "agent",
+      "label": "General Assistant",
+      "role": "General Assistant",
+      "description": "HF Hub\u2014DeepSeek V2.5 general/chat; larger context tasks.",
+      "provider": "huggingface",
+      "model": "deepseek-ai/DeepSeek-V2.5",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_falcon_7b",
+      "kind": "agent",
+      "label": "General Chat",
+      "role": "General Chat",
+      "description": "HF Hub\u2014Falcon 7B instruct baseline.",
+      "provider": "huggingface",
+      "model": "tiiuae/falcon-7b-instruct",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_garden_agri_chat_multilingual",
+      "kind": "agent",
+      "label": "Multilingual Extension-Style Gardening Advisor",
+      "role": "Multilingual Extension-Style Gardening Advisor",
+      "description": ">-",
+      "provider": "huggingface",
+      "model": "mesabo/agri-chat-multilingual",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_garden_agriassist_llm",
+      "kind": "agent",
+      "label": "Applied Agronomy Advisor",
+      "role": "Applied Agronomy Advisor",
+      "description": ">-",
+      "provider": "huggingface",
+      "model": "sikeaditya/AgriAssist_LLM",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_garden_agriculture_advisory_8b",
+      "kind": "agent",
+      "label": "Crop and Vegetation Advisory Specialist",
+      "role": "Crop and Vegetation Advisory Specialist",
+      "description": ">-",
+      "provider": "huggingface",
+      "model": "Navinaa21/Agriculture-Advisory-LLM-8B",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_garden_agriparam",
+      "kind": "agent",
+      "label": "Agriculture Decision-Support Advisor",
+      "role": "Agriculture Decision-Support Advisor",
+      "description": ">-",
+      "provider": "huggingface",
+      "model": "bharatgenai/AgriParam",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_garden_diagnostics_qwen2_vl_7b",
+      "kind": "agent",
+      "label": "Plant Health Diagnostics Specialist",
+      "role": "Plant Health Diagnostics Specialist",
+      "description": ">-",
+      "provider": "huggingface",
+      "model": "Qwen/Qwen2-VL-7B-Instruct",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_garden_fast_triage_gemma3_4b",
+      "kind": "agent",
+      "label": "Rapid Garden Triage Assistant",
+      "role": "Rapid Garden Triage Assistant",
+      "description": ">-",
+      "provider": "huggingface",
+      "model": "google/gemma-3-4b-it",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_garden_generalist_qwen25_14b",
+      "kind": "agent",
+      "label": "Gardening Planning Advisor",
+      "role": "Gardening Planning Advisor",
+      "description": ">-",
+      "provider": "huggingface",
+      "model": "Qwen/Qwen2.5-14B-Instruct",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_garden_irrigation_phi3_mini",
+      "kind": "agent",
+      "label": "Irrigation Optimization Advisor",
+      "role": "Irrigation Optimization Advisor",
+      "description": ">-",
+      "provider": "huggingface",
+      "model": "YuvrajSingh9886/phi3-mini-fine-tuned-agricultural-irrigation-QnA",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_garden_leaf_disease_vlm",
+      "kind": "agent",
+      "label": "Leaf Disease Visual Analyst",
+      "role": "Leaf Disease Visual Analyst",
+      "description": ">-",
+      "provider": "huggingface",
+      "model": "YuchengShi/LLaVA-v1.5-7B-Plant-Leaf-Diseases-Detection",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_garden_multilingual_aya_8b",
+      "kind": "agent",
+      "label": "Multilingual Gardening Support Agent",
+      "role": "Multilingual Gardening Support Agent",
+      "description": ">-",
+      "provider": "huggingface",
+      "model": "CohereForAI/aya-expanse-8b",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_garden_reasoning_r1_qwen7b",
+      "kind": "agent",
+      "label": "Garden Root-Cause Analyst",
+      "role": "Garden Root-Cause Analyst",
+      "description": ">-",
+      "provider": "huggingface",
+      "model": "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_garden_soil_water_command_r",
+      "kind": "agent",
+      "label": "Soil and Irrigation Planner",
+      "role": "Soil and Irrigation Planner",
+      "description": ">-",
+      "provider": "huggingface",
+      "model": "CohereLabs/c4ai-command-r7b-12-2024",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_gemma2_27b",
+      "kind": "agent",
+      "label": "Reasoning Assistant",
+      "role": "Reasoning Assistant",
+      "description": "HF Hub\u2014Gemma 2 27B; stronger reasoning than 9B line.",
+      "provider": "huggingface",
+      "model": "google/gemma-2-27b-it",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_gemma2_9b",
+      "kind": "agent",
+      "label": "Research Assistant",
+      "role": "Research Assistant",
+      "description": "HF Hub\u2014Gemma 2 9B instruct; Google Gemma chat.",
+      "provider": "huggingface",
+      "model": "google/gemma-2-9b-it",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_gemma3_4b",
+      "kind": "agent",
+      "label": "Compact Assistant",
+      "role": "Compact Assistant",
+      "description": "HF Hub\u2014compact Gemma 3 4B for edge-like cloud calls.",
+      "provider": "huggingface",
+      "model": "google/gemma-3-4b-it",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_hermes_llama31_8b",
+      "kind": "agent",
+      "label": "Tool-Aware Assistant",
+      "role": "Tool-Aware Assistant",
+      "description": "HF Hub\u2014Hermes 3 on Llama 3.1 8B; tool-friendly tendencies.",
+      "provider": "huggingface",
+      "model": "NousResearch/Hermes-3-Llama-3.1-8B",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_ibm_granite_8b",
+      "kind": "agent",
+      "label": "Enterprise Coder-Analyst",
+      "role": "Enterprise Coder-Analyst",
+      "description": "HF Hub\u2014IBM Granite 3.1 8B instruct.",
+      "provider": "huggingface",
+      "model": "ibm-granite/granite-3.1-8b-instruct",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_internlm25_7b",
+      "kind": "agent",
+      "label": "Research Chat",
+      "role": "Research Chat",
+      "description": "HF Hub\u2014InternLM2.5 7B chat.",
+      "provider": "huggingface",
+      "model": "internlm/internlm2_5-7b-chat",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_llama_3_2_11b_vision",
+      "kind": "agent",
+      "label": "Vision-Language Assistant",
+      "role": "Vision-Language Assistant",
+      "description": "HF Hub\u2014vision+language; describe images and charts when the crew passes multimodal input.",
+      "provider": "huggingface",
+      "model": "meta-llama/Llama-3.2-11B-Vision-Instruct",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_llama_3_2_3b",
+      "kind": "agent",
+      "label": "Lightweight Assistant",
+      "role": "Lightweight Assistant",
+      "description": "HF Hub\u2014small fast Llama 3.2 for quick drafts and classification.",
+      "provider": "huggingface",
+      "model": "meta-llama/Llama-3.2-3B-Instruct",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_llama_3_3_70b",
+      "kind": "agent",
+      "label": "Senior Analyst",
+      "role": "Senior Analyst",
+      "description": "HF Hub\u2014Llama 3.3 70B; heavier reasoning and long-context tasks.",
+      "provider": "huggingface",
+      "model": "meta-llama/Llama-3.3-70B-Instruct",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_magistral_small",
+      "kind": "agent",
+      "label": "Reasoning Assistant",
+      "role": "Reasoning Assistant",
+      "description": "HF Hub\u2014Mistral Magistral Small reasoning-oriented line.",
+      "provider": "huggingface",
+      "model": "mistralai/Magistral-Small-2509",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_meta_llama_3_1_70b",
+      "kind": "agent",
+      "label": "Lead Assistant",
+      "role": "Lead Assistant",
+      "description": "HF Hub\u2014Llama 3.1 70B instruct flagship tier.",
+      "provider": "huggingface",
+      "model": "meta-llama/Meta-Llama-3.1-70B-Instruct",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_meta_llama_3_1_8b",
+      "kind": "agent",
+      "label": "Instruction-Following Assistant",
+      "role": "Instruction-Following Assistant",
+      "description": "HF Hub\u2014Llama 3.1 8B; strong instruction following.",
+      "provider": "huggingface",
+      "model": "meta-llama/Meta-Llama-3.1-8B-Instruct",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_meta_llama_3_8b",
+      "kind": "agent",
+      "label": "General Assistant",
+      "role": "General Assistant",
+      "description": "HF Hub\u2014Llama 3 8B instruct; balanced chat and reasoning.",
+      "provider": "huggingface",
+      "model": "meta-llama/Meta-Llama-3-8B-Instruct",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_mistral_7b_v3",
+      "kind": "agent",
+      "label": "Chat Specialist",
+      "role": "Chat Specialist",
+      "description": "HF Hub\u2014Mistral 7B v0.3 general instruct chat.",
+      "provider": "huggingface",
+      "model": "mistralai/Mistral-7B-Instruct-v0.3",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_mistral_small_24b",
+      "kind": "agent",
+      "label": "Technical Generalist",
+      "role": "Technical Generalist",
+      "description": "HF Hub\u2014Mistral Small 24B instruct; good mid-size workhorse.",
+      "provider": "huggingface",
+      "model": "mistralai/Mistral-Small-24B-Instruct-2501",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_mixtral_8x7b",
+      "kind": "agent",
+      "label": "MoE Generalist",
+      "role": "MoE Generalist",
+      "description": "HF Hub\u2014Mixtral MoE 8x7B; stronger quality at medium cost.",
+      "provider": "huggingface",
+      "model": "mistralai/Mixtral-8x7B-Instruct-v0.1",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_nemotron_70b",
+      "kind": "agent",
+      "label": "Technical Advisor",
+      "role": "Technical Advisor",
+      "description": "HF Hub\u2014Nemotron 70B instruct; NVIDIA-tuned Llama family.",
+      "provider": "huggingface",
+      "model": "nvidia/Llama-3.1-Nemotron-70B-Instruct-HF",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_olmo2_7b",
+      "kind": "agent",
+      "label": "Open Science Assistant",
+      "role": "Open Science Assistant",
+      "description": "HF Hub\u2014OLMo 2 7B instruct (Allen AI).",
+      "provider": "huggingface",
+      "model": "allenai/OLMo-2-1124-7B-Instruct",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_openchat_35",
+      "kind": "agent",
+      "label": "Conversational Assistant",
+      "role": "Conversational Assistant",
+      "description": "HF Hub\u2014OpenChat 3.5 conversation model.",
+      "provider": "huggingface",
+      "model": "openchat/openchat-3.5-0106",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_openhermes_25_7b",
+      "kind": "agent",
+      "label": "General Instruct",
+      "role": "General Instruct",
+      "description": "HF Hub\u2014OpenHermes 2.5 on Mistral 7B.",
+      "provider": "huggingface",
+      "model": "teknium/OpenHermes-2.5-Mistral-7B",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_phi3_medium",
+      "kind": "agent",
+      "label": "Explainer",
+      "role": "Explainer",
+      "description": "HF Hub\u2014Phi-3 medium instruct for longer explanations.",
+      "provider": "huggingface",
+      "model": "microsoft/Phi-3-medium-4k-instruct",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_phi3_mini",
+      "kind": "agent",
+      "label": "Analyst",
+      "role": "Analyst",
+      "description": "HF Hub\u2014Phi-3 mini; strong small model for reasoning snippets.",
+      "provider": "huggingface",
+      "model": "microsoft/Phi-3-mini-4k-instruct",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_phi4_mini",
+      "kind": "agent",
+      "label": "Assistant",
+      "role": "Assistant",
+      "description": "HF Hub\u2014Phi-4 mini; Microsoft small instruct model.",
+      "provider": "huggingface",
+      "model": "microsoft/Phi-4-mini-instruct",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_qwen25_14b",
+      "kind": "agent",
+      "label": "Generalist",
+      "role": "Generalist",
+      "description": "HF Hub\u2014Qwen2.5 14B; stronger general instruct.",
+      "provider": "huggingface",
+      "model": "Qwen/Qwen2.5-14B-Instruct",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_qwen25_72b",
+      "kind": "agent",
+      "label": "Research Lead",
+      "role": "Research Lead",
+      "description": "HF Hub\u2014Qwen2.5 72B; heavy lifting for research-grade answers.",
+      "provider": "huggingface",
+      "model": "Qwen/Qwen2.5-72B-Instruct",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_qwen25_7b",
+      "kind": "agent",
+      "label": "Multilingual Assistant",
+      "role": "Multilingual Assistant",
+      "description": "HF Hub\u2014Qwen2.5 7B instruct; multilingual general tasks.",
+      "provider": "huggingface",
+      "model": "Qwen/Qwen2.5-7B-Instruct",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_qwen25_coder_32b",
+      "kind": "agent",
+      "label": "Staff Engineer",
+      "role": "Staff Engineer",
+      "description": "HF Hub\u2014Qwen2.5 Coder 32B; larger coding model.",
+      "provider": "huggingface",
+      "model": "Qwen/Qwen2.5-Coder-32B-Instruct",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_qwen25_coder_7b",
+      "kind": "agent",
+      "label": "Code Assistant",
+      "role": "Code Assistant",
+      "description": "HF Hub\u2014Qwen2.5 Coder 7B; code completion and refactoring hints.",
+      "provider": "huggingface",
+      "model": "Qwen/Qwen2.5-Coder-7B-Instruct",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_qwen2_vl_7b",
+      "kind": "agent",
+      "label": "Vision Assistant",
+      "role": "Vision Assistant",
+      "description": "HF Hub\u2014Qwen2-VL multimodal text+image understanding.",
+      "provider": "huggingface",
+      "model": "Qwen/Qwen2-VL-7B-Instruct",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_qwen3_8b",
+      "kind": "agent",
+      "label": "Assistant",
+      "role": "Assistant",
+      "description": "HF Hub\u2014Qwen3 8B family; modern Qwen chat/reasoning.",
+      "provider": "huggingface",
+      "model": "Qwen/Qwen3-8B",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_sambanova_qwen25_72b",
+      "kind": "agent",
+      "label": "Heavyweight Generalist",
+      "role": "Heavyweight Generalist",
+      "description": "HF Hub via Sambanova\u2014Qwen2.5 72B instruct.",
+      "provider": "huggingface",
+      "model": "sambanova/Qwen/Qwen2.5-72B-Instruct",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_smollm2_1_7b",
+      "kind": "agent",
+      "label": "Light Assistant",
+      "role": "Light Assistant",
+      "description": "HF Hub\u2014SmolLM2 tiny instruct for cheap passes.",
+      "provider": "huggingface",
+      "model": "HuggingFaceTB/SmolLM2-1.7B-Instruct",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_snowflake_arctic",
+      "kind": "agent",
+      "label": "Enterprise Assistant",
+      "role": "Enterprise Assistant",
+      "description": "HF Hub\u2014Snowflake Arctic instruct for enterprise-flavored QA.",
+      "provider": "huggingface",
+      "model": "snowflake/snowflake-arctic-instruct",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_solar_10b",
+      "kind": "agent",
+      "label": "Instruct Model",
+      "role": "Instruct Model",
+      "description": "HF Hub\u2014SOLAR 10.7B instruct (Upstage).",
+      "provider": "huggingface",
+      "model": "upstage/SOLAR-10.7B-Instruct-v1.0",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_starchat2_15b",
+      "kind": "agent",
+      "label": "Code Chat",
+      "role": "Code Chat",
+      "description": "HF Hub\u2014StarChat2 code conversation.",
+      "provider": "huggingface",
+      "model": "HuggingFaceH4/starchat2-15b-v0.1",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_starcoder2_15b",
+      "kind": "agent",
+      "label": "Code Generator",
+      "role": "Code Generator",
+      "description": "HF Hub\u2014StarCoder2 15B for code generation.",
+      "provider": "huggingface",
+      "model": "bigcode/starcoder2-15b",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_tinyllama_1b",
+      "kind": "agent",
+      "label": "Micro Assistant",
+      "role": "Micro Assistant",
+      "description": "HF Hub\u2014TinyLlama 1.1B for ultra-cheap generations.",
+      "provider": "huggingface",
+      "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_together_deepseek_r1",
+      "kind": "agent",
+      "label": "Reasoning Model",
+      "role": "Reasoning Model",
+      "description": "HF Hub via Together provider route\u2014DeepSeek R1 class reasoning.",
+      "provider": "huggingface",
+      "model": "together/deepseek-ai/DeepSeek-R1",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_together_llama3_70b",
+      "kind": "agent",
+      "label": "Large Chat Model",
+      "role": "Large Chat Model",
+      "description": "HF Hub via Together\u2014Llama 3 70B instruct.",
+      "provider": "huggingface",
+      "model": "together/meta-llama/Meta-Llama-3-70B-Instruct",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_vicuna_7b",
+      "kind": "agent",
+      "label": "Chat Model",
+      "role": "Chat Model",
+      "description": "HF Hub\u2014Vicuna v1.5 7B chat baseline.",
+      "provider": "huggingface",
+      "model": "lmsys/vicuna-7b-v1.5",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_yi_15_9b",
+      "kind": "agent",
+      "label": "Bilingual Assistant",
+      "role": "Bilingual Assistant",
+      "description": "HF Hub\u2014Yi 1.5 9B chat with 16k flavor.",
+      "provider": "huggingface",
+      "model": "01-ai/Yi-1.5-9B-Chat-16K",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "hf_zephyr_7b",
+      "kind": "agent",
+      "label": "Helpful Assistant",
+      "role": "Helpful Assistant",
+      "description": "HF Hub\u2014Zephyr 7B aligned chat.",
+      "provider": "huggingface",
+      "model": "HuggingFaceH4/zephyr-7b-beta",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "HF_TOKEN",
+          "label": "Hugging Face token",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "jetstream_tpu_google_gemma_2b",
+      "kind": "agent",
+      "label": "TPU Inference Specialist",
+      "role": "TPU Inference Specialist",
+      "description": "JetStream PyTorch listed model: google/gemma-2b.",
+      "provider": "jetstream",
+      "model": "google/gemma-2b",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "JETSTREAM_API_KEY",
+          "label": "JetStream API key",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "jetstream_tpu_google_gemma_2b_it",
+      "kind": "agent",
+      "label": "TPU Inference Specialist",
+      "role": "TPU Inference Specialist",
+      "description": "JetStream PyTorch listed model: google/gemma-2b-it.",
+      "provider": "jetstream",
+      "model": "google/gemma-2b-it",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "JETSTREAM_API_KEY",
+          "label": "JetStream API key",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "jetstream_tpu_google_gemma_7b",
+      "kind": "agent",
+      "label": "TPU Inference Specialist",
+      "role": "TPU Inference Specialist",
+      "description": "JetStream PyTorch listed model: google/gemma-7b.",
+      "provider": "jetstream",
+      "model": "google/gemma-7b",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "JETSTREAM_API_KEY",
+          "label": "JetStream API key",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "jetstream_tpu_google_gemma_7b_it",
+      "kind": "agent",
+      "label": "TPU Inference Specialist",
+      "role": "TPU Inference Specialist",
+      "description": "JetStream PyTorch listed model: google/gemma-7b-it.",
+      "provider": "jetstream",
+      "model": "google/gemma-7b-it",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "JETSTREAM_API_KEY",
+          "label": "JetStream API key",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "jetstream_tpu_meta_llama_llama_2_13b_chat_hf",
+      "kind": "agent",
+      "label": "TPU Inference Specialist",
+      "role": "TPU Inference Specialist",
+      "description": "JetStream PyTorch listed model: meta-llama/Llama-2-13b-chat-hf.",
+      "provider": "jetstream",
+      "model": "meta-llama/Llama-2-13b-chat-hf",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "JETSTREAM_API_KEY",
+          "label": "JetStream API key",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "jetstream_tpu_meta_llama_llama_2_13b_hf",
+      "kind": "agent",
+      "label": "TPU Inference Specialist",
+      "role": "TPU Inference Specialist",
+      "description": "JetStream PyTorch listed model: meta-llama/Llama-2-13b-hf.",
+      "provider": "jetstream",
+      "model": "meta-llama/Llama-2-13b-hf",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "JETSTREAM_API_KEY",
+          "label": "JetStream API key",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "jetstream_tpu_meta_llama_llama_2_70b_chat_hf",
+      "kind": "agent",
+      "label": "TPU Inference Specialist",
+      "role": "TPU Inference Specialist",
+      "description": "JetStream PyTorch listed model: meta-llama/Llama-2-70b-chat-hf.",
+      "provider": "jetstream",
+      "model": "meta-llama/Llama-2-70b-chat-hf",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "JETSTREAM_API_KEY",
+          "label": "JetStream API key",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "jetstream_tpu_meta_llama_llama_2_70b_hf",
+      "kind": "agent",
+      "label": "TPU Inference Specialist",
+      "role": "TPU Inference Specialist",
+      "description": "JetStream PyTorch listed model: meta-llama/Llama-2-70b-hf.",
+      "provider": "jetstream",
+      "model": "meta-llama/Llama-2-70b-hf",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "JETSTREAM_API_KEY",
+          "label": "JetStream API key",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "jetstream_tpu_meta_llama_llama_2_7b_chat_hf",
+      "kind": "agent",
+      "label": "TPU Inference Specialist",
+      "role": "TPU Inference Specialist",
+      "description": "JetStream PyTorch listed model: meta-llama/Llama-2-7b-chat-hf.",
+      "provider": "jetstream",
+      "model": "meta-llama/Llama-2-7b-chat-hf",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "JETSTREAM_API_KEY",
+          "label": "JetStream API key",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "jetstream_tpu_meta_llama_llama_2_7b_hf",
+      "kind": "agent",
+      "label": "TPU Inference Specialist",
+      "role": "TPU Inference Specialist",
+      "description": "JetStream PyTorch listed model: meta-llama/Llama-2-7b-hf.",
+      "provider": "jetstream",
+      "model": "meta-llama/Llama-2-7b-hf",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "JETSTREAM_API_KEY",
+          "label": "JetStream API key",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "jetstream_tpu_meta_llama_llama_3_1_8b",
+      "kind": "agent",
+      "label": "TPU Inference Specialist",
+      "role": "TPU Inference Specialist",
+      "description": "JetStream PyTorch listed model: meta-llama/Llama-3.1-8B.",
+      "provider": "jetstream",
+      "model": "meta-llama/Llama-3.1-8B",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "JETSTREAM_API_KEY",
+          "label": "JetStream API key",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "jetstream_tpu_meta_llama_llama_3_1_8b_instruct",
+      "kind": "agent",
+      "label": "TPU Inference Specialist",
+      "role": "TPU Inference Specialist",
+      "description": "JetStream PyTorch listed model: meta-llama/Llama-3.1-8B-Instruct.",
+      "provider": "jetstream",
+      "model": "meta-llama/Llama-3.1-8B-Instruct",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "JETSTREAM_API_KEY",
+          "label": "JetStream API key",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "jetstream_tpu_meta_llama_llama_3_2_1b",
+      "kind": "agent",
+      "label": "TPU Inference Specialist",
+      "role": "TPU Inference Specialist",
+      "description": "JetStream PyTorch listed model: meta-llama/Llama-3.2-1B.",
+      "provider": "jetstream",
+      "model": "meta-llama/Llama-3.2-1B",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "JETSTREAM_API_KEY",
+          "label": "JetStream API key",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "jetstream_tpu_meta_llama_llama_3_2_1b_instruct",
+      "kind": "agent",
+      "label": "TPU Inference Specialist",
+      "role": "TPU Inference Specialist",
+      "description": "JetStream PyTorch listed model: meta-llama/Llama-3.2-1B-Instruct.",
+      "provider": "jetstream",
+      "model": "meta-llama/Llama-3.2-1B-Instruct",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "JETSTREAM_API_KEY",
+          "label": "JetStream API key",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "jetstream_tpu_meta_llama_llama_3_3_70b",
+      "kind": "agent",
+      "label": "TPU Inference Specialist",
+      "role": "TPU Inference Specialist",
+      "description": "JetStream PyTorch listed model: meta-llama/Llama-3.3-70B.",
+      "provider": "jetstream",
+      "model": "meta-llama/Llama-3.3-70B",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "JETSTREAM_API_KEY",
+          "label": "JetStream API key",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "jetstream_tpu_meta_llama_llama_3_3_70b_instruct",
+      "kind": "agent",
+      "label": "TPU Inference Specialist",
+      "role": "TPU Inference Specialist",
+      "description": "JetStream PyTorch listed model: meta-llama/Llama-3.3-70B-Instruct.",
+      "provider": "jetstream",
+      "model": "meta-llama/Llama-3.3-70B-Instruct",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "JETSTREAM_API_KEY",
+          "label": "JetStream API key",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "jetstream_tpu_meta_llama_meta_llama_3_70b",
+      "kind": "agent",
+      "label": "TPU Inference Specialist",
+      "role": "TPU Inference Specialist",
+      "description": "JetStream PyTorch listed model: meta-llama/Meta-Llama-3-70B.",
+      "provider": "jetstream",
+      "model": "meta-llama/Meta-Llama-3-70B",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "JETSTREAM_API_KEY",
+          "label": "JetStream API key",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "jetstream_tpu_meta_llama_meta_llama_3_70b_instruct",
+      "kind": "agent",
+      "label": "TPU Inference Specialist",
+      "role": "TPU Inference Specialist",
+      "description": "JetStream PyTorch listed model: meta-llama/Meta-Llama-3-70B-Instruct.",
+      "provider": "jetstream",
+      "model": "meta-llama/Meta-Llama-3-70B-Instruct",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "JETSTREAM_API_KEY",
+          "label": "JetStream API key",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "jetstream_tpu_meta_llama_meta_llama_3_8b",
+      "kind": "agent",
+      "label": "TPU Inference Specialist",
+      "role": "TPU Inference Specialist",
+      "description": "JetStream PyTorch listed model: meta-llama/Meta-Llama-3-8B.",
+      "provider": "jetstream",
+      "model": "meta-llama/Meta-Llama-3-8B",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "JETSTREAM_API_KEY",
+          "label": "JetStream API key",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "jetstream_tpu_meta_llama_meta_llama_3_8b_instruct",
+      "kind": "agent",
+      "label": "TPU Inference Specialist",
+      "role": "TPU Inference Specialist",
+      "description": "JetStream PyTorch listed model: meta-llama/Meta-Llama-3-8B-Instruct.",
+      "provider": "jetstream",
+      "model": "meta-llama/Meta-Llama-3-8B-Instruct",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "JETSTREAM_API_KEY",
+          "label": "JetStream API key",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "jetstream_tpu_mistralai_mixtral_8x7b_instruct_v0_1",
+      "kind": "agent",
+      "label": "TPU Inference Specialist",
+      "role": "TPU Inference Specialist",
+      "description": "JetStream PyTorch listed model: mistralai/Mixtral-8x7B-Instruct-v0.1.",
+      "provider": "jetstream",
+      "model": "mistralai/Mixtral-8x7B-Instruct-v0.1",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "JETSTREAM_API_KEY",
+          "label": "JetStream API key",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "jetstream_tpu_mistralai_mixtral_8x7b_v0_1",
+      "kind": "agent",
+      "label": "TPU Inference Specialist",
+      "role": "TPU Inference Specialist",
+      "description": "JetStream PyTorch listed model: mistralai/Mixtral-8x7B-v0.1.",
+      "provider": "jetstream",
+      "model": "mistralai/Mixtral-8x7B-v0.1",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "JETSTREAM_API_KEY",
+          "label": "JetStream API key",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_agribot",
+      "kind": "agent",
+      "label": "Local Crop-Care Assistant",
+      "role": "Local Crop-Care Assistant",
+      "description": "Agriculture chatbot for crop-care, plant disease triage, and irrigation planning.",
+      "provider": "ollama",
+      "model": "ayansh03/agribot",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_agrillama",
+      "kind": "agent",
+      "label": "Local Agriculture Assistant",
+      "role": "Local Agriculture Assistant",
+      "description": "Agriculture-tuned Ollama model for crop, soil, and irrigation support.",
+      "provider": "ollama",
+      "model": "sike_aditya/AgriLlama",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_codegemma",
+      "kind": "agent",
+      "label": "Software Engineer",
+      "role": "Software Engineer",
+      "description": "CodeGemma \u2014 Google code-specialized Gemma.",
+      "provider": "ollama",
+      "model": "codegemma",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_codellama",
+      "kind": "agent",
+      "label": "Software Engineer",
+      "role": "Software Engineer",
+      "description": "Code Llama \u2014 Meta code completion and generation.",
+      "provider": "ollama",
+      "model": "codellama",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_codeqwen",
+      "kind": "agent",
+      "label": "Software Engineer",
+      "role": "Software Engineer",
+      "description": "CodeQwen \u2014 Qwen code variant.",
+      "provider": "ollama",
+      "model": "codeqwen",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_codestral",
+      "kind": "agent",
+      "label": "Software Engineer",
+      "role": "Software Engineer",
+      "description": "Codestral \u2014 Mistral code model.",
+      "provider": "ollama",
+      "model": "codestral",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_cogito",
+      "kind": "agent",
+      "label": "Reasoning Assistant",
+      "role": "Reasoning Assistant",
+      "description": "Cogito \u2014 reasoning-oriented general model line.",
+      "provider": "ollama",
+      "model": "cogito",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_command_r",
+      "kind": "agent",
+      "label": "Research-Oriented Assistant",
+      "role": "Research-Oriented Assistant",
+      "description": "Cohere Command R \u2014 long-context, RAG-friendly general assistant.",
+      "provider": "ollama",
+      "model": "command-r",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_deepcoder",
+      "kind": "agent",
+      "label": "Software Engineer",
+      "role": "Software Engineer",
+      "description": "DeepCoder \u2014 code-specialized line on Ollama library.",
+      "provider": "ollama",
+      "model": "deepcoder",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_deepscaler",
+      "kind": "agent",
+      "label": "Math Assistant",
+      "role": "Math Assistant",
+      "description": "DeepScaler \u2014 math/reasoning-tuned line.",
+      "provider": "ollama",
+      "model": "deepscaler",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_deepseek_coder",
+      "kind": "agent",
+      "label": "Software Engineer",
+      "role": "Software Engineer",
+      "description": "DeepSeek Coder \u2014 strong competitive coding and repo-style tasks.",
+      "provider": "ollama",
+      "model": "deepseek-coder",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_deepseek_coder_v2",
+      "kind": "agent",
+      "label": "Senior Software Engineer",
+      "role": "Senior Software Engineer",
+      "description": "DeepSeek Coder V2 \u2014 larger coding model for complex patches.",
+      "provider": "ollama",
+      "model": "deepseek-coder-v2",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_deepseek_llm",
+      "kind": "agent",
+      "label": "General Assistant",
+      "role": "General Assistant",
+      "description": "DeepSeek LLM \u2014 earlier DeepSeek general base.",
+      "provider": "ollama",
+      "model": "deepseek-llm",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_deepseek_r1",
+      "kind": "agent",
+      "label": "Reasoning Specialist",
+      "role": "Reasoning Specialist",
+      "description": "DeepSeek R1 \u2014 chain-of-thought style reasoning; math, logic, proofs sketch.",
+      "provider": "ollama",
+      "model": "deepseek-r1",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_deepseek_v2",
+      "kind": "agent",
+      "label": "Analyst",
+      "role": "Analyst",
+      "description": "DeepSeek V2 \u2014 prior DeepSeek generation for general chat.",
+      "provider": "ollama",
+      "model": "deepseek-v2",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_deepseek_v3",
+      "kind": "agent",
+      "label": "Senior Analyst",
+      "role": "Senior Analyst",
+      "description": "DeepSeek V3 \u2014 large general+reasoning; heavy but capable.",
+      "provider": "ollama",
+      "model": "deepseek-v3",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_devstral",
+      "kind": "agent",
+      "label": "Developer Tools Engineer",
+      "role": "Developer Tools Engineer",
+      "description": "Devstral \u2014 dev-focused Mistral line for tooling workflows.",
+      "provider": "ollama",
+      "model": "devstral",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_dolphin3",
+      "kind": "agent",
+      "label": "Unrestricted Assistant",
+      "role": "Unrestricted Assistant",
+      "description": "Dolphin 3 \u2014 uncensored-tuned line; use only where policy allows.",
+      "provider": "ollama",
+      "model": "dolphin3",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_falcon",
+      "kind": "agent",
+      "label": "General Assistant",
+      "role": "General Assistant",
+      "description": "Falcon \u2014 earlier TII general line.",
+      "provider": "ollama",
+      "model": "falcon",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_falcon3",
+      "kind": "agent",
+      "label": "General Assistant",
+      "role": "General Assistant",
+      "description": "Falcon 3 \u2014 TII general instruct family.",
+      "provider": "ollama",
+      "model": "falcon3",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_gemma",
+      "kind": "agent",
+      "label": "General Assistant",
+      "role": "General Assistant",
+      "description": "Original Gemma \u2014 smaller/older; simple tasks and classification-style Q&A.",
+      "provider": "ollama",
+      "model": "gemma",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_gemma2",
+      "kind": "agent",
+      "label": "General Assistant",
+      "role": "General Assistant",
+      "description": "Gemma 2 \u2014 prior Gemma generation; stable general chat.",
+      "provider": "ollama",
+      "model": "gemma2",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_gemma3",
+      "kind": "agent",
+      "label": "General Assistant",
+      "role": "General Assistant",
+      "description": "Gemma 3 \u2014 Google open general model; good instruction following.",
+      "provider": "ollama",
+      "model": "gemma3",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_gemma3n",
+      "kind": "agent",
+      "label": "General Assistant",
+      "role": "General Assistant",
+      "description": "Gemma 3n \u2014 efficient Gemma variant for lighter devices.",
+      "provider": "ollama",
+      "model": "gemma3n",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_glm4",
+      "kind": "agent",
+      "label": "Multilingual Analyst",
+      "role": "Multilingual Analyst",
+      "description": "GLM-4 \u2014 general multilingual (strong Chinese/English) chat.",
+      "provider": "ollama",
+      "model": "glm4",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_glm_4_7_flash",
+      "kind": "agent",
+      "label": "Fast Analyst",
+      "role": "Fast Analyst",
+      "description": "GLM 4.7 Flash \u2014 fast GLM line for interactive use.",
+      "provider": "ollama",
+      "model": "glm-4.7-flash",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_gpt_oss",
+      "kind": "agent",
+      "label": "General Assistant",
+      "role": "General Assistant",
+      "description": "gpt-oss \u2014 open-weight models in OpenAI-style families on Ollama.",
+      "provider": "ollama",
+      "model": "gpt-oss",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_granite3_1_moe",
+      "kind": "agent",
+      "label": "Efficient Analyst",
+      "role": "Efficient Analyst",
+      "description": "Granite 3.1 MoE \u2014 efficient MoE general model.",
+      "provider": "ollama",
+      "model": "granite3.1-moe",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_granite3_2_vision",
+      "kind": "agent",
+      "label": "Vision Analyst",
+      "role": "Vision Analyst",
+      "description": "Granite 3.2 Vision \u2014 IBM multimodal for enterprise visuals.",
+      "provider": "ollama",
+      "model": "granite3.2-vision",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_granite3_3",
+      "kind": "agent",
+      "label": "Enterprise Assistant",
+      "role": "Enterprise Assistant",
+      "description": "IBM Granite 3.3 \u2014 enterprise-leaning general instruct.",
+      "provider": "ollama",
+      "model": "granite3.3",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_granite4",
+      "kind": "agent",
+      "label": "Enterprise Assistant",
+      "role": "Enterprise Assistant",
+      "description": "Granite 4 \u2014 newer IBM Granite general line.",
+      "provider": "ollama",
+      "model": "granite4",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_granite_code",
+      "kind": "agent",
+      "label": "Software Engineer",
+      "role": "Software Engineer",
+      "description": "Granite Code \u2014 IBM code models for enterprise patterns.",
+      "provider": "ollama",
+      "model": "granite-code",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_hermes3",
+      "kind": "agent",
+      "label": "General Assistant",
+      "role": "General Assistant",
+      "description": "Hermes 3 \u2014 Nous general instruct; tool-use friendly style.",
+      "provider": "ollama",
+      "model": "hermes3",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_lfm2",
+      "kind": "agent",
+      "label": "Efficient Assistant",
+      "role": "Efficient Assistant",
+      "description": "LFM2 \u2014 Liquid AI efficient foundation model.",
+      "provider": "ollama",
+      "model": "lfm2",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_lfm2_5_thinking",
+      "kind": "agent",
+      "label": "Reasoning Assistant",
+      "role": "Reasoning Assistant",
+      "description": "LFM2.5 Thinking \u2014 thinking-augmented efficient model.",
+      "provider": "ollama",
+      "model": "lfm2.5-thinking",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_llama2",
+      "kind": "agent",
+      "label": "General Assistant",
+      "role": "General Assistant",
+      "description": "Legacy Llama 2 \u2014 lighter hardware; ok for simple Q&A and drafts.",
+      "provider": "ollama",
+      "model": "llama2",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_llama3",
+      "kind": "agent",
+      "label": "General Assistant",
+      "role": "General Assistant",
+      "description": "Llama 3 base family \u2014 general-purpose local assistant.",
+      "provider": "ollama",
+      "model": "llama3",
+      "harnessProfile": "general",
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_llama3_1",
+      "kind": "agent",
+      "label": "General Assistant",
+      "role": "General Assistant",
+      "description": "Llama 3.1 family \u2014 general chat, longer context than 3.2 for many tags.",
+      "provider": "ollama",
+      "model": "llama3.1",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_llama3_2",
+      "kind": "agent",
+      "label": "General Assistant",
+      "role": "General Assistant",
+      "description": "Default local generalist; planning, Q&A, summaries, light analysis.",
+      "provider": "ollama",
+      "model": "llama3.2",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_llama3_2_1b",
+      "kind": "agent",
+      "label": "General Assistant",
+      "role": "General Assistant",
+      "description": ">-",
+      "provider": "ollama",
+      "model": "llama3.2:1b",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_llama3_2_vision",
+      "kind": "agent",
+      "label": "Vision Analyst",
+      "role": "Vision Analyst",
+      "description": "Llama 3.2 Vision \u2014 Meta multimodal; images + instructions.",
+      "provider": "ollama",
+      "model": "llama3.2-vision",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_llama3_3",
+      "kind": "agent",
+      "label": "Senior Generalist",
+      "role": "Senior Generalist",
+      "description": "Stronger Llama 3.3 for harder general reasoning and longer outputs.",
+      "provider": "ollama",
+      "model": "llama3.3",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_llama4",
+      "kind": "agent",
+      "label": "Senior Generalist",
+      "role": "Senior Generalist",
+      "description": "Llama 4 when available \u2014 frontier-class local general model (large download).",
+      "provider": "ollama",
+      "model": "llama4",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_llava",
+      "kind": "agent",
+      "label": "Vision Analyst",
+      "role": "Vision Analyst",
+      "description": "LLaVA \u2014 image+text; describe screenshots, diagrams, UI.",
+      "provider": "ollama",
+      "model": "llava",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_llava_llama3",
+      "kind": "agent",
+      "label": "Vision Analyst",
+      "role": "Vision Analyst",
+      "description": "LLaVA Llama 3 \u2014 stronger LLaVA backbone for vision QA.",
+      "provider": "ollama",
+      "model": "llava-llama3",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_magistral",
+      "kind": "agent",
+      "label": "Reasoning Specialist",
+      "role": "Reasoning Specialist",
+      "description": "Magistral \u2014 Mistral reasoning line.",
+      "provider": "ollama",
+      "model": "magistral",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_minicpm_v",
+      "kind": "agent",
+      "label": "Efficient Vision Assistant",
+      "role": "Efficient Vision Assistant",
+      "description": "MiniCPM-V \u2014 efficient vision-language for edge.",
+      "provider": "ollama",
+      "model": "minicpm-v",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_ministral_3",
+      "kind": "agent",
+      "label": "General Assistant",
+      "role": "General Assistant",
+      "description": "Ministral 3 \u2014 efficient Mistral line for edge and fast iteration.",
+      "provider": "ollama",
+      "model": "ministral-3",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_mistral",
+      "kind": "agent",
+      "label": "General Assistant",
+      "role": "General Assistant",
+      "description": "Mistral 7B-class general instruct; fast, good default for many subjects.",
+      "provider": "ollama",
+      "model": "mistral",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_mistral_large",
+      "kind": "agent",
+      "label": "Senior Generalist",
+      "role": "Senior Generalist",
+      "description": "Mistral Large \u2014 demanding analysis, writing, and reasoning locally.",
+      "provider": "ollama",
+      "model": "mistral-large",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_mistral_nemo",
+      "kind": "agent",
+      "label": "General Assistant",
+      "role": "General Assistant",
+      "description": "Mistral Nemo \u2014 strong multilingual and general instruct mid-size.",
+      "provider": "ollama",
+      "model": "mistral-nemo",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_mistral_small",
+      "kind": "agent",
+      "label": "General Assistant",
+      "role": "General Assistant",
+      "description": "Mistral Small \u2014 balanced speed/quality for everyday tasks.",
+      "provider": "ollama",
+      "model": "mistral-small",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_mixtral",
+      "kind": "agent",
+      "label": "Senior Generalist",
+      "role": "Senior Generalist",
+      "description": "Mixtral MoE \u2014 stronger general quality when you have RAM/VRAM.",
+      "provider": "ollama",
+      "model": "mixtral",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_moondream",
+      "kind": "agent",
+      "label": "Lightweight Vision Assistant",
+      "role": "Lightweight Vision Assistant",
+      "description": "Moondream \u2014 tiny VLM for quick image Q&A.",
+      "provider": "ollama",
+      "model": "moondream",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_nous_hermes",
+      "kind": "agent",
+      "label": "General Assistant",
+      "role": "General Assistant",
+      "description": "Nous Hermes \u2014 earlier Nous instruct line.",
+      "provider": "ollama",
+      "model": "nous-hermes",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_olmo2",
+      "kind": "agent",
+      "label": "Research Assistant",
+      "role": "Research Assistant",
+      "description": "OLMo 2 \u2014 open research LM; general knowledge tasks.",
+      "provider": "ollama",
+      "model": "olmo2",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_openchat",
+      "kind": "agent",
+      "label": "Conversational Assistant",
+      "role": "Conversational Assistant",
+      "description": "OpenChat \u2014 conversational, assistant-style dialogue.",
+      "provider": "ollama",
+      "model": "openchat",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_openhermes",
+      "kind": "agent",
+      "label": "General Assistant",
+      "role": "General Assistant",
+      "description": "OpenHermes \u2014 Mistral-based instruct tuning.",
+      "provider": "ollama",
+      "model": "openhermes",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_openthinker",
+      "kind": "agent",
+      "label": "Reasoning Specialist",
+      "role": "Reasoning Specialist",
+      "description": "OpenThinker \u2014 open reasoning-style assistant.",
+      "provider": "ollama",
+      "model": "openthinker",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_orca_mini",
+      "kind": "agent",
+      "label": "Lightweight Assistant",
+      "role": "Lightweight Assistant",
+      "description": "Orca Mini \u2014 tiny model for demos and smoke tests.",
+      "provider": "ollama",
+      "model": "orca-mini",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_phi",
+      "kind": "agent",
+      "label": "Lightweight Assistant",
+      "role": "Lightweight Assistant",
+      "description": "Legacy Phi \u2014 very small; trivial classification and micro-tasks.",
+      "provider": "ollama",
+      "model": "phi",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_phi3",
+      "kind": "agent",
+      "label": "Efficient Assistant",
+      "role": "Efficient Assistant",
+      "description": "Phi-3 \u2014 Microsoft small model; fast reasoning on modest hardware.",
+      "provider": "ollama",
+      "model": "phi3",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_phi4",
+      "kind": "agent",
+      "label": "Analyst",
+      "role": "Analyst",
+      "description": "Phi-4 \u2014 stronger small Microsoft model for reasoning and instruction.",
+      "provider": "ollama",
+      "model": "phi4",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_phi4_mini",
+      "kind": "agent",
+      "label": "Efficient Assistant",
+      "role": "Efficient Assistant",
+      "description": "Phi-4 mini \u2014 smallest Phi-4 line for edge and high throughput.",
+      "provider": "ollama",
+      "model": "phi4-mini",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_phi4_reasoning",
+      "kind": "agent",
+      "label": "Reasoning Assistant",
+      "role": "Reasoning Assistant",
+      "description": "Phi-4 reasoning \u2014 Microsoft small reasoning specialist.",
+      "provider": "ollama",
+      "model": "phi4-reasoning",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_qwen",
+      "kind": "agent",
+      "label": "General Assistant",
+      "role": "General Assistant",
+      "description": "Qwen base \u2014 legacy general Qwen family.",
+      "provider": "ollama",
+      "model": "qwen",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_qwen2",
+      "kind": "agent",
+      "label": "General Analyst",
+      "role": "General Analyst",
+      "description": "Qwen 2 \u2014 earlier Qwen general; still useful for many languages.",
+      "provider": "ollama",
+      "model": "qwen2",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_qwen2_5",
+      "kind": "agent",
+      "label": "General Analyst",
+      "role": "General Analyst",
+      "description": "Qwen 2.5 general \u2014 strong multilingual and STEM-friendly chat.",
+      "provider": "ollama",
+      "model": "qwen2.5",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_qwen2_5_14b_instruct",
+      "kind": "agent",
+      "label": "General Assistant",
+      "role": "General Assistant",
+      "description": ">-",
+      "provider": "ollama",
+      "model": "qwen2.5:14b-instruct",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_qwen2_5_coder",
+      "kind": "agent",
+      "label": "Software Engineer",
+      "role": "Software Engineer",
+      "description": "Primary code model \u2014 implementation, refactors, scripts, APIs.",
+      "provider": "ollama",
+      "model": "qwen2.5-coder",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_qwen2_5vl",
+      "kind": "agent",
+      "label": "Vision Analyst",
+      "role": "Vision Analyst",
+      "description": "Qwen2.5-VL \u2014 strong document and scene understanding.",
+      "provider": "ollama",
+      "model": "qwen2.5vl",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_qwen3",
+      "kind": "agent",
+      "label": "General Analyst",
+      "role": "General Analyst",
+      "description": "Qwen 3 \u2014 newer general Qwen for harder questions and coding-adjacent chat.",
+      "provider": "ollama",
+      "model": "qwen3",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_qwen3_5",
+      "kind": "agent",
+      "label": "Senior Analyst",
+      "role": "Senior Analyst",
+      "description": "Qwen 3.5 \u2014 upgraded Qwen line for demanding general tasks.",
+      "provider": "ollama",
+      "model": "qwen3.5",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_qwen3_coder",
+      "kind": "agent",
+      "label": "Software Engineer",
+      "role": "Software Engineer",
+      "description": "Qwen3 Coder \u2014 newer coding-focused Qwen.",
+      "provider": "ollama",
+      "model": "qwen3-coder",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_qwen3_coder_next",
+      "kind": "agent",
+      "label": "Senior Software Engineer",
+      "role": "Senior Software Engineer",
+      "description": "Qwen3 Coder Next \u2014 latest Qwen coding line when available.",
+      "provider": "ollama",
+      "model": "qwen3-coder-next",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_qwen3_vl",
+      "kind": "agent",
+      "label": "Vision Analyst",
+      "role": "Vision Analyst",
+      "description": "Qwen3-VL \u2014 newer Qwen vision-language line.",
+      "provider": "ollama",
+      "model": "qwen3-vl",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_qwq",
+      "kind": "agent",
+      "label": "Reasoning Specialist",
+      "role": "Reasoning Specialist",
+      "description": "QwQ \u2014 Qwen reasoning model for hard puzzles and math.",
+      "provider": "ollama",
+      "model": "qwq",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_smollm",
+      "kind": "agent",
+      "label": "Lightweight Assistant",
+      "role": "Lightweight Assistant",
+      "description": "SmolLM \u2014 first-gen small LM line.",
+      "provider": "ollama",
+      "model": "smollm",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_smollm2",
+      "kind": "agent",
+      "label": "Efficient Assistant",
+      "role": "Efficient Assistant",
+      "description": "SmolLM2 \u2014 Hugging Face small LM for edge.",
+      "provider": "ollama",
+      "model": "smollm2",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_starcoder",
+      "kind": "agent",
+      "label": "Software Engineer",
+      "role": "Software Engineer",
+      "description": "StarCoder \u2014 first-gen BigCode model.",
+      "provider": "ollama",
+      "model": "starcoder",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_starcoder2",
+      "kind": "agent",
+      "label": "Software Engineer",
+      "role": "Software Engineer",
+      "description": "StarCoder2 \u2014 BigCode family for code generation.",
+      "provider": "ollama",
+      "model": "starcoder2",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_tinyllama",
+      "kind": "agent",
+      "label": "Micro Assistant",
+      "role": "Micro Assistant",
+      "description": "TinyLlama \u2014 very small; prototyping only.",
+      "provider": "ollama",
+      "model": "tinyllama",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_translategemma",
+      "kind": "agent",
+      "label": "Translator",
+      "role": "Translator",
+      "description": "TranslateGemma \u2014 translation-focused Gemma; parallel text, localization drafts.",
+      "provider": "ollama",
+      "model": "translategemma",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_wizardlm2",
+      "kind": "agent",
+      "label": "General Assistant",
+      "role": "General Assistant",
+      "description": "WizardLM 2 \u2014 complex instruction following.",
+      "provider": "ollama",
+      "model": "wizardlm2",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_yi",
+      "kind": "agent",
+      "label": "Multilingual Assistant",
+      "role": "Multilingual Assistant",
+      "description": "Yi \u2014 bilingual EN/ZH capable general models.",
+      "provider": "ollama",
+      "model": "yi",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "ollama_zephyr",
+      "kind": "agent",
+      "label": "General Assistant",
+      "role": "General Assistant",
+      "description": "Zephyr \u2014 alignment-tuned small chat model.",
+      "provider": "ollama",
+      "model": "zephyr",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "OLLAMA_HOST",
+          "label": "Ollama host",
+          "required": false,
+          "secret": false
+        },
+        {
+          "name": "OLLAMA_API_BASE",
+          "label": "Ollama API base",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "vllm_tpu_google_gemma_3_27b_it",
+      "kind": "agent",
+      "label": "TPU Inference Specialist",
+      "role": "TPU Inference Specialist",
+      "description": "vLLM TPU recommended model: google/gemma-3-27b-it.",
+      "provider": "vllm",
+      "model": "google/gemma-3-27b-it",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "VLLM_API_KEY",
+          "label": "vLLM API key",
+          "required": true,
+          "secret": true
+        },
+        {
+          "name": "VLLM_BASE_URL",
+          "label": "vLLM base URL",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "vllm_tpu_meta_llama_llama_3_1_8b_instruct",
+      "kind": "agent",
+      "label": "TPU Inference Specialist",
+      "role": "TPU Inference Specialist",
+      "description": "vLLM TPU recommended model: meta-llama/Llama-3.1-8B-Instruct.",
+      "provider": "vllm",
+      "model": "meta-llama/Llama-3.1-8B-Instruct",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "VLLM_API_KEY",
+          "label": "vLLM API key",
+          "required": true,
+          "secret": true
+        },
+        {
+          "name": "VLLM_BASE_URL",
+          "label": "vLLM base URL",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "vllm_tpu_meta_llama_llama_3_3_70b_instruct",
+      "kind": "agent",
+      "label": "TPU Inference Specialist",
+      "role": "TPU Inference Specialist",
+      "description": "vLLM TPU recommended model: meta-llama/Llama-3.3-70B-Instruct.",
+      "provider": "vllm",
+      "model": "meta-llama/Llama-3.3-70B-Instruct",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "VLLM_API_KEY",
+          "label": "vLLM API key",
+          "required": true,
+          "secret": true
+        },
+        {
+          "name": "VLLM_BASE_URL",
+          "label": "vLLM base URL",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "vllm_tpu_meta_llama_llama_guard_4_12b",
+      "kind": "agent",
+      "label": "TPU Inference Specialist",
+      "role": "TPU Inference Specialist",
+      "description": "vLLM TPU recommended model: meta-llama/Llama-Guard-4-12B.",
+      "provider": "vllm",
+      "model": "meta-llama/Llama-Guard-4-12B",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "VLLM_API_KEY",
+          "label": "vLLM API key",
+          "required": true,
+          "secret": true
+        },
+        {
+          "name": "VLLM_BASE_URL",
+          "label": "vLLM base URL",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "vllm_tpu_qwen_qwen2_5_vl_7b_instruct",
+      "kind": "agent",
+      "label": "TPU Inference Specialist",
+      "role": "TPU Inference Specialist",
+      "description": "vLLM TPU recommended model: Qwen/Qwen2.5-VL-7B-Instruct.",
+      "provider": "vllm",
+      "model": "Qwen/Qwen2.5-VL-7B-Instruct",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "VLLM_API_KEY",
+          "label": "vLLM API key",
+          "required": true,
+          "secret": true
+        },
+        {
+          "name": "VLLM_BASE_URL",
+          "label": "vLLM base URL",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "vllm_tpu_qwen_qwen3_30b_a3b",
+      "kind": "agent",
+      "label": "TPU Inference Specialist",
+      "role": "TPU Inference Specialist",
+      "description": "vLLM TPU recommended model: Qwen/Qwen3-30B-A3B.",
+      "provider": "vllm",
+      "model": "Qwen/Qwen3-30B-A3B",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "VLLM_API_KEY",
+          "label": "vLLM API key",
+          "required": true,
+          "secret": true
+        },
+        {
+          "name": "VLLM_BASE_URL",
+          "label": "vLLM base URL",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "vllm_tpu_qwen_qwen3_32b",
+      "kind": "agent",
+      "label": "TPU Inference Specialist",
+      "role": "TPU Inference Specialist",
+      "description": "vLLM TPU recommended model: Qwen/Qwen3-32B.",
+      "provider": "vllm",
+      "model": "Qwen/Qwen3-32B",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "VLLM_API_KEY",
+          "label": "vLLM API key",
+          "required": true,
+          "secret": true
+        },
+        {
+          "name": "VLLM_BASE_URL",
+          "label": "vLLM base URL",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    },
+    {
+      "id": "vllm_tpu_qwen_qwen3_4b",
+      "kind": "agent",
+      "label": "TPU Inference Specialist",
+      "role": "TPU Inference Specialist",
+      "description": "vLLM TPU recommended model: Qwen/Qwen3-4B.",
+      "provider": "vllm",
+      "model": "Qwen/Qwen3-4B",
+      "harnessProfile": null,
+      "requiredSecrets": [
+        {
+          "name": "VLLM_API_KEY",
+          "label": "vLLM API key",
+          "required": true,
+          "secret": true
+        },
+        {
+          "name": "VLLM_BASE_URL",
+          "label": "vLLM base URL",
+          "required": false,
+          "secret": false
+        }
+      ],
+      "source": "ao_stock"
+    }
+  ],
+  "generatedFrom": "vendor/.../agent_providers",
+  "count": 184
+}
