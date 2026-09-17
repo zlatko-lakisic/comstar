@@ -158,6 +158,8 @@ class ComstarMcpBootstrap implements SessionMcpBootstrap {
   Future<SessionMcpBootstrapResult> prepare(
     LocalMcpHost host, {
     required bool mcpTunnel,
+    ReachConnectionConfig? config,
+    bool customToolSandbox = false,
   }) async {
     if (guest) {
       return SessionMcpBootstrapResult.empty;
@@ -563,7 +565,9 @@ class ComstarSession {
         defaultRunMode: defaultRunMode,
         allowedAgentProviderIds:
             allowedIds.isEmpty ? null : allowedIds,
-        allowedMcpProviderIds: allowedMcps.isEmpty ? null : allowedMcps,
+        // Always send MCP pins (baseline ∪ Admin). Empty/omitted means
+        // client.* only on AO ≥ 2.3 / Reach ≥ 0.13 — not full stock catalog.
+        allowedMcpProviderIds: allowedMcps,
         allowedSkillIds: allowedSkills.isEmpty ? null : allowedSkills,
         sessionEnv: sessionEnv.isEmpty ? null : sessionEnv,
         mtls: mtls,

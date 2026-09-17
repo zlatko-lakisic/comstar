@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:ao_reach/ao_reach.dart';
+import 'package:comstar_bridge/agents/store.dart';
 import 'package:comstar_bridge/config.dart';
 import 'package:comstar_bridge/session.dart';
 import 'package:test/test.dart';
@@ -212,6 +213,10 @@ void main() {
       expect(fake.lastConfig!.appId, 'comstar');
       expect(fake.lastConfig!.mtls, isNull);
       expect(fake.lastOverlay, './overlays/comstar');
+      expect(
+        fake.lastConfig!.allowedMcpProviderIds,
+        containsAll(kComstarBaselineStockMcpIds),
+      );
     });
 
     test('open with mtls.enabled fails when material missing', () async {

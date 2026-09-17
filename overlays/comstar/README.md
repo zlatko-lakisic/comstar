@@ -31,8 +31,16 @@ Agents of note: `client.greeter` (live engage fallback), `client.phrase_bank`
 ## MCP note
 
 `mcp_providers/*.yaml` keep AO-style metadata (`description`, `planner_hint`, …) plus
-COMSTAR fields (`transport: stdio_tunnel`, `npx_package`, `env_from`). They are **not**
-AO `stdio` / `streamable_http` disk catalog entries.
+COMSTAR fields (`transport: stdio_tunnel`, `npx_package`, `env_from`). Tunnel
+entries (`google_workspace`, `nextcloud`) are packed by the bridge. Ada-hosted
+stock ids (`ldap_directory`, `vision_comstar`, and AO `home_assistant` /
+`fetch_url`) are **not** tunnel MCPs — they must be **pinned** on
+`session_overlay_register.allowedMcpProviderIds` (AO ≥ 2.3 empty allowlist =
+`client.*` only). COMSTAR does this via `kComstarBaselineStockMcpIds`.
+
+They are **not** AO `stdio` / `streamable_http` disk catalog entries when living
+only under the COMSTAR overlay tree — install Ada-hosted YAMLs into AO’s
+`config/mcp_providers/` (or EXTRA path) as documented in each file.
 
 ## Skills note
 

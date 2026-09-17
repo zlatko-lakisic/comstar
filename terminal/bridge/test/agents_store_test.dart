@@ -127,12 +127,20 @@ void main() {
       final runtime = await store.loadRuntime();
       expect(runtime.enabledMcpIds, ['client.home_assistant']);
       expect(runtime.enabledSkillIds, ['skill.example']);
-      expect(await store.effectiveAllowedMcpIds(), ['client.home_assistant']);
+      final mcps = await store.effectiveAllowedMcpIds();
+      expect(mcps, containsAll(kComstarBaselineStockMcpIds));
+      expect(mcps, contains('client.home_assistant'));
       expect(await store.effectiveAllowedSkillIds(), ['skill.example']);
       final status = await store.statusPayload(yaml: yaml, sessionActive: true);
       expect(status['enabled_mcp_ids'], ['client.home_assistant']);
+      expect(status['session_allowed_mcp_ids'], containsAll(mcps));
       expect(status['session_open'], isTrue);
       expect(status['ao_progress'], isNull);
+    });
+
+    test('empty Admin mcp list still pins COMSTAR baseline stock ids', () async {
+      final mcps = await store.effectiveAllowedMcpIds();
+      expect(mcps, equals([...kComstarBaselineStockMcpIds]..sort()));
     });
 
     test('sessionEnvMap includes generic catalog secrets', () async {

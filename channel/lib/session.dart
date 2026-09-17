@@ -143,6 +143,7 @@ class ChannelSessionManager {
     final mtls = _mtlsOrThrow();
     final dynamicPlanning = await agentsPrefs.dynamicPlanning();
     final allowed = await agentsPrefs.allowedAgentIds();
+    final allowedMcps = await agentsPrefs.allowedMcpIds();
     final sessionEnv = await agentsPrefs.sessionEnv();
     final runMode = await agentsPrefs.defaultRunMode();
 
@@ -155,6 +156,7 @@ class ChannelSessionManager {
         dynamicPlanning: dynamicPlanning,
         defaultRunMode: runMode,
         allowedAgentProviderIds: allowed.isEmpty ? null : allowed,
+        allowedMcpProviderIds: allowedMcps,
         sessionEnv: sessionEnv.isEmpty ? null : sessionEnv,
         mtls: mtls,
       ),

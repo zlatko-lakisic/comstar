@@ -232,6 +232,7 @@ secrets under `$COMSTAR_DATA_DIR/agents` (default
   "enabled_agent_ids": ["gpt_research"],
   "enabled_mcp_ids": [],
   "enabled_skill_ids": [],
+  "session_allowed_mcp_ids": ["fetch_url", "home_assistant", "ldap_directory", "vision_comstar"],
   "agents": [{ "id": "gpt_research", "label": "GPT Research", "enabled": true, "ready": true }],
   "mcps": [],
   "skills": [],
@@ -245,6 +246,10 @@ secrets under `$COMSTAR_DATA_DIR/agents` (default
   "apply": { "needs_session_refresh": false, "session_active": true }
 }
 ```
+
+`enabled_mcp_ids: []` is Admin-configured (no extra stock pins). Session open
+still sends baseline stock MCP ids via `session_allowed_mcp_ids` (AO ≥ 2.3
+empty allowlist ≠ unrestricted).
 
 `catalog` merges live AO `GET /api/v1/catalog` (currently *available*
 providers on the host) with the full AO stock `agent_providers` pack shipped
@@ -273,7 +278,8 @@ snapshot or `null`) and `thinking` for the Admin rail.
 
 Default seed when runtime has no enables: curated research pack
 (`gpt_research`, …, `ollama_qwen2_5_14b_instruct`). Overlay `client.*` agents /
-MCPs stay always available.
+MCPs stay always available. Extra stock MCPs beyond the COMSTAR baseline require
+explicit Admin `enabled_mcp_ids` pins.
 
 #### AO mTLS pairing (`GET/POST /admin/api/ao_mtls`) — SPEC
 
@@ -510,12 +516,20 @@ Rules:
 
 ## 4. Bridge → AO via `ao_reach`
 
-**Status:** VERIFIED path — Reach ≥ `v0.7.1` / AO ≥ `2.2.0` (`appId` required;
-dynamic planning + session env). Ada serves **HTTPS + client certs** on `:8765`
+**Status:** VERIFIED path — Reach ≥ `v0.19.0` / AO ≥ `2.11.0` (`appId` required;
+dynamic planning + session env + overlay MCP isolation). Ada serves **HTTPS + client certs** on `:8765`
 (direct, not Warpgate). Host MCP catalog ids:
 `fetch_url`, `filesystem_local`, `home_assistant`, `media_audio_transcribe`,
-`media_understand`, `media_video_analyze`. Do **not** request `memory` / `time` /
+`media_understand`, `media_video_analyze`, plus COMSTAR Ada extras
+`ldap_directory`, `vision_comstar`. Do **not** request `memory` / `time` /
 `math` / `vision` on this host — AO rejects the turn.
+
+**Overlay MCP allowlists (AO ≥ 2.3 / Reach ≥ 0.13):** omitted or empty
+`allowedMcpProviderIds` / `allowedSkillIds` mean **overlay `client.*` only**,
+not the full stock catalog. COMSTAR always unions Admin enables with baseline
+stock pins (`home_assistant`, `fetch_url`, `ldap_directory`, `vision_comstar`)
+on `session_overlay_register`. Pin additional stock ids via Admin
+`enabled_mcp_ids` (e.g. `filesystem_local`, `media_*`, `search_tavily`).
 
 **mTLS (AO ≥ 1.29 / Reach ≥ 0.4):** when `orchestration.mtls.enabled` is true,
 `base_url` must be `https://…` and session open passes
@@ -562,6 +576,8 @@ await bridge.start(
     dynamicPlanning: effectiveDynamicPlanning, // yaml + Admin runtime
     defaultRunMode: effectiveDefaultRunMode,   // dynamic | dynamic-iterative
     allowedAgentProviderIds: effectiveAllowedIds,
+    allowedMcpProviderIds: effectiveAllowedMcpIds, // baseline ∪ Admin
+    allowedSkillIds: effectiveAllowedSkillIds,
     sessionEnv: sessionEnvMap, // OPENAI_API_KEY / ANTHROPIC_API_KEY when set
     mtls: cfg.orchestration.mtls.enabled
         ? ReachMtlsConfig(materialDir: cfg.orchestration.mtls.resolvedMaterialDir())
@@ -573,6 +589,10 @@ await bridge.start(
   mcpBootstrap: ComstarMcpBootstrap(cfg),
 );
 ```
+
+`allowedMcpProviderIds` must include every stock MCP the planner may use
+(AO ≥ 2.3: empty = `client.*` only). COMSTAR baselines
+`home_assistant`, `fetch_url`, `ldap_directory`, `vision_comstar`.
 
 ### Turn
 

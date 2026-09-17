@@ -1669,20 +1669,35 @@ class AttentionCoordinator {
   String? _lastAoProgressMessage;
 
   void _onAoRunStatus(ReachRunStatus status, {required String turnId}) {
+    // Heartbeats (AO ≥ 2.3) and queue waits still count as live progress —
+    // extend the Responding deadline even when message text is unchanged.
     machine.extendAoDeadline();
     final message = status.message.trim();
-    if (message.isEmpty) return;
-    if (message == _lastAoProgressMessage && status.processing) return;
-    _lastAoProgressMessage = message;
+    final heartbeat = status.raw['heartbeat'] == true;
+    if (message.isEmpty && !status.isQueued && !heartbeat) return;
+    if (message == _lastAoProgressMessage &&
+        status.processing &&
+        !status.isQueued &&
+        !heartbeat) {
+      return;
+    }
+    if (message.isNotEmpty) _lastAoProgressMessage = message;
     final payload = <String, dynamic>{
       'active': true,
-      'message': message,
+      'message': message.isNotEmpty
+          ? message
+          : (status.isQueued ? 'Queued…' : status.phase),
       'phase': status.phase,
       'processing': status.processing,
+      if (heartbeat) 'heartbeat': true,
+      if (status.elapsedMs != null) 'elapsed_ms': status.elapsedMs,
       if (status.step != null) 'step': status.step,
       if (status.stepCount != null) 'step_count': status.stepCount,
       if (status.agentProviderId != null)
         'agent_provider_id': status.agentProviderId,
+      if (status.isQueued) 'queued': true,
+      if (status.queuePosition != null) 'queue_position': status.queuePosition,
+      if (status.queueLength != null) 'queue_length': status.queueLength,
     };
     latestAoProgress = payload;
     _broadcastKiosk(
