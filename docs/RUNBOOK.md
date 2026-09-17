@@ -441,8 +441,10 @@ extend that deadline.
 
 Hybrid routing: home/tool phrases stay on `client.voice_responder`; open-ended
 questions use Reach `chat`. Optional Ada sticky prefs:
-Admin → Access → Dynamic planning by app → `comstar`. Requires AO ≥ 2.2 and
-Reach ≥ 0.7.1.
+Admin → Access → Dynamic planning by app → `comstar`. Requires AO ≥ 2.11 and
+Reach ≥ 0.19. Empty Admin MCP enables still pin COMSTAR baseline stock MCPs
+(`home_assistant`, `fetch_url`, `ldap_directory`, `vision_comstar`) because AO
+≥ 2.3 treats an empty allowlist as overlay `client.*` only.
 
 ### Host network (Wi‑Fi + IPv4)
 

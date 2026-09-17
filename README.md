@@ -97,7 +97,7 @@ flowchart TB
 
   subgraph server ["AI server - RTX 4000 Ada"]
     direction TB
-    ao["agentic-orchestration v2.2+<br/>:8765<br/>planner / agents / session memory"]
+    ao["agentic-orchestration v2.11+<br/>:8765<br/>planner / agents / session memory"]
     stt["AO speech STT sidecar<br/>faster-whisper<br/>:8090"]
     tts["AO speech TTS sidecar<br/>Piper<br/>:8091"]
     cpai["CodeProject.AI<br/>:32168<br/>YOLO detect + Face recognize"]
@@ -163,8 +163,8 @@ Identity is cached with a TTL bound to continuous presence. Face recognition run
 
 | Layer | Choice | Rationale |
 |---|---|---|
-| Client SDK | `ao_reach` ≥ 0.7.1 (Dart ^3.5) | Session overlays + reverse MCP; `appId`; dynamic `chat` + `sessionEnv` |
-| Orchestration | [`agentic-orchestration`](https://github.com/zlatko-lakisic/agentic-orchestration) ≥ v2.2.0 | Planner, agents, MCP, KB; per-app allowlists + session env |
+| Client SDK | `ao_reach` ≥ 0.19.0 (Dart ^3.5) | Session overlays + reverse MCP; `appId`; dynamic `chat` + `sessionEnv`; MCP allowlist isolation |
+| Orchestration | [`agentic-orchestration`](https://github.com/zlatko-lakisic/agentic-orchestration) ≥ v2.11.0 | Planner, agents, MCP, KB; per-app allowlists + session env; run heartbeats / agent lifecycle |
 | Client shell | Dart bridge + Chromium kiosk | Bridge speaks REACH; kiosk renders the avatar; they talk over local WS |
 | Avatar (Phase 1) | Live SVG starburst in Chromium | State, mic level, speech amplitude; no WebGL yet |
 | Avatar (planned) | [TalkingHead.js](https://github.com/met4citizen/TalkingHead) + GLB | Lip-sync path reserved; GLB UAT still open |

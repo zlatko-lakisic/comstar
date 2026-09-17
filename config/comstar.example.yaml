@@ -7,8 +7,10 @@ orchestration:
   ttl_seconds: 86400                         # overlay TTL (AO max); refresh before expiry
   timeout_seconds: 15                        # 5–60 per CONTRACTS §7
   overlay_root: ./overlays/comstar
-  # Dynamic planning (AO ≥ 2.2 / Reach ≥ 0.7). Admin Agents tab can override
+  # Dynamic planning (AO ≥ 2.11 / Reach ≥ 0.19). Admin Agents tab can override
   # enables + store provider keys; keys go to AO via Reach sessionEnv only.
+  # Empty enabled_mcp_ids still pins COMSTAR baseline stock MCPs (AO ≥ 2.3
+  # empty allowlist = overlay client.* only).
   dynamic_planning: true
   default_run_mode: dynamic                  # dynamic | dynamic-iterative
   voice_backend: hybrid                      # hybrid | direct | dynamic

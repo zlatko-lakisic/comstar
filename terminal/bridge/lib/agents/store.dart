@@ -21,6 +21,20 @@ String defaultAgentsStateDir() {
   return p.join(base, 'agents');
 }
 
+/// Stock AO MCP ids COMSTAR always pins on `session_overlay_register`.
+///
+/// Since AO ≥ 2.3 / Reach ≥ 0.13, an omitted or empty `allowedMcpProviderIds`
+/// means **overlay `client.*` only** — not the full host catalog. Voice and
+/// dynamic chat need these Ada-hosted ids even when Admin `enabled_mcp_ids`
+/// is empty. Admin enables are unioned on top; `client.*` tunnel MCPs stay
+/// available without pinning.
+const kComstarBaselineStockMcpIds = <String>[
+  'home_assistant',
+  'fetch_url',
+  'ldap_directory',
+  'vision_comstar',
+];
+
 class AgentsRuntime {
   const AgentsRuntime({
     this.dynamicPlanning,
@@ -531,7 +545,13 @@ class AgentsStore {
     AgentsRuntime? runtime,
   }) async {
     final r = runtime ?? await loadRuntime();
-    return List<String>.from(r.enabledMcpIds ?? const []);
+    final configured = r.enabledMcpIds ?? const <String>[];
+    final merged = <String>{
+      ...kComstarBaselineStockMcpIds,
+      ...configured,
+    };
+    final out = merged.toList()..sort();
+    return out;
   }
 
   Future<List<String>> effectiveAllowedSkillIds({
