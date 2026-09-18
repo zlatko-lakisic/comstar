@@ -11,6 +11,7 @@ echo "Deploying $ROOT → $REMOTE:$REMOTE_DIR"
 
 rsync -az --delete \
   --exclude '.git/' \
+  --exclude '.cursor/' \
   --exclude 'vendor/agentic-orchestration/' \
   --exclude '.venv/' \
   --exclude '.venv-stt/' \

@@ -19,3 +19,5 @@ handoffs/**/*.md
 site/node_modules/
 site/dist/
 site/.astro/
+# Secrets and credentials
+.cursor/secrets/
