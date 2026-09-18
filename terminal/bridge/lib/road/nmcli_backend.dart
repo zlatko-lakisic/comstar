@@ -453,8 +453,51 @@ class SanitizedOvpn {
   final String? password;
 }
 
+/// MikroTik OpenVPN (ROS 7.x, no NCP) — force CBC so OpenVPN 2.6+ / Android
+/// clients do not offer ChaCha20-Poly1305 or GCM-only and get
+/// `unknown cipher alg or key size` then reset.
+const kMikrotikOvpnCipherLines = <String>[
+  'cipher AES-256-CBC',
+  'data-ciphers AES-256-CBC',
+  'data-ciphers-fallback AES-256-CBC',
+  'auth SHA1',
+];
+
+/// Replace cipher/auth negotiation lines with [kMikrotikOvpnCipherLines].
+///
+/// Leaves `proto`, `remote`, certs, and PPP auth untouched. Idempotent.
+String normalizeOvpnCipherForMikrotik(String raw) {
+  final drop = RegExp(
+    // Require a space (or EOL) after `auth` so we never strip `auth-user-pass`.
+    r'^\s*(?:cipher|data-ciphers|data-ciphers-fallback|ncp-ciphers|auth)(?:\s+.*)?$',
+    multiLine: true,
+    caseSensitive: false,
+  );
+  var text = raw.replaceAll(drop, '');
+  // Collapse blank runs left by removals; keep a single trailing newline style.
+  text = text.replaceAll(RegExp(r'\n{3,}'), '\n\n').trimRight();
+  if (text.isNotEmpty && !text.endsWith('\n')) text = '$text\n';
+  final block = '${kMikrotikOvpnCipherLines.join('\n')}\n';
+  // Insert after `client` / `dev` / `proto` / `remote` preamble when present;
+  // otherwise append.
+  final insertAfter = RegExp(
+    r'^(?:(?:client|dev|proto|remote|resolv-retry|nobind|persist-key|persist-tun|verb|mute)\b.*\n)+',
+    multiLine: true,
+    caseSensitive: false,
+  );
+  final m = insertAfter.firstMatch(text);
+  if (m != null) {
+    final end = m.end;
+    return '${text.substring(0, end)}$block${text.substring(end)}';
+  }
+  if (text.isEmpty) return block;
+  return '$text\n$block';
+}
+
 /// NM `connection import type openvpn` rejects `<auth-user-pass>` blobs.
 /// Strip them and return username/password for vpn.user-name / vpn.secrets.
+/// Also forces MikroTik-compatible AES-256-CBC + SHA1 (see
+/// [normalizeOvpnCipherForMikrotik]).
 SanitizedOvpn sanitizeOvpnForNmcli(String raw) {
   final authBlock = RegExp(
     r'<auth-user-pass>\s*([\s\S]*?)\s*</auth-user-pass>',
@@ -476,5 +519,6 @@ SanitizedOvpn sanitizeOvpnForNmcli(String raw) {
     if (lines.length > 1) pass = lines[1];
     text = raw.replaceFirst(authBlock, 'auth-user-pass\n');
   }
+  text = normalizeOvpnCipherForMikrotik(text);
   return SanitizedOvpn(text: text, username: user, password: pass);
 }

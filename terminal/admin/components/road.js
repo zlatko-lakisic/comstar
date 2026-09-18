@@ -92,8 +92,8 @@ export function createRoad(root, { api, onStatus } = {}) {
             <div class="road__secrets-body">
               <div class="road__proto-fields" data-proto="openvpn" id="roadOvpnCreds">
                 <label class="road__field">
-                  <span>OpenVPN (.ovpn paste) — match router cipher/auth/proto</span>
-                  <textarea id="roadOvpnText" class="mono" rows="5" placeholder="client&#10;dev tun&#10;proto tcp-client&#10;cipher AES-128-CBC&#10;auth SHA1&#10;…"></textarea>
+                  <span>OpenVPN (.ovpn paste) — MikroTik: AES-256-CBC + SHA1 forced on save</span>
+                  <textarea id="roadOvpnText" class="mono" rows="5" placeholder="client&#10;dev tun&#10;proto tcp-client&#10;remote … 1194&#10;cipher AES-256-CBC&#10;data-ciphers AES-256-CBC&#10;data-ciphers-fallback AES-256-CBC&#10;auth SHA1&#10;…"></textarea>
                 </label>
                 <div class="road__row">
                   <label class="road__field">
