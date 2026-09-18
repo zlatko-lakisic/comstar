@@ -139,8 +139,20 @@ Saved credentials are returned in `secrets` so the admin form can re-fill after 
 | `disconnect` | — | Bring COMSTAR VPN connections down |
 
 `set_secrets.openvpn`: `{ "ovpn", "passphrase"?, "username"?, "password"? }` —
-`.ovpn` text must match the router (`cipher`, `auth`, `proto`, certs). `passphrase`
-is only for an encrypted client private key. `username`/`password` are the PPP
+`.ovpn` text must match the router (`proto`, certs, remote). On apply, the bridge
+**forces** MikroTik-compatible crypto (ROS 7.x has no NCP; modern clients that
+offer ChaCha20/GCM-first get `unknown cipher alg or key size`):
+
+```conf
+cipher AES-256-CBC
+data-ciphers AES-256-CBC
+data-ciphers-fallback AES-256-CBC
+auth SHA1
+```
+
+Existing `cipher` / `data-ciphers*` / `auth` lines are replaced. Keep `proto tcp`
+(or `tcp-client`), client cert+key, and PPP `auth-user-pass` / form username+password.
+`passphrase` is only for an encrypted client private key. `username`/`password` are the PPP
 secret (MikroTik `/ppp secret`); they override an embedded `<auth-user-pass>` block.
 `set_secrets.l2tp`: `{ "gateway", "user", "password", "psk", "ipsec_enabled": true }`
 

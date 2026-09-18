@@ -266,11 +266,13 @@ class RoadService {
       } else if ((parsed.password ?? '').isNotEmpty) {
         o['password'] = parsed.password;
       }
+      // Persist MikroTik-normalized cipher/auth so Admin reloads show CBC.
+      o['ovpn'] = parsed.text;
       await store.mergeSecrets({'openvpn': o});
 
       final r = await backend.applyOpenVpn(
         connectionName: _effective.openvpnConnection,
-        ovpnText: ovpn,
+        ovpnText: parsed.text,
         passphrase: o['passphrase']?.toString(),
         username: o['username']?.toString(),
         password: o['password']?.toString(),

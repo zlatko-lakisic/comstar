@@ -357,6 +357,20 @@ sudoers for passwordless `nmcli`.
 Open Road VPN panel → confirm prerequisites → paste OpenVPN and/or L2TP
 credentials → **Initialize VPN** (creates NM profile, enables monitor, connects).
 
+**MikroTik home OpenVPN (`Kuca` / ROS 7.x):** the server has **no NCP**. Paste any
+working `.ovpn`; on save the bridge rewrites cipher/auth to:
+
+```conf
+cipher AES-256-CBC
+data-ciphers AES-256-CBC
+data-ciphers-fallback AES-256-CBC
+auth SHA1
+```
+
+Do not rely on Android/OpenVPN 2.6 defaults (ChaCha20 / GCM-first) — those reset
+with `unknown cipher alg or key size`. Keep `proto tcp` + client cert + PPP user.
+Site-to-site Mostar remains **L2TP**, not this phone OVPN path.
+
 **3. Monitor**
 
 With **Enable health monitor** on and off-home: periodic reconcile keeps the
