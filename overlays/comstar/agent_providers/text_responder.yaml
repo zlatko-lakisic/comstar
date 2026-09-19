@@ -32,10 +32,10 @@ model: qwen2.5:14b-instruct
 mcp_providers:
   - home_assistant
   - client.google_workspace
-  # client.nextcloud — attach only when tunnel MCP is registered (see bridge
-  # utterance routing). Do not list here or dynamic plans fail if unpaired.
-  - ldap_directory
-  - vision_comstar
+  # Tunnel / Ada-extra MCPs (client.nextcloud, ldap_directory, vision_comstar)
+  # attach only via session utterance routing when present in the live catalog.
+  # Listing them here makes dynamic plans fail with unknown catalog id when
+  # the tunnel is down or Ada EXTRA MCP path is missing those YAML entries.
 
 skills:
   - text_output
