@@ -8,6 +8,7 @@ import 'package:comstar_bridge/announce/channel_pairing_client.dart';
 import 'package:comstar_bridge/announce/gate.dart';
 import 'package:comstar_bridge/agents/routing.dart';
 import 'package:comstar_bridge/announce/service.dart';
+import 'package:comstar_bridge/ao_status_speak.dart';
 import 'package:comstar_bridge/attention/clock.dart';
 import 'package:comstar_bridge/channel_intent.dart';
 import 'package:comstar_bridge/pairing_speak.dart';
@@ -216,6 +217,14 @@ class AttentionCoordinator {
   Timer? _workingAckTimer;
   String? _workingAckSpokenTurnId;
   Completer<void>? _workingAckPlayback;
+
+  /// Spoken Reach status progress (change-immediate + periodic still).
+  Timer? _aoStatusPeriodicTimer;
+  String? _lastSpokenAoStatusLine;
+  String? _aoStatusBaseLine;
+  var _aoStatusSpeakInFlight = false;
+  String? _pendingAoStatusLine;
+  String? _aoStatusSpeakTurnId;
 
   /// Wait for the current speak to finish (speak.ended / watchdog / local play).
   Completer<void>? _playbackWait;
@@ -1578,6 +1587,7 @@ class AttentionCoordinator {
         utterance: text,
         force: useDynamic,
       );
+      _resetAoStatusSpeak(turnId);
       void onStatus(ReachRunStatus status) {
         _onAoRunStatus(status, turnId: turnId);
       }
@@ -1588,6 +1598,7 @@ class AttentionCoordinator {
             )
           : await session.directVoice(agentText, onStatus: onStatus);
       _cancelWorkingAckTimer();
+      _cancelAoStatusPeriodic();
       response = unwrapSpokenReply(response);
       if (_looksLikeToolStallProse(response)) {
         logWarn('direct_agent_tool_stall', 'AO returned tool-loop stall prose', data: {
@@ -1656,12 +1667,14 @@ class AttentionCoordinator {
     } catch (e) {
       logWarn('direct_agent_failed', e.toString(), data: {'turn_id': turnId});
       _clearAoProgress();
+      final failure = aoFailureSpeakLine(e);
       await _speakFallback(
-        'Sorry, I could not get an answer in time.',
+        failure ?? 'Sorry, I could not get an answer in time.',
         turnId,
       );
     } finally {
       _cancelWorkingAckTimer();
+      _cancelAoStatusPeriodic();
       turnSpan.close();
     }
   }
@@ -1674,11 +1687,18 @@ class AttentionCoordinator {
     machine.extendAoDeadline();
     final message = status.message.trim();
     final heartbeat = status.raw['heartbeat'] == true;
-    if (message.isEmpty && !status.isQueued && !heartbeat) return;
+    final speakLine = aoStatusSpeakLine(status);
+    if (message.isEmpty &&
+        !status.isQueued &&
+        !heartbeat &&
+        speakLine == null) {
+      return;
+    }
     if (message == _lastAoProgressMessage &&
         status.processing &&
         !status.isQueued &&
         !heartbeat) {
+      _maybeSpeakAoStatus(status, turnId: turnId, heartbeat: heartbeat);
       return;
     }
     if (message.isNotEmpty) _lastAoProgressMessage = message;
@@ -1703,10 +1723,150 @@ class AttentionCoordinator {
     _broadcastKiosk(
       Envelope.create(type: 'ao.progress', data: payload, turnId: turnId),
     );
+    _maybeSpeakAoStatus(status, turnId: turnId, heartbeat: heartbeat);
+  }
+
+  void _maybeSpeakAoStatus(
+    ReachRunStatus status, {
+    required String turnId,
+    required bool heartbeat,
+  }) {
+    if (!config.attention.statusSpeak) return;
+    if (!machine.context.directAgentInFlight) return;
+    if (machine.context.turnId != turnId) return;
+    if (machine.state is! Responding) return;
+
+    final line = aoStatusSpeakLine(status);
+    if (line == null) return;
+
+    final changed = aoStatusChanged(_lastSpokenAoStatusLine, line);
+    if (changed) {
+      _lastSpokenAoStatusLine = line;
+      _aoStatusBaseLine = line;
+      _armAoStatusPeriodic(turnId);
+      _requestAoStatusSpeak(turnId, line);
+      return;
+    }
+
+    // Unchanged: heartbeats only keep the periodic timer alive.
+    if (heartbeat || status.processing || status.isQueued) {
+      _armAoStatusPeriodic(turnId);
+    }
+  }
+
+  void _resetAoStatusSpeak(String turnId) {
+    _cancelAoStatusPeriodic();
+    _lastSpokenAoStatusLine = null;
+    _aoStatusBaseLine = null;
+    _pendingAoStatusLine = null;
+    _aoStatusSpeakInFlight = false;
+    _aoStatusSpeakTurnId = turnId;
+  }
+
+  void _armAoStatusPeriodic(String turnId) {
+    _aoStatusPeriodicTimer?.cancel();
+    final ms = config.attention.statusSpeakIntervalMs;
+    if (ms <= 0) return;
+    if (!config.attention.statusSpeak) return;
+    _aoStatusPeriodicTimer = Timer(Duration(milliseconds: ms), () {
+      if (machine.context.turnId != turnId) return;
+      if (!machine.context.directAgentInFlight) return;
+      if (machine.state is! Responding) return;
+      final base = _aoStatusBaseLine;
+      if (base == null || base.isEmpty) return;
+      _requestAoStatusSpeak(turnId, aoPeriodicStillLine(base));
+      _armAoStatusPeriodic(turnId);
+    });
+  }
+
+  void _cancelAoStatusPeriodic() {
+    _aoStatusPeriodicTimer?.cancel();
+    _aoStatusPeriodicTimer = null;
+  }
+
+  void _requestAoStatusSpeak(String turnId, String line) {
+    final text = line.trim();
+    if (text.isEmpty) return;
+    if (_aoStatusSpeakInFlight) {
+      _pendingAoStatusLine = text;
+      return;
+    }
+    unawaited(_speakAoStatusLine(turnId, text));
+  }
+
+  /// Progress TTS while AO is in flight. Does not complete the turn.
+  Future<void> _speakAoStatusLine(String turnId, String line) async {
+    if (!machine.context.directAgentInFlight) return;
+    if (machine.state is! Responding) return;
+    if (machine.context.turnId != turnId) return;
+    if (_aoStatusSpeakInFlight) {
+      _pendingAoStatusLine = line;
+      return;
+    }
+
+    machine.extendAoDeadline();
+    _aoStatusSpeakInFlight = true;
+    // Status speech supersedes the generic working-ack for this turn.
+    _workingAckSpokenTurnId = turnId;
+    _cancelWorkingAckTimer();
+    _workingAckPlayback = Completer<void>();
+
+    logInfo('ao_status_speak', 'Speaking AO status', data: {
+      'turn_id': turnId,
+      'text': line,
+    });
+    try {
+      machine.context.playing = true;
+      final ttsSpan = Span('tts_total');
+      final path = await tts.synthesizeToFile(line);
+      _lastTtsTotal = Duration(milliseconds: ttsSpan.elapsedMs);
+      ttsSpan.close();
+      if (!machine.context.directAgentInFlight ||
+          machine.context.turnId != turnId) {
+        _completeWorkingAckPlayback();
+        return;
+      }
+      _noteSpeakDuration(path: path, text: line);
+      final audioUrl = audioServer.registerFile(path);
+      _beginSpeakWatchdog();
+      _broadcastPhase('speaking', detail: line);
+      _broadcastKiosk(
+        Envelope.create(
+          type: 'speak',
+          turnId: turnId,
+          data: {
+            'text': line,
+            'audioUrl': audioUrl,
+            ..._kioskSpeakAudioFlags(),
+          },
+        ),
+      );
+      unawaited(_maybePlayLocal(audioUrl));
+      _rememberSpoken(line);
+      await _awaitWorkingAckPlayback();
+    } catch (e) {
+      logWarn('ao_status_speak_failed', e.toString(), data: {'turn_id': turnId});
+      machine.context.playing = false;
+      _completeWorkingAckPlayback();
+    } finally {
+      _aoStatusSpeakInFlight = false;
+      final pending = _pendingAoStatusLine;
+      _pendingAoStatusLine = null;
+      if (pending != null &&
+          machine.context.directAgentInFlight &&
+          machine.context.turnId == turnId &&
+          machine.state is Responding) {
+        unawaited(_speakAoStatusLine(turnId, pending));
+      }
+    }
   }
 
   void _clearAoProgress() {
     _lastAoProgressMessage = null;
+    _cancelAoStatusPeriodic();
+    _pendingAoStatusLine = null;
+    _lastSpokenAoStatusLine = null;
+    _aoStatusBaseLine = null;
     _broadcastKiosk(
       Envelope.create(
         type: 'ao.progress',
@@ -1725,6 +1885,10 @@ class AttentionCoordinator {
   }) {
     _cancelWorkingAckTimer();
     if (_workingAckSpokenTurnId == turnId) return;
+    // Reach status speech already covers progress for this turn.
+    if (_lastSpokenAoStatusLine != null && _aoStatusSpeakTurnId == turnId) {
+      return;
+    }
     if (!shouldArmWorkingAck(
       mcpProviders: mcpProviders,
       workingAckOnTools: config.attention.workingAckOnTools,
@@ -1742,6 +1906,11 @@ class AttentionCoordinator {
       if (machine.context.turnId != turnId) return;
       if (!machine.context.directAgentInFlight) return;
       if (machine.state is! Responding) return;
+      // Status may have spoken while the timer was pending.
+      if (_workingAckSpokenTurnId == turnId) return;
+      if (_lastSpokenAoStatusLine != null && _aoStatusSpeakTurnId == turnId) {
+        return;
+      }
       unawaited(_speakWorkingAck(turnId));
     });
   }

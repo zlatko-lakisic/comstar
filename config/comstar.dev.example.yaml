@@ -43,6 +43,8 @@ attention:
   idle_sleep_seconds: 600
   working_ack_ms: 4500
   working_ack_on_tools: true
+  status_speak: true
+  status_speak_interval_ms: 15000
 
 # Directory optional in Mac bring-up; require:false = fail-open to faceId.
 presence:

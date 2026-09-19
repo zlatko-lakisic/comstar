@@ -117,6 +117,8 @@ class ComstarConfig {
     'idle_sleep_seconds',
     'working_ack_ms',
     'working_ack_on_tools',
+    'status_speak',
+    'status_speak_interval_ms',
   };
 
   static const _directoryKeys = {
@@ -463,6 +465,12 @@ class ComstarConfig {
       workingAckOnTools: map.containsKey('working_ack_on_tools')
           ? _requireBool(map, 'working_ack_on_tools', 'attention')
           : true,
+      statusSpeak: map.containsKey('status_speak')
+          ? _requireBool(map, 'status_speak', 'attention')
+          : true,
+      statusSpeakIntervalMs: map.containsKey('status_speak_interval_ms')
+          ? _requireInt(map, 'status_speak_interval_ms', 'attention')
+          : 15000,
     );
   }
 
@@ -723,6 +731,12 @@ class ComstarConfig {
       attention.workingAckMs,
       0,
       60000,
+    );
+    _rangeInt(
+      'attention.status_speak_interval_ms',
+      attention.statusSpeakIntervalMs,
+      0,
+      120000,
     );
 
     const renderModes = {'local', 'streamed'};
@@ -1043,6 +1057,8 @@ class AttentionConfig {
     this.idleSleepSeconds = 600,
     this.workingAckMs = 4500,
     this.workingAckOnTools = true,
+    this.statusSpeak = true,
+    this.statusSpeakIntervalMs = 15000,
   });
 
   final bool faceAttentionTrigger;
@@ -1062,6 +1078,13 @@ class AttentionConfig {
   /// When true, only arm when `mcpProvidersForVoice` is non-empty. Either way,
   /// the utterance must look like tool/query work (not conversational acks).
   final bool workingAckOnTools;
+
+  /// When true, speak Reach `ReachRunStatus` progress at the hallway.
+  final bool statusSpeak;
+
+  /// Re-speak the same AO status after this many ms. `0` disables periodic
+  /// re-speak (change-immediate still applies when [statusSpeak] is true).
+  final int statusSpeakIntervalMs;
 }
 
 class DirectoryConfig {
