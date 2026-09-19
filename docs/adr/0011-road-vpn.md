@@ -32,7 +32,9 @@ console, with automatic bring-up when off-home.
 5. **Admin:** setup UI → prerequisites → credentials → **Initialize** (enable +
    connect). Ongoing control via `GET/POST /admin/api/road`. Saved credentials
    are returned in GET `secrets` so the admin form can re-fill after save
-   (token-gated when LAN-bound).
+   (token-gated when LAN-bound). OpenVPN paste is normalized to
+   **AES-256-CBC + SHA1** (`data-ciphers` pinned) for MikroTik ROS 7.x (no NCP);
+   modern client cipher defaults otherwise reset the session.
 6. **Host packages:** `scripts/install-road-vpn.sh` / `make road-vpn`.
 
 ## Consequences

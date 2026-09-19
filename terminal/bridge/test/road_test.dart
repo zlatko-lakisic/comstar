@@ -279,6 +279,63 @@ void main() {
       await dir.delete(recursive: true);
     });
   });
+
+  group('sanitizeOvpnForNmcli / MikroTik cipher', () {
+    test('strips auth-user-pass blob', () {
+      const raw = '''
+client
+proto tcp-client
+<auth-user-pass>
+vpnuser
+vpnpass
+</auth-user-pass>
+remote example.com 1194
+''';
+      final s = sanitizeOvpnForNmcli(raw);
+      expect(s.username, 'vpnuser');
+      expect(s.password, 'vpnpass');
+      expect(s.text, isNot(contains('<auth-user-pass>')));
+      expect(s.text, contains('auth-user-pass'));
+    });
+
+    test('forces AES-256-CBC and drops ChaCha / GCM offers', () {
+      const raw = '''
+client
+dev tun
+proto tcp-client
+remote home.example.com 1194
+cipher AES-128-CBC
+data-ciphers CHACHA20-POLY1305:AES-256-GCM:AES-128-GCM:AES-256-CBC
+auth SHA256
+<ca>
+CERT
+</ca>
+''';
+      final s = sanitizeOvpnForNmcli(raw);
+      expect(s.text, contains('cipher AES-256-CBC'));
+      expect(s.text, contains('data-ciphers AES-256-CBC'));
+      expect(s.text, contains('data-ciphers-fallback AES-256-CBC'));
+      expect(s.text, contains('auth SHA1'));
+      expect(s.text, isNot(contains('CHACHA20')));
+      expect(s.text, isNot(contains('AES-256-GCM')));
+      expect(s.text, isNot(contains('AES-128-CBC')));
+      expect(s.text, contains('proto tcp-client'));
+      expect(s.text, contains('remote home.example.com 1194'));
+      expect(s.text, contains('<ca>'));
+    });
+
+    test('normalize is idempotent', () {
+      const raw = '''
+client
+proto tcp
+remote x 1194
+''';
+      final once = normalizeOvpnCipherForMikrotik(raw);
+      final twice = normalizeOvpnCipherForMikrotik(once);
+      expect(twice, once);
+      expect('cipher AES-256-CBC'.allMatches(twice).length, 1);
+    });
+  });
 }
 
 class _FakeIface implements NetworkInterface {
