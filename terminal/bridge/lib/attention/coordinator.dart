@@ -1558,45 +1558,54 @@ class AttentionCoordinator {
       if (visionVisit) return;
 
       final mcp = session.mcpProvidersForVoice(utterance: text);
+      final newsResearch = looksLikeNewsResearch(text);
       final clipped =
           text.length > 500 ? '${text.substring(0, 500)}…' : text;
       final memoryUser = _memoryUserid;
       final agentText = memoryUser != null
           ? await conversationMemory.wrapForAgent(memoryUser, text)
           : text;
-      final useDynamic = shouldUseDynamicChat(
-        dynamicPlanning: await session.effectiveDynamicPlanning(),
-        voiceBackend: session.config.orchestration.voiceBackend,
-        utterance: text,
-        mcpProviders: mcp,
-      );
+      final useDynamic = !newsResearch &&
+          shouldUseDynamicChat(
+            dynamicPlanning: await session.effectiveDynamicPlanning(),
+            voiceBackend: session.config.orchestration.voiceBackend,
+            utterance: text,
+            mcpProviders: mcp,
+          );
+      final callKind = newsResearch
+          ? 'news_research'
+          : (useDynamic ? 'dynamic_chat' : 'direct_agent');
       logInfo(
-        useDynamic ? 'dynamic_chat' : 'direct_agent',
-        useDynamic ? 'Calling dynamic chat' : 'Calling voice agent',
+        callKind,
+        newsResearch
+            ? 'Calling news research (fetch_url)'
+            : (useDynamic ? 'Calling dynamic chat' : 'Calling voice agent'),
         data: {
           'turn_id': turnId,
           'text': clipped,
           'memory': memoryUser != null,
-          'mcp': mcp,
+          'mcp': newsResearch ? const ['fetch_url'] : mcp,
           'voice_backend': session.config.orchestration.voiceBackend,
         },
       );
       _armWorkingAck(
         turnId: turnId,
-        mcpProviders: mcp,
+        mcpProviders: newsResearch ? const ['fetch_url'] : mcp,
         utterance: text,
-        force: useDynamic,
+        force: useDynamic || newsResearch,
       );
       _resetAoStatusSpeak(turnId);
       void onStatus(ReachRunStatus status) {
         _onAoRunStatus(status, turnId: turnId);
       }
-      var response = useDynamic
-          ? await session.chatVoice(
-              _steerDynamicChat(agentText, text),
-              onStatus: onStatus,
-            )
-          : await session.directVoice(agentText, onStatus: onStatus);
+      var response = newsResearch
+          ? await session.researchVoice(agentText, onStatus: onStatus)
+          : useDynamic
+              ? await session.chatVoice(
+                  steerDynamicResearchChat(agentText, text),
+                  onStatus: onStatus,
+                )
+              : await session.directVoice(agentText, onStatus: onStatus);
       _cancelWorkingAckTimer();
       _cancelAoStatusPeriodic();
       response = unwrapSpokenReply(response);
@@ -1913,29 +1922,6 @@ class AttentionCoordinator {
       }
       unawaited(_speakWorkingAck(turnId));
     });
-  }
-
-  /// Steer Reach chat toward stock research agents without renaming AO's
-  /// `Current request:` extraction marker.
-  static String _steerDynamicChat(String wrapped, String utterance) {
-    if (!looksLikeResearch(utterance)) return wrapped;
-    // Ada jetson catalog is Ollama-first; gpt/claude may be filtered. Step Jobs
-    // often lack the RAG YAML mount — unknown orchestrator_kb hard-fails and AO
-    // remaps that to "unexpected format" for the client.
-    const steer =
-        'Planning constraints for this request:\n'
-        '- Prefer agent_provider_id ollama_qwen2_5_14b_instruct (or gpt_research / '
-        'claude_research only if listed). Never use client.greeter or '
-        'client.phrase_bank for research/news.\n'
-        '- Set rag_ids to [] on the plan and every step. Do not attach '
-        'orchestrator_kb or any RAG source.\n'
-        '- Attach mcp_providers fetch_url and weather_mcp when useful; '
-        'home_assistant only if the question is about the house.\n'
-        '- Produce a factual spoken English answer; do not only acknowledge.';
-    if (wrapped.contains('Current request:')) {
-      return '$steer\n\n$wrapped';
-    }
-    return '$steer\n\nCurrent request:\n${wrapped.trim()}';
   }
 
   void _cancelWorkingAckTimer() {

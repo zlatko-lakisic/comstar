@@ -13,6 +13,7 @@ import 'package:comstar_bridge/nextcloud/token_store.dart';
 import 'package:comstar_bridge/phrase_bank.dart';
 import 'package:comstar_bridge/reach_app.dart';
 import 'package:comstar_bridge/speech_routing.dart';
+import 'package:comstar_bridge/working_ack.dart';
 
 /// Thin interface over ao_reach [SessionBridge] for tests and stubs.
 abstract class ReachSessionBridge {
@@ -470,6 +471,11 @@ class ComstarSession {
   SpeechClient? get speechClient => _bridge.speechClient;
 
   static const voiceAgentId = 'client.voice_responder';
+
+  /// Stock Ada agent for news/world turns (`direct_agent` + `fetch_url`).
+  static const researchAgentId = 'ollama_qwen2_5_14b_instruct';
+
+  static const researchMcpProviders = <String>['fetch_url'];
   static const greeterAgentId = 'client.greeter';
   static const phraseBankAgentId = 'client.phrase_bank';
 
@@ -918,6 +924,51 @@ class ComstarSession {
       final result = await _bridge.chat(
         text: text,
         runMode: runMode,
+        timeout: Duration(seconds: timeoutSec),
+        onStatus: onStatus,
+      );
+      return result['text']?.toString() ?? '';
+    }
+  }
+
+  /// News / world turns: bypass the planner so `fetch_url` is always on the
+  /// step. Seeds concrete HTTPS URLs so Ada's ollama+fetch_url path can fetch
+  /// then summarize instead of inventing placeholder headlines.
+  Future<String> researchVoice(
+    String text, {
+    void Function(ReachRunStatus status)? onStatus,
+  }) async {
+    await ensureReady();
+    final orch = config.orchestration;
+    final timeoutSec = orch.dynamicTimeoutSeconds > orch.timeoutSeconds
+        ? orch.dynamicTimeoutSeconds
+        : orch.timeoutSeconds;
+    final prompt = seedNewsFetchPrompt(text);
+    try {
+      final result = await _bridge.directAgent(
+        agentProviderId: researchAgentId,
+        text: prompt,
+        mcpProviderIds: researchMcpProviders,
+        timeout: Duration(seconds: timeoutSec),
+        onStatus: onStatus,
+      );
+      return result['text']?.toString() ?? '';
+    } catch (e) {
+      final msg = e.toString();
+      final bridgeDead = msg.contains('not active') ||
+          msg.contains('session bridge') ||
+          msg.contains('disconnected');
+      if (!bridgeDead) rethrow;
+      logWarn(
+        'session_renew_retry',
+        'AO news research failed; renewing session and retrying',
+        data: {'error': msg},
+      );
+      await _reopen(userid: _userid!, guest: _guest);
+      final result = await _bridge.directAgent(
+        agentProviderId: researchAgentId,
+        text: seedNewsFetchPrompt(text),
+        mcpProviderIds: researchMcpProviders,
         timeout: Duration(seconds: timeoutSec),
         onStatus: onStatus,
       );

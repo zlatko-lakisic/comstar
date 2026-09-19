@@ -42,12 +42,7 @@ bool looksLikeLongToolQuery(String text) {
 
 /// Open-ended research / explain intents (dynamic planning / stock research).
 bool looksLikeResearch(String text) {
-  final t = text
-      .toLowerCase()
-      .replaceAll(RegExp(r"['\u2019]"), '')
-      .replaceAll(RegExp(r'[^\w\s]'), ' ')
-      .replaceAll(RegExp(r'\s+'), ' ')
-      .trim();
+  final t = _normalizeUtterance(text);
   if (t.isEmpty) return false;
   return RegExp(
     r'\b(research|investigate|look (this|that|it) up|look up|'
@@ -57,6 +52,70 @@ bool looksLikeResearch(String text) {
     r'do some research|dig into|background on|'
     r'news|headlines|current events|in the world|going on in (the )?world)\b',
   ).hasMatch(t);
+}
+
+/// News / current-events phrasing that needs live `fetch_url`, not planner prose.
+bool looksLikeNewsResearch(String text) {
+  final t = _normalizeUtterance(text);
+  if (t.isEmpty) return false;
+  return RegExp(
+    r'\b(news|headlines|current events|in the world|'
+    r'going on in (the )?world|whats going on|whats happening|'
+    r'what is going on|what is happening)\b',
+  ).hasMatch(t);
+}
+
+/// HTTPS sources seeded so AO's ollama+fetch_url fast-path can run.
+const kNewsFetchUrls = <String>[
+  'https://www.reuters.com/',
+  'https://www.bbc.com/news',
+  'https://apnews.com/',
+];
+
+/// Direct-agent prompt: concrete URLs + anti-placeholder instructions.
+String seedNewsFetchPrompt(String text) {
+  final urls = kNewsFetchUrls.join('\n');
+  return '${text.trim()}\n\n'
+      'Call fetch_url / fetch on each URL below, then answer with real headlines '
+      'only in short spoken English. Never invent bracket placeholders like '
+      '[Description] or [Current temperature]. Do not answer weather unless '
+      'asked. If fetch fails, say you could not fetch the news.\n'
+      '$urls';
+}
+
+/// Steer Reach `chat` toward stock research agents + mandatory step MCP.
+String steerDynamicResearchChat(String wrapped, String utterance) {
+  if (!looksLikeResearch(utterance)) return wrapped;
+  final urls = kNewsFetchUrls.map((u) => '  $u').join('\n');
+  final steer = 'Planning constraints for this request:\n'
+      '- Prefer agent_provider_id ollama_qwen2_5_14b_instruct (or gpt_research / '
+      'claude_research only if listed). Never use client.greeter or '
+      'client.phrase_bank for research/news.\n'
+      '- Exactly one step for news/world questions. Do not add weather steps '
+      'unless the user asked about weather.\n'
+      '- Set rag_ids to [] on the plan and every step. Do not attach '
+      'orchestrator_kb or any RAG source.\n'
+      '- Every step MUST set mcp_providers: ["fetch_url"] (non-empty on the '
+      'step object). Do not leave step mcps empty. Do not attach weather_mcp '
+      'unless the user asked about weather.\n'
+      '- Include these HTTPS URLs in the step topic so tools can run:\n'
+      '$urls\n'
+      '- Final answer: real headlines only; never invent [bracket] placeholders; '
+      'if fetch fails, say you could not fetch news.\n'
+      '- Produce a factual spoken English answer; do not only acknowledge.';
+  if (wrapped.contains('Current request:')) {
+    return '$steer\n\n$wrapped';
+  }
+  return '$steer\n\nCurrent request:\n${wrapped.trim()}';
+}
+
+String _normalizeUtterance(String text) {
+  return text
+      .toLowerCase()
+      .replaceAll(RegExp(r"['\u2019]"), '')
+      .replaceAll(RegExp(r'[^\w\s]'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
 }
 
 final _conversationalContinuity = RegExp(

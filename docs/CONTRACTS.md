@@ -609,7 +609,9 @@ await bridge.start(
 ### Turn
 
 Hybrid (`voice_backend: hybrid`): specialty MCP / home-control → `direct_agent`;
-otherwise when dynamic planning is on → `chat`.
+news / world-events → `direct_agent` on `ollama_qwen2_5_14b_instruct` with
+`mcpProviderIds: ["fetch_url"]` and seeded HTTPS URLs (bypass planner so step
+MCPs are never empty); otherwise when dynamic planning is on → `chat`.
 
 ```dart
 // Home / tools
@@ -619,7 +621,14 @@ final result = await bridge.directAgent(
   mcpProviderIds: mcpProvidersForVoice(utterance: transcript),
 );
 
-// Open-ended (dynamic planning)
+// News / world (fetch_url pinned; URLs in prompt for ollama fetch fast-path)
+final news = await bridge.directAgent(
+  agentProviderId: 'ollama_qwen2_5_14b_instruct',
+  text: seedNewsFetchPrompt(transcript),
+  mcpProviderIds: const ['fetch_url'],
+);
+
+// Other open-ended (dynamic planning)
 final planned = await bridge.chat(
   text: transcript,
   runMode: 'dynamic',
