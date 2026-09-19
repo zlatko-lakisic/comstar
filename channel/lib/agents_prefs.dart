@@ -20,6 +20,16 @@ const kCuratedAgentIds = <String>[
   'ollama_qwen2_5_14b_instruct',
 ];
 
+/// Stock AO MCP ids always pinned on channel session register.
+/// Keep in sync with bridge `kComstarBaselineStockMcpIds` (AO ≥ 2.3 empty
+/// allowlist = overlay `client.*` only).
+const kComstarBaselineStockMcpIds = <String>[
+  'home_assistant',
+  'fetch_url',
+  'ldap_directory',
+  'vision_comstar',
+];
+
 String agentsStateDir() {
   final override = Platform.environment['COMSTAR_DATA_DIR']?.trim();
   final base = (override != null && override.isNotEmpty)
@@ -132,7 +142,34 @@ class ChannelAgentsPrefs {
     if (anthropic != null && anthropic.isNotEmpty) {
       out['ANTHROPIC_API_KEY'] = anthropic;
     }
+    final envMap = secrets['env'];
+    if (envMap is Map) {
+      for (final e in envMap.entries) {
+        final k = e.key.toString().trim();
+        final v = e.value?.toString().trim() ?? '';
+        if (k.isEmpty || v.isEmpty) continue;
+        out.putIfAbsent(k, () => v);
+      }
+    }
     return out;
+  }
+
+  /// Baseline stock MCPs ∪ Admin `enabled_mcp_ids` (AO ≥ 2.3 pin semantics).
+  Future<List<String>> allowedMcpIds() async {
+    final runtime = await _readJson(p.join(stateDir, 'runtime.json'));
+    final configured = <String>[];
+    final raw = runtime['enabled_mcp_ids'];
+    if (raw is List) {
+      for (final e in raw) {
+        final id = e?.toString().trim() ?? '';
+        if (id.isNotEmpty) configured.add(id);
+      }
+    }
+    final merged = <String>{
+      ...kComstarBaselineStockMcpIds,
+      ...configured,
+    };
+    return merged.toList()..sort();
   }
 }
 

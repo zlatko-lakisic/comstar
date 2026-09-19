@@ -190,7 +190,7 @@ Same host (`10.0.10.16`) runs multiple services:
 | Service | URL | Status |
 |---|---|---|
 | CodeProject.AI | `http://10.0.10.16:32168` | **VERIFIED** — YOLO + Face on GPU |
-| agentic-orchestration | `http://10.0.10.16:8765` | **VERIFIED** — v1.27.4, overlay+tunnel, Reach hello |
+| agentic-orchestration | `https://10.0.10.16:8765` | **VERIFIED path** — vendor pin **v2.11.0** (Reach **v0.19.0**); mTLS + overlay allowlists |
 | Ollama | `http://10.0.10.16:11434` | up (`qwen2.5:14b` present) |
 | STT / TTS | **Prefer Ada speech sidecars** (AO ≥ 1.28 / Reach `SpeechClient`) | Advertise `AGENTIC_SPEECH_*` on this host. Local Pi/Mac `comstar-stt`/`comstar-tts` remain fallback via `COMSTAR_*_URL`. |
 | CompreFace | `http://10.0.10.16:8000` | Present (SPA); not used by COMSTAR (CPAI is vision) |

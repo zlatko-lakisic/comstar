@@ -10,7 +10,8 @@ import 'package:test/test.dart';
 void main() {
   group('loadOverlayMcpProviders', () {
     test('loads google_workspace from overlay', () {
-      final root = Directory.current.path.contains('terminal/bridge')
+      final cwd = Directory.current.path.replaceAll(r'\', '/');
+      final root = cwd.contains('terminal/bridge')
           ? '${Directory.current.path}/../../overlays/comstar'
           : '${Directory.current.path}/overlays/comstar';
       final defs = loadOverlayMcpProviders(root);
