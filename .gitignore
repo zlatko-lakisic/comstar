@@ -21,3 +21,5 @@ site/dist/
 site/.astro/
 # Secrets and credentials
 .cursor/secrets/
+# Local scratch (deploy probes, one-off scripts, log dumps)
+.tmp/
