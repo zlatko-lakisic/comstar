@@ -63,6 +63,8 @@ attention:
   idle_sleep_seconds: 600                      # 0 disables; silent auto-sleep after idle
   working_ack_ms: 4500                         # 0 disables; "working on it" only for slow tool/query turns
   working_ack_on_tools: true                   # also require mcpProvidersForVoice non-empty; never for chit-chat
+  status_speak: true                           # speak Reach AO progress at the hallway
+  status_speak_interval_ms: 15000              # re-speak same status; 0 = change-only
 
 # AO phrase banks — periodic short lines for engage / sleep / social.
 # Text only; TTS runs at speak time. Optional [[name]] slots filled with display name.
