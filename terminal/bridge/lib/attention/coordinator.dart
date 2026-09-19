@@ -1919,10 +1919,19 @@ class AttentionCoordinator {
   /// `Current request:` extraction marker.
   static String _steerDynamicChat(String wrapped, String utterance) {
     if (!looksLikeResearch(utterance)) return wrapped;
+    // Ada jetson catalog is Ollama-first; gpt/claude may be filtered. Step Jobs
+    // often lack the RAG YAML mount — unknown orchestrator_kb hard-fails and AO
+    // remaps that to "unexpected format" for the client.
     const steer =
-        'For this request prefer stock research agents gpt_research and/or '
-        'claude_research when available. Produce a factual spoken answer; '
-        'do not only acknowledge the request.';
+        'Planning constraints for this request:\n'
+        '- Prefer agent_provider_id ollama_qwen2_5_14b_instruct (or gpt_research / '
+        'claude_research only if listed). Never use client.greeter or '
+        'client.phrase_bank for research/news.\n'
+        '- Set rag_ids to [] on the plan and every step. Do not attach '
+        'orchestrator_kb or any RAG source.\n'
+        '- Attach mcp_providers fetch_url and weather_mcp when useful; '
+        'home_assistant only if the question is about the house.\n'
+        '- Produce a factual spoken English answer; do not only acknowledge.';
     if (wrapped.contains('Current request:')) {
       return '$steer\n\n$wrapped';
     }

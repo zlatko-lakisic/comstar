@@ -95,6 +95,15 @@ String? aoFailureSpeakLine(Object error, {int maxChars = kAoFailureSpeakMaxChars
         '',
       );
 
+  // AO often remaps worker RAG/catalog hard-fails to this generic line.
+  if (RegExp(
+    r'agent returned a response in an unexpected format',
+    caseSensitive: false,
+  ).hasMatch(line)) {
+    line =
+        'the research step failed (bad plan or missing knowledge base on Ada)';
+  }
+
   line = _trimSpoken(line, maxChars: maxChars);
   if (!line.endsWith('.') && !line.endsWith('!') && !line.endsWith('?')) {
     line = '$line.';

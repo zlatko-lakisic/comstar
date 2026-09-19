@@ -52,8 +52,10 @@ bool looksLikeResearch(String text) {
   return RegExp(
     r'\b(research|investigate|look (this|that|it) up|look up|'
     r'find out (about|what|how|why)|tell me about|explain|'
-    r'what (is|are|was|were)|how (does|do|did|can)|why (is|are|do|does)|'
-    r'do some research|dig into|background on)\b',
+    r'what (is|are|was|were|s going|s happening)|whats going|whats happening|'
+    r'how (does|do|did|can)|why (is|are|do|does)|'
+    r'do some research|dig into|background on|'
+    r'news|headlines|current events|in the world|going on in (the )?world)\b',
   ).hasMatch(t);
 }
 

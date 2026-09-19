@@ -27,6 +27,15 @@ void main() {
     });
   });
 
+  group('looksLikeResearch', () {
+    test('matches world news / current events phrasing', () {
+      expect(looksLikeResearch("What's going on in the world today?"), isTrue);
+      expect(looksLikeResearch('Tell me the news'), isTrue);
+      expect(looksLikeResearch('Any current events I should know?'), isTrue);
+      expect(looksLikeResearch('Thanks'), isFalse);
+    });
+  });
+
   group('shouldArmWorkingAck', () {
     test('arms only when utterance looks tool-heavy', () {
       expect(
