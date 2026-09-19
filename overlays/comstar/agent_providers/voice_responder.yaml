@@ -28,7 +28,9 @@ model: qwen2.5:14b-instruct
 mcp_providers:
   - home_assistant
   - client.google_workspace
-  - client.nextcloud
+  # client.nextcloud — only attach when the tunnel MCP is registered (session
+  # utterance routing). Listing it here makes dynamic plans fail with
+  # unknown catalog id when Nextcloud is not paired/started.
   - ldap_directory
   - vision_comstar
 

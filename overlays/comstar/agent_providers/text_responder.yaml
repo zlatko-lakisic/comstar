@@ -32,7 +32,8 @@ model: qwen2.5:14b-instruct
 mcp_providers:
   - home_assistant
   - client.google_workspace
-  - client.nextcloud
+  # client.nextcloud — attach only when tunnel MCP is registered (see bridge
+  # utterance routing). Do not list here or dynamic plans fail if unpaired.
   - ldap_directory
   - vision_comstar
 
