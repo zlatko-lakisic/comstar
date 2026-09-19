@@ -98,5 +98,14 @@ void main() {
     test('returns null for opaque errors', () {
       expect(aoFailureSpeakLine(StateError('boom')), isNull);
     });
+
+    test('maps unexpected format to actionable line', () {
+      final line = aoFailureSpeakLine(ReachRunException(
+        message: 'The agent returned a response in an unexpected format.',
+        code: 'run_failed',
+      ));
+      expect(line, contains('research step failed'));
+      expect(line, startsWith('Sorry'));
+    });
   });
 }
