@@ -101,6 +101,8 @@ HomeDataIntent? parseHomeDataIntent(String text) {
 
 HomeDataIntent? _parseWhenPersonLeft(String t) {
   // "when did Adna leave" / "when did they leave home" / "how long has she been gone"
+  // Also house presence last-seen: "last time we saw Adna around the house"
+  // (HA person history — not Frigate cameras).
   final patterns = <RegExp>[
     RegExp(
       r'\bwhen\s+did\s+(.+?)\s+leave(?:\s+(?:home|the\s+house|here))?\b',
@@ -113,6 +115,23 @@ HomeDataIntent? _parseWhenPersonLeft(String t) {
     ),
     RegExp(
       r'\bwhat\s+time\s+did\s+(.+?)\s+leave(?:\s+(?:home|the\s+house))?\b',
+    ),
+    RegExp(
+      r"\b(?:when\s+(?:was|is)|whats?|what\s+was)\s+the\s+last\s+time\s+"
+      r"(?:that\s+)?(?:you|we|i)\s+(?:saw|seen)\s+(.+?)\s+"
+      r"(?:around|at|in)\s+(?:the\s+)?(?:house|home)\b",
+    ),
+    RegExp(
+      r'\blast\s+time\s+(?:you|we|i)\s+(?:saw|seen)\s+(.+?)\s+'
+      r'(?:around|at|in)\s+(?:the\s+)?(?:house|home)\b',
+    ),
+    RegExp(
+      r'\bwhen\s+was\s+(.+?)\s+last\s+(?:home|at\s+home|in\s+the\s+house|'
+      r'around\s+(?:the\s+)?house)\b',
+    ),
+    RegExp(
+      r'\blast\s+time\s+(.+?)\s+was\s+(?:home|at\s+home|in\s+the\s+house|'
+      r'around\s+(?:the\s+)?house)\b',
     ),
   ];
 
@@ -188,7 +207,8 @@ String? _cleanPersonName(String raw) {
       .replaceAll(
         RegExp(
           r'\b(right now|now|today|please|at home|in the house|'
-          r'located|living|staying|home|the house|here)\b',
+          r'around the house|around house|located|living|staying|home|'
+          r'the house|here)\b',
         ),
         ' ',
       )

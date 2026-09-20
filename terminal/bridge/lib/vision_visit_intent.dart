@@ -69,6 +69,15 @@ VisionVisitIntent? parseVisionVisitIntent(String text) {
 }
 
 VisionVisitIntent? _parsePersonLastSeen(String t) {
+  // House presence ("around the house" / "at home") is HA — not Frigate.
+  final housePresence = RegExp(
+    r'\b(around|at|in)\s+(the\s+)?(house|home)\b',
+  ).hasMatch(t);
+  final cameraCue = RegExp(
+    r'\b(driveway|front door|front_door|camera|cameras?)\b',
+  ).hasMatch(t);
+  if (housePresence && !cameraCue) return null;
+
   // Prefer explicit last-seen patterns so we never invent from chat memory.
   // Include we/I (hallway speech) — not only "you".
   final patterns = <RegExp>[
@@ -81,7 +90,7 @@ VisionVisitIntent? _parsePersonLastSeen(String t) {
     RegExp(r'\blast time (?:you|we|i) (?:saw|seen) (.+)$'),
     RegExp(
       r'\bhave (?:you|we|i) (?:seen|saw) (.+?)'
-      r'(?: lately| recently| today| yesterday| around (?:the )?house)?$',
+      r'(?: lately| recently| today| yesterday)?$',
     ),
     RegExp(r'\bwhere (?:was it that |did )?(?:you|we|i) (?:saw|see) (.+)$'),
   ];
@@ -100,8 +109,7 @@ VisionVisitIntent? _parsePersonLastSeen(String t) {
       .replaceAll(
         RegExp(
           r'\b(on (the |my )?(driveway|front door|camera|cameras?)|'
-          r'at (the |my )?house|in (the |my )?house|around (the )?house|'
-          r'around here|lately|recently|today|yesterday|'
+          r'lately|recently|today|yesterday|'
           r'this (morning|afternoon|evening)|outside)\b',
         ),
         ' ',

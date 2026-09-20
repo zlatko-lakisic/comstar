@@ -827,9 +827,6 @@ class ComstarSession {
       r'(anyone|somebody|someone) (in|at|on) (the |my )?driveway|'
       r'visitors?( today| this (morning|afternoon|evening))?|'
       r'who came by|who came over|'
-      r'last time (we|you|i) (saw|seen)|'
-      r'when (is|was|did) .*(saw|seen|see).*(house|driveway|door|camera)|'
-      r'(saw|seen) .*(around|at|in) (the )?house|'
       r'describe (the )?(view|scene|camera)|what do you see|'
       r'check (the )?camera|who.?s outside|who is outside)\b',
     ).hasMatch(t);

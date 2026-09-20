@@ -969,7 +969,8 @@ Optional voice paths (bridge-local, no AO):
 |---|---|
 | “Who’s home?” | Summarize people with HA state `home` (yaml + auto-discovered) |
 | “Where is Adna?” / “Is Zlatko home?” | Resolve spoken name → HA person state. If `home` / named zone, say that. Else reverse-geocode GPS (`latitude`/`longitude`) vs `zone.home` and speak by tier (below). If HA is `unknown` / no GPS, append Frigate `person_last_seen` when `COMSTAR_VISION_MCP_URL` is set |
-| “When did Adna leave?” / “When did they leave?” | HA history (`GET /api/history/list`) for last `home`→away transition. Pronouns use the last successful where-is / leave person |
+| “When did Adna leave?” / “When did they leave?” / “When is the last time we saw Adna around the house?” / “When was Adna last home?” | HA history (`GET /api/history/list`) for last `home`→away transition. Pronouns use the last successful where-is / leave person. **House / home phrasing is presence — not Frigate.** |
+| “Who was in the driveway?” / “When was the last time you saw Adna on the driveway?” | Frigate visitor / camera last-seen via vision MCP (`who_visited` / `person_last_seen`) |
 
 **Location speech tiers** (distance from `zone.home`, country/state from reverse geocode — Nominatim, cached):
 

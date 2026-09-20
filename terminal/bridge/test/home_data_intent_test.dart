@@ -130,6 +130,18 @@ void main() {
     expect(gone?.personName, isNull);
   });
 
+  test('last saw around the house is HA leave/presence history', () {
+    final i = parseHomeDataIntent(
+      'When is the last time we saw Adna around the house?',
+    );
+    expect(i?.kind, HomeDataIntentKind.whenPersonLeft);
+    expect(i?.personName, 'Adna');
+
+    final lastHome = parseHomeDataIntent('When was Adna last home?');
+    expect(lastHome?.kind, HomeDataIntentKind.whenPersonLeft);
+    expect(lastHome?.personName, 'Adna');
+  });
+
   test('where is they uses pronoun context', () {
     final they = parseHomeDataIntent('Where are they?');
     expect(they?.kind, HomeDataIntentKind.whereIsPerson);
