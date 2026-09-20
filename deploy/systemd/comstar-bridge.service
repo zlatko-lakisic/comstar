@@ -31,6 +31,8 @@ Environment=COMSTAR_TTS_URL=http://127.0.0.1:8091
 Environment=PATH=/opt/comstar/bin:/usr/local/bin:/usr/bin:/bin
 Environment=LD_LIBRARY_PATH=/opt/comstar/bin
 Environment=XDG_RUNTIME_DIR=/run/user/1000
+# Admin Live view panel capture (grim) needs the labwc Wayland socket.
+Environment=WAYLAND_DISPLAY=wayland-0
 ExecStart=/usr/local/bin/dart run bin/comstar_bridge.dart --config /opt/comstar/src/config/comstar.yaml
 Restart=on-failure
 RestartSec=5

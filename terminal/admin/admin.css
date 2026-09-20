@@ -170,6 +170,11 @@ html, body {
   gap: 12px;
   margin-bottom: 12px;
 }
+.panel__head-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
 .panel__head--tabs {
   align-items: center;
 }
@@ -494,6 +499,19 @@ html, body {
 .btn:hover { background: var(--surface-3); border-color: var(--border-strong); }
 .btn:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .btn[disabled] { opacity: 0.4; cursor: not-allowed; }
+.btn--ghost {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--fg-muted);
+  padding: 6px 10px;
+  font-size: 12px;
+}
+.btn--ghost:hover {
+  color: var(--fg);
+  border-color: var(--border-strong);
+  background: var(--cyan-dim);
+}
+.btn.is-dim { opacity: 0.65; }
 .btn--danger {
   color: var(--red);
   border-color: rgba(255, 92, 92, 0.35);
@@ -726,6 +744,72 @@ html, body {
   padding: 20px;
   text-align: center;
 }
+.modal__card--preview {
+  width: min(960px, 100%);
+  text-align: left;
+  padding: 16px 18px 18px;
+}
+.preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.preview-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg);
+}
+.preview-note {
+  margin: 0 0 14px;
+  font-size: 12px;
+  color: var(--fg-dim);
+}
+.preview-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+@media (max-width: 720px) {
+  .preview-grid { grid-template-columns: 1fr; }
+}
+.preview-pane__label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  margin-bottom: 6px;
+}
+.preview-pane__frame {
+  aspect-ratio: 9 / 16;
+  max-height: min(58vh, 520px);
+  background: #000;
+  border: 1px solid var(--border);
+  border-radius: var(--r-s);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.preview-pane__frame img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+.preview-pane__status {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: var(--fg-dim);
+}
+.preview-pane__status.is-live { color: var(--cyan); }
+.preview-pane__status.is-amber { color: var(--amber); }
+.preview-pane__status.is-bad { color: var(--red); }
 .modal__emblem { width: 64px; height: 64px; margin: 0 auto 12px; }
 .modal__text {
   color: var(--fg-muted);

@@ -55,7 +55,10 @@
         <section class="panel" id="healthPanel">
           <div class="panel__head">
             <h2>Health</h2>
-            <span class="freshness mono" id="healthFresh">—</span>
+            <div class="panel__head-actions">
+              <button type="button" class="btn btn--ghost" id="liveViewBtn" title="Live panel + camera">Live view</button>
+              <span class="freshness mono" id="healthFresh">—</span>
+            </div>
           </div>
           <div class="health-grid" id="healthGrid"></div>
           <div class="metrics-row" id="metricsRow"></div>

@@ -188,6 +188,12 @@ class AttentionCoordinator {
   var _followUpGen = 0;
   vision.VisionPoller? _visionPoller;
   StreamSubscription<vision.VisionEvent>? _visionSub;
+
+  /// Latest vision JPEG for Admin Live view (null when vision off / no frames).
+  Uint8List? get visionLastJpeg => _visionPoller?.lastFrameJpeg;
+
+  /// True when a vision poller was started with this coordinator.
+  bool get visionActive => _visionPoller != null;
   Future<void>? _sessionOpenFuture;
   Completer<void>? _googlePairingCancel;
   var _googlePhase = GooglePairingPhase.idle;

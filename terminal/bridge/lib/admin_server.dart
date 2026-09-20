@@ -18,9 +18,11 @@ import 'package:comstar_bridge/host_metrics.dart';
 import 'package:comstar_bridge/house_presence.dart';
 import 'package:comstar_bridge/log.dart';
 import 'package:comstar_bridge/admin_ops.dart';
+import 'package:comstar_bridge/admin_preview.dart';
 import 'package:comstar_bridge/ao_mtls/service.dart';
 import 'package:comstar_bridge/net/service.dart';
 import 'package:comstar_bridge/road/service.dart';
+import 'package:comstar_bridge/env_sources.dart';
 
 /// Always-on admin + shared public HTTP on :8781.
 ///
@@ -42,10 +44,24 @@ class AdminServer {
     this.agentsStore,
     this.port = 8781,
     this.httpClientFactory,
+    PanelPreview? panelPreview,
+    CameraPreview? cameraPreview,
     Future<Process> Function(String executable, List<String> arguments)?
         processRunner,
-  }) : processRunner = processRunner ??
-            ((exe, args) => Process.start(exe, args));
+  })  : processRunner = processRunner ??
+            ((exe, args) => Process.start(exe, args)),
+        panelPreview = panelPreview ??
+            PanelPreview(
+              fps: config.admin.previewPanelFps,
+              processRunner: processRunner,
+            ),
+        cameraPreview = cameraPreview ??
+            CameraPreview(
+              fps: config.admin.previewCameraFps,
+              lastFrameProvider: () => coordinator.visionLastJpeg,
+              visionActiveProvider: () => coordinator.visionActive,
+              cameraInput: cameraSource(),
+            );
 
   final AttentionCoordinator coordinator;
   final ComstarConfig config;
@@ -58,6 +74,8 @@ class AdminServer {
   final AoMtlsService? aoMtls;
   final AgentsStore? agentsStore;
   final int port;
+  final PanelPreview panelPreview;
+  final CameraPreview cameraPreview;
 
   /// Injectable for tests.
   final HttpClient Function()? httpClientFactory;
@@ -105,6 +123,8 @@ class AdminServer {
       }
     }
     _logStreams.clear();
+    await panelPreview.dispose();
+    await cameraPreview.dispose();
     await _server?.close(force: true);
     _server = null;
   }
@@ -198,6 +218,23 @@ class AdminServer {
 
       if (request.method == 'GET' && adminPath == '/admin/api/status') {
         await _writeJson(request, 200, await _status());
+        return;
+      }
+
+      if (request.method == 'GET' && adminPath == '/admin/api/preview/status') {
+        await _handlePreviewStatus(request);
+        return;
+      }
+
+      if (request.method == 'GET' &&
+          adminPath == '/admin/api/preview/panel.mjpeg') {
+        await _handlePreviewPanel(request);
+        return;
+      }
+
+      if (request.method == 'GET' &&
+          adminPath == '/admin/api/preview/camera.mjpeg') {
+        await _handlePreviewCamera(request);
         return;
       }
 
@@ -410,7 +447,96 @@ class AdminServer {
         base['ao_mtls'] = {'ok': false};
       }
     }
+
+    base['preview'] = await _previewStatusMap();
     return base;
+  }
+
+  Future<Map<String, Object?>> _previewStatusMap() async {
+    final enabled = config.admin.previewEnabled;
+    if (!enabled) {
+      return {
+        'ok': true,
+        'enabled': false,
+        'panel': {
+          'available': false,
+          'hint': 'admin.preview_enabled is false',
+          'subscribers': 0,
+        },
+        'camera': {
+          'available': false,
+          'source': 'none',
+          'has_frame': false,
+          'hint': 'admin.preview_enabled is false',
+        },
+      };
+    }
+    final panelOk = await panelPreview.checkAvailable();
+    return {
+      'ok': true,
+      'enabled': true,
+      'panel': {
+        'available': panelOk,
+        if (panelPreview.unavailableHint != null)
+          'hint': panelPreview.unavailableHint,
+        'subscribers': panelPreview.subscribers,
+      },
+      'camera': cameraPreview.statusMap(),
+    };
+  }
+
+  Future<void> _handlePreviewStatus(HttpRequest request) async {
+    await _writeJson(request, 200, await _previewStatusMap());
+  }
+
+  Future<void> _handlePreviewPanel(HttpRequest request) async {
+    if (!config.admin.previewEnabled) {
+      await _writeJson(request, 503, {
+        'ok': false,
+        'error': 'preview_disabled',
+        'hint': 'Set admin.preview_enabled: true',
+      });
+      return;
+    }
+    if (!await panelPreview.checkAvailable()) {
+      await _writeJson(request, 503, {
+        'ok': false,
+        'error': 'panel_unavailable',
+        'hint': panelPreview.unavailableHint ??
+            'Install grim (apt install grim) / labwc session not ready',
+      });
+      return;
+    }
+    await panelPreview.attach(request.response);
+  }
+
+  Future<void> _handlePreviewCamera(HttpRequest request) async {
+    if (!config.admin.previewEnabled) {
+      await _writeJson(request, 503, {
+        'ok': false,
+        'error': 'preview_disabled',
+        'hint': 'Set admin.preview_enabled: true',
+      });
+      return;
+    }
+    if (!cameraPreview.canStart) {
+      await _writeJson(request, 503, {
+        'ok': false,
+        'error': 'camera_unavailable',
+        'hint': cameraPreview.unavailableHint ??
+            'No vision frames and COMSTAR_CAMERA_SOURCE unset',
+      });
+      return;
+    }
+    try {
+      await cameraPreview.attach(request.response);
+    } on StateError catch (e) {
+      await _writeJson(request, 503, {
+        'ok': false,
+        'error': e.message,
+        'hint': cameraPreview.unavailableHint,
+      });
+    }
   }
 
   Future<bool> _unitActive(String unit) async {

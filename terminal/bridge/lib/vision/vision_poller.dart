@@ -65,8 +65,12 @@ class VisionPoller {
   var _personPresent = false;
   var _absentFrames = 0;
   var _busy = false;
+  Uint8List? _lastFrameJpeg;
 
   Stream<VisionEvent> get events => _events.stream;
+
+  /// Latest camera JPEG (for Admin Live view tap). Not persisted.
+  Uint8List? get lastFrameJpeg => _lastFrameJpeg;
 
   double get targetFps => _targetFps;
 
@@ -103,7 +107,9 @@ class VisionPoller {
   Future<void> pollOnce(Uint8List frame) => _processFrame(frame);
 
   Future<void> _onFrame(Uint8List frame) async {
-    if (!_running || _busy) return;
+    if (!_running) return;
+    _lastFrameJpeg = frame;
+    if (_busy) return;
     await _processFrame(frame);
   }
 

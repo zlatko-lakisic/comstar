@@ -64,8 +64,37 @@ never require the admin token.
 | `/admin/api/network` | GET/POST | token if LAN-bound | Host Wi‑Fi + IPv4 (DHCP/static) via nmcli (ADR 0012) |
 | `/admin/api/ao_mtls` | GET/POST | token if LAN-bound | AO Reach mTLS pairing status / enroll / clear (ADR 0013) |
 | `/admin/api/agents` | GET/POST | token if LAN-bound | Dynamic planning + curated stock agents / provider API keys |
+| `/admin/api/preview/status` | GET | token if LAN-bound | Live preview availability (panel/camera); see below |
+| `/admin/api/preview/panel.mjpeg` | GET | token if LAN-bound | Multipart MJPEG of HDMI/Wayland panel (`grim`); see below |
+| `/admin/api/preview/camera.mjpeg` | GET | token if LAN-bound | Multipart MJPEG of hallway camera; see below |
 | `/admin/inject` | POST | token if LAN-bound | Attention event inject; **403 unless `COMSTAR_ENV=dev`** |
 | `/oauth/google/*` | * | none | Desktop OAuth start/callback/resend |
+
+#### Live preview (`/admin/api/preview/*`) — SPEC
+
+Admin **Live view** modal streams the real hallway panel and camera only while
+the HTTP response is open (no always-on capture). Auth is the same LAN token as
+other `/admin/api/*` routes.
+
+| Route | Body | Notes |
+|---|---|---|
+| `GET /admin/api/preview/status` | JSON | `{ok, enabled, panel:{available,hint?,subscribers}, camera:{available,source,has_frame,hint?}}` — `source` is `vision_tap` \| `ffmpeg` \| `none` |
+| `GET /admin/api/preview/panel.mjpeg` | `multipart/x-mixed-replace` JPEG parts | Bridge runs timed `grim -t jpeg -` (~`admin.preview_panel_fps`) while ≥1 client is connected; **503** with JSON `{ok:false,error,hint}` if `preview_enabled` false, `grim` missing, or Wayland session not ready. Do **not** fall back to kiosk HTML. |
+| `GET /admin/api/preview/camera.mjpeg` | `multipart/x-mixed-replace` JPEG parts | Prefer last JPEG from the vision poller (`COMSTAR_VISION=1`); else short-lived ffmpeg V4L2 grab at `admin.preview_camera_fps` only while subscribed. **503** if preview disabled or no camera/vision frames. |
+
+**Config** (`admin`):
+
+| Key | Default | Meaning |
+|---|---|---|
+| `preview_enabled` | `true` | Master switch; false → status reports disabled and streams 503 |
+| `preview_panel_fps` | `1` | Panel capture rate (0.5–5) |
+| `preview_camera_fps` | `2` | Camera re-emit / ffmpeg grab rate (0.5–5) |
+
+**Lifecycle:** producers start on first subscriber and stop when the last client
+aborts or the response closes. Idle disconnect stops `grim` / ffmpeg.
+
+**Privacy:** camera preview is sensitive (hallway). Requires LAN token when
+LAN-bound; frames are not persisted to disk.
 
 #### Road VPN (`GET/POST /admin/api/road`) — SPEC
 

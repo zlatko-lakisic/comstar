@@ -155,6 +155,9 @@ class ComstarConfig {
   static const _adminKeys = {
     'bind_lan',
     'token',
+    'preview_enabled',
+    'preview_panel_fps',
+    'preview_camera_fps',
   };
 
   static const _phrasesKeys = {
@@ -292,6 +295,7 @@ class ComstarConfig {
           );
 
     _validateRanges(vision, audio, orchestration, avatar, attention, directory);
+    _validateAdmin(admin);
     _validatePhrases(phrases);
     _validateMemory(memory);
     _validatePresence(presence);
@@ -552,7 +556,21 @@ class ComstarConfig {
           ? _requireBool(map, 'bind_lan', 'admin')
           : false,
       token: _optionalString(map, 'token') ?? '',
+      previewEnabled: map.containsKey('preview_enabled')
+          ? _requireBool(map, 'preview_enabled', 'admin')
+          : true,
+      previewPanelFps: map.containsKey('preview_panel_fps')
+          ? _requireDouble(map, 'preview_panel_fps', 'admin')
+          : 1.0,
+      previewCameraFps: map.containsKey('preview_camera_fps')
+          ? _requireDouble(map, 'preview_camera_fps', 'admin')
+          : 2.0,
     );
+  }
+
+  static void _validateAdmin(AdminConfig admin) {
+    _range('admin.preview_panel_fps', admin.previewPanelFps, 0.5, 5);
+    _range('admin.preview_camera_fps', admin.previewCameraFps, 0.5, 5);
   }
 
   static PhrasesConfig _parsePhrases(Map<String, dynamic> map) {
@@ -1276,10 +1294,22 @@ class AdminConfig {
   const AdminConfig({
     this.bindLan = false,
     this.token = '',
+    this.previewEnabled = true,
+    this.previewPanelFps = 1.0,
+    this.previewCameraFps = 2.0,
   });
 
   final bool bindLan;
   final String token;
+
+  /// Master switch for Live view panel/camera MJPEG streams.
+  final bool previewEnabled;
+
+  /// Wayland (`grim`) capture rate while ≥1 Admin client is connected.
+  final double previewPanelFps;
+
+  /// Camera re-emit / ffmpeg grab rate while ≥1 Admin client is connected.
+  final double previewCameraFps;
 }
 
 /// Periodic AO phrase banks for engage / sleep / social lines.
