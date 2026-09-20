@@ -192,6 +192,33 @@ void main() {
       expect(prompt, isNot(contains('headlines from around the world')));
     });
 
+    test('wrapForAgent drops bloated house-status dumps', () async {
+      final dump =
+          'Hi there! It looks like everything around your house is running smoothly. '
+          'The security systems, climate controls, and appliances are all functioning properly. '
+          'The home network is stable, and the internet speed is as expected. '
+          'Your irrigation systems are also up to date. No alarms detected. '
+          'If you were asking about global news, here is a quick update: something happened.';
+      await memory.recordExchange(
+        userid: 'zlatko',
+        userText: "What's going on around my house?",
+        assistantText: dump,
+      );
+      await memory.recordExchange(
+        userid: 'zlatko',
+        userText: "What's going on around my house?",
+        assistantText: dump,
+      );
+      final prompt = await memory.wrapForAgent(
+        'zlatko',
+        "What's the status of my home?",
+      );
+      expect(prompt, contains("What's the status of my home?"));
+      expect(prompt, isNot(contains('running smoothly')));
+      expect(prompt, isNot(contains('global news')));
+      expect(prompt, isNot(contains('security systems')));
+    });
+
     test('fat history stays within prompt_max_turns pairs', () async {
       for (var i = 0; i < 8; i++) {
         await memory.recordExchange(

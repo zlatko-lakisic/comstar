@@ -2483,6 +2483,8 @@ class AttentionCoordinator {
           config: config.presence,
           clock: clock,
         ).spokenSummary();
+      case HomeDataIntentKind.homeStatus:
+        spoken = await _spokenHomeStatus();
       case HomeDataIntentKind.whereIsPerson:
         spoken = await _spokenWhereIsPerson(intent.personName);
       case HomeDataIntentKind.whenPersonLeft:
@@ -2511,6 +2513,28 @@ class AttentionCoordinator {
     });
     await _speakText(spoken, turnId, rememberUserText: text);
     return true;
+  }
+
+  /// Presence + locks + garage — short local "status of my home" overview.
+  Future<String?> _spokenHomeStatus() async {
+    final parts = <String>[];
+    final presence = await HousePresenceService(
+      config: config.presence,
+      clock: clock,
+    ).spokenSummary();
+    if (presence != null && presence.trim().isNotEmpty) {
+      parts.add(presence.trim());
+    }
+    final locks = await _spokenLockStatus('all');
+    if (locks != null && locks.trim().isNotEmpty) {
+      parts.add(locks.trim());
+    }
+    final garage = await _spokenGarageStatus();
+    if (garage != null && garage.trim().isNotEmpty) {
+      parts.add(garage.trim());
+    }
+    if (parts.isEmpty) return null;
+    return parts.join(' ');
   }
 
   /// HA person location first; Frigate last-seen when live location is unknown.

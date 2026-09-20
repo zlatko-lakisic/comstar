@@ -85,6 +85,66 @@ void main() {
     );
   });
 
+  test('detects home / house status overview questions', () {
+    expect(
+      parseHomeDataIntent("What's the status of my home?")?.kind,
+      HomeDataIntentKind.homeStatus,
+    );
+    expect(
+      parseHomeDataIntent('What is the status of the house?')?.kind,
+      HomeDataIntentKind.homeStatus,
+    );
+    expect(
+      parseHomeDataIntent('House status')?.kind,
+      HomeDataIntentKind.homeStatus,
+    );
+    expect(
+      parseHomeDataIntent('How is my home?')?.kind,
+      HomeDataIntentKind.homeStatus,
+    );
+    expect(
+      parseHomeDataIntent("What's going on around my house?")?.kind,
+      HomeDataIntentKind.homeStatus,
+    );
+    expect(
+      parseHomeDataIntent("What's happening at home?")?.kind,
+      HomeDataIntentKind.homeStatus,
+    );
+    expect(
+      parseHomeDataIntent('Give me a home status update')?.kind,
+      HomeDataIntentKind.homeStatus,
+    );
+    expect(
+      parseHomeDataIntent('Check on the house')?.kind,
+      HomeDataIntentKind.homeStatus,
+    );
+    expect(
+      parseHomeDataIntent('Is everything okay at home?')?.kind,
+      HomeDataIntentKind.homeStatus,
+    );
+    expect(
+      parseHomeDataIntent('How are things around the house?')?.kind,
+      HomeDataIntentKind.homeStatus,
+    );
+    expect(
+      parseHomeDataIntent('Any issues with our house?')?.kind,
+      HomeDataIntentKind.homeStatus,
+    );
+    expect(
+      parseHomeDataIntent('Run a home check')?.kind,
+      HomeDataIntentKind.homeStatus,
+    );
+    // World news must not match.
+    expect(
+      parseHomeDataIntent("What's going on in the world?")?.kind,
+      isNull,
+    );
+    expect(
+      parseHomeDataIntent("What's the status of world news?")?.kind,
+      isNull,
+    );
+  });
+
   test('detects where is person questions', () {
     final where = parseHomeDataIntent('Where is Adna?');
     expect(where?.kind, HomeDataIntentKind.whereIsPerson);
