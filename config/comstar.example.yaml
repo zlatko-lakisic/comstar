@@ -151,6 +151,9 @@ dev:
 admin:
   bind_lan: false
   token: ""
+  preview_enabled: true                     # Live view modal (panel grim + camera)
+  preview_panel_fps: 1                      # 0.5–5; Wayland screenshot rate
+  preview_camera_fps: 2                     # 0.5–5; vision tap / ffmpeg grab
 
 # Road VPN phone-home (ADR 0011). Off when any local IPv4 is in home_cidrs.
 # Secrets / NM profiles live under ~/.local/share/comstar/road/ — never commit.

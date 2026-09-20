@@ -9,6 +9,7 @@ import { createRoad } from './components/road.js';
 import { createNetwork } from './components/network.js';
 import { createAoMtls } from './components/ao_mtls.js';
 import { createAgents } from './components/agents.js';
+import { createLivePreview } from './components/preview.js';
 
 const params = new URLSearchParams(location.search);
 let token = params.get('token') || sessionStorage.getItem('comstar_lan_token') || '';
@@ -33,6 +34,7 @@ const els = {
   railKv: document.getElementById('railKv'),
   railFresh: document.getElementById('railFresh'),
   healthFresh: document.getElementById('healthFresh'),
+  liveViewBtn: document.getElementById('liveViewBtn'),
   opsFresh: document.getElementById('opsFresh'),
   healthGrid: document.getElementById('healthGrid'),
   metricsRow: document.getElementById('metricsRow'),
@@ -206,6 +208,11 @@ els.tabLogs?.addEventListener('click', () => selectTab('logs'));
 
 const rail = createRailEmblem(els.railEmblem, { activityRoot: els.railAoActivity });
 const health = createHealth(els.healthGrid, els.metricsRow);
+const livePreview = createLivePreview({
+  api,
+  modalRoot: els.modalRoot,
+  button: els.liveViewBtn,
+});
 createActions(els.actionsRoot, els.modalRoot, {
   api,
   onDanger: () => rail.setUnreachable(),
@@ -321,6 +328,7 @@ async function tick(force) {
     renderChrome(status);
     renderRail(status, emblemName);
     health.render(status);
+    livePreview.updateFromStatus(status);
 
     if (status.road) {
       road.applyStatusSnippet(status.road);

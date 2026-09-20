@@ -160,6 +160,7 @@ PipeWire default sink: built-in / mailbox stereo fallback (headphones path obser
 | Python | **3.11.2** |
 | Chromium | **150.0.7871.181** (Debian/Raspberry Pi build) |
 | ffmpeg | **5.1.9** (+rpt) |
+| grim | Wayland screenshot for Admin Live view panel MJPEG |
 | v4l2-ctl | present |
 | arecord / aplay | ALSA 1.2.x |
 | git, curl | present |

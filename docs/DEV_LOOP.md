@@ -228,9 +228,12 @@ everything else.
 `debugpy --listen 127.0.0.1:5678 --wait-for-client`. Attach from Cursor with a
 standard `attach` launch config on `localhost:5678`.
 
-**Pi screen, if you need the real framebuffer.** `wayvnc` on the Pi, any VNC client
-on the Mac. Rarely needed — the kiosk is a web page, so opening the same URL locally
-is faster and more accurate for everything except full-screen and font rendering.
+**Pi screen, if you need the real framebuffer.** Prefer Admin **Live view**
+(Health → Live view): MJPEG of the Wayland panel via `grim` plus the hallway
+camera, only while the modal is open. For interactive remote desktop (not just
+watching), `wayvnc` on the Pi + any VNC client on the Mac remains available.
+Opening the kiosk URL locally is still fastest for UI/CSS work — that is the
+web page, not the HDMI composite.
 
 ---
 
