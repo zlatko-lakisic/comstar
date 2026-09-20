@@ -1678,6 +1678,23 @@ class AttentionCoordinator {
         return;
       }
 
+      // Home status overview stays local in both modes: AO emits long markdown
+      // bullet lists that TTS reads aloud. Bridge speaks a short HA summary.
+      final homeStatus = await _tryHomeDataIntent(
+        text,
+        turnId,
+        onlyKinds: const {HomeDataIntentKind.homeStatus},
+      );
+      if (homeStatus) {
+        logInfo('utterance_route', 'Routed utterance', data: {
+          'turn_id': turnId,
+          'utterance_routing': routing,
+          'lane': 'closed_form',
+          'family': 'home_status',
+        });
+        return;
+      }
+
       if (split) {
         final identity = await _tryIdentityIntent(text, turnId);
         if (identity) {
@@ -2461,9 +2478,14 @@ class AttentionCoordinator {
     }
   }
 
-  Future<bool> _tryHomeDataIntent(String text, String turnId) async {
+  Future<bool> _tryHomeDataIntent(
+    String text,
+    String turnId, {
+    Set<HomeDataIntentKind>? onlyKinds,
+  }) async {
     final intent = parseHomeDataIntent(text);
     if (intent == null) return false;
+    if (onlyKinds != null && !onlyKinds.contains(intent.kind)) return false;
     if (!HaAgentClient.isConfigured) {
       // Fall through to AO HA MCP (may be slow / flaky).
       return false;
@@ -2515,26 +2537,27 @@ class AttentionCoordinator {
     return true;
   }
 
-  /// Presence + locks + garage — short local "status of my home" overview.
+  /// Short spoken home overview for TTS (presence + locks + garage).
   Future<String?> _spokenHomeStatus() async {
-    final parts = <String>[];
+    final bits = <String>[];
     final presence = await HousePresenceService(
       config: config.presence,
       clock: clock,
     ).spokenSummary();
     if (presence != null && presence.trim().isNotEmpty) {
-      parts.add(presence.trim());
+      bits.add(presence.trim());
     }
     final locks = await _spokenLockStatus('all');
     if (locks != null && locks.trim().isNotEmpty) {
-      parts.add(locks.trim());
+      bits.add(locks.trim());
     }
     final garage = await _spokenGarageStatus();
     if (garage != null && garage.trim().isNotEmpty) {
-      parts.add(garage.trim());
+      bits.add(garage.trim());
     }
-    if (parts.isEmpty) return null;
-    return parts.join(' ');
+    if (bits.isEmpty) return null;
+    // One continuous spoken line — no markdown / bullet lists for TTS.
+    return bits.join(' ');
   }
 
   /// HA person location first; Frigate last-seen when live location is unknown.

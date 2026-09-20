@@ -12,12 +12,14 @@ toggle → runtime override):
 | Value | Behavior |
 |---|---|
 | `split` (default) | Closed-form families below → bridge-local or pinned AO; else open AO |
-| `ao` | Skip content closed-form; forward to AO with normal voice MCPs |
+| `ao` | Skip most content closed-form; forward to AO. **Exception:** home status overview stays bridge-local (brief TTS). |
 
 Precedence: env → Admin runtime → yaml.
 
 **Always local (both modes):** terminal self-care (sleep, volume, heal, restart,
-reboot, health) and Google / Nextcloud / channel **pairing**.
+reboot, health); Google / Nextcloud / channel **pairing**; and **home status**
+overview (“status of my home”, “how’s the house”) — short HA spoken summary so
+TTS does not read long AO markdown.
 
 Lanes: `bridge-local` | `pinned-ao` | `open-ao` | `defer`.
 
@@ -72,7 +74,7 @@ Regression utterances: `terminal/bridge/test/fixtures/closed_form_utterances.yam
 | who’s home, anyone home | bridge-local | done |
 | where is Adna, is Zlatko home | bridge-local | done |
 | when did Adna leave, last time around the house | bridge-local | done |
-| status of my home, house status, what’s going on around my house | bridge-local | done |
+| status of my home, house status, what’s going on around my house | bridge-local **always** | done |
 
 ### E. Cameras / visitors / LPR
 
