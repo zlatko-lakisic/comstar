@@ -1,4 +1,7 @@
-# Vendored [noVNC](https://github.com/novnc/noVNC) `core/` (v1.5.0)
+# Vendored [noVNC](https://github.com/novnc/noVNC) (v1.5.0)
 
-Used by Admin Live view to render the wayvnc WebSocket RFB stream.
-License: MPL-2.0 — see `LICENSE.txt`.
+- `core/` — RFB client
+- `vendor/pako/` — zlib inflate/deflate used by noVNC encodings
+
+Used by Admin Live view for the wayvnc WebSocket stream.
+License: MPL-2.0 (`LICENSE.txt`); pako is MIT (`vendor/pako/LICENSE`).
