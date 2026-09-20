@@ -339,23 +339,23 @@ live logs are on `/api/*` (see `docs/CONTRACTS.md` admin console).
 
 ### Live view (panel + camera)
 
-Admin **Health → Live view** opens a modal with two MJPEG panes:
+Admin **Health → Live view** opens a modal with two panes:
 
-1. **Panel** — real HDMI/Wayland framebuffer via `grim` (~1 fps while open)
+1. **Panel** — real HDMI/Wayland desktop via **wayvnc** (embedded noVNC, view-only,
+   ~15 fps while open). Fallback: `admin.preview_panel: grim` (MJPEG screenshots).
 2. **Camera** — latest vision JPEG when `COMSTAR_VISION=1`, else a short-lived
    ffmpeg grab from `COMSTAR_CAMERA_SOURCE` only while the modal is open
 
-Close the modal (or press Escape) to drop both HTTP connections; capture stops
-when the last client disconnects. Config: `admin.preview_enabled` (default
-true), `admin.preview_panel_fps`, `admin.preview_camera_fps` (see
+Close the modal (or press Escape) to drop both connections; wayvnc / capture stop
+when the last client disconnects. Config: `admin.preview_enabled` (default true),
+`admin.preview_panel` (`wayvnc` \| `grim`), `admin.preview_wayvnc_fps`,
+`admin.preview_panel_fps`, `admin.preview_camera_fps` (see
 `config/comstar.example.yaml`).
 
-**Pi package:** `sudo apt install grim` (Wayland screenshot). Bridge unit must
-see `WAYLAND_DISPLAY=wayland-0` and `XDG_RUNTIME_DIR` (shipped in
-`deploy/systemd/comstar-bridge.service`). Raspberry Pi OS grim often ships
-**without JPEG** (`jpeg support disabled`); the bridge falls back to
-`grim -t png | ffmpeg … mjpeg`. If both fail or labwc is not running, the panel
-pane returns 503 — there is no silent fallback to the kiosk HTML page.
+**Pi package:** `sudo apt install wayvnc` (already on Raspberry Pi OS with labwc).
+Bridge unit must see `WAYLAND_DISPLAY=wayland-0` and `XDG_RUNTIME_DIR` (shipped in
+`deploy/systemd/comstar-bridge.service`). wayvnc listens on **127.0.0.1** only;
+Admin proxies WebSocket under the LAN token.
 
 **Privacy:** camera preview is hallway-sensitive. Same LAN token as the rest of
 Admin; frames are not written to disk.
@@ -363,12 +363,12 @@ Admin; frames are not written to disk.
 **UAT checklist (hallway Pi):**
 
 1. Open Admin (`make admin` or `http://<pi>:8781/admin/?token=…`)
-2. Click **Live view** → both panes move (panel shows kiosk UI; camera shows hall)
-3. Close modal → `pgrep grim` / stray preview ffmpeg should be gone
+2. Click **Live view** → panel shows live desktop (wayvnc); camera shows hall
+3. Close modal → `pgrep wayvnc` should be gone (unless another client)
 4. Without token on LAN-bound Admin → 401 on preview URLs
 
-For full-desktop remote control (not Admin UX), keep using `wayvnc` as documented
-in `docs/DEV_LOOP.md`.
+For interactive remote desktop outside Admin, a standalone VNC client to wayvnc
+is still fine — Live view is intentionally view-only.
 
 ### Road VPN (phone-home)
 

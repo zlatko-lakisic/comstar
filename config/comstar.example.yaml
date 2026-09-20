@@ -151,8 +151,10 @@ dev:
 admin:
   bind_lan: false
   token: ""
-  preview_enabled: true                     # Live view modal (panel grim + camera)
-  preview_panel_fps: 1                      # 0.5–5; Wayland screenshot rate
+  preview_enabled: true                     # Live view modal
+  preview_panel: wayvnc                     # wayvnc (noVNC) | grim (MJPEG)
+  preview_wayvnc_fps: 15                    # 5–30; wayvnc -f
+  preview_panel_fps: 1                      # 0.5–5; grim only
   preview_camera_fps: 2                     # 0.5–5; vision tap / ffmpeg grab
 
 # Road VPN phone-home (ADR 0011). Off when any local IPv4 is in home_cidrs.
