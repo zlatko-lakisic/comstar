@@ -352,9 +352,10 @@ true), `admin.preview_panel_fps`, `admin.preview_camera_fps` (see
 
 **Pi package:** `sudo apt install grim` (Wayland screenshot). Bridge unit must
 see `WAYLAND_DISPLAY=wayland-0` and `XDG_RUNTIME_DIR` (shipped in
-`deploy/systemd/comstar-bridge.service`). If `grim` is missing or labwc is not
-running, the panel pane returns 503 — there is no silent fallback to the kiosk
-HTML page.
+`deploy/systemd/comstar-bridge.service`). Raspberry Pi OS grim often ships
+**without JPEG** (`jpeg support disabled`); the bridge falls back to
+`grim -t png | ffmpeg … mjpeg`. If both fail or labwc is not running, the panel
+pane returns 503 — there is no silent fallback to the kiosk HTML page.
 
 **Privacy:** camera preview is hallway-sensitive. Same LAN token as the rest of
 Admin; frames are not written to disk.

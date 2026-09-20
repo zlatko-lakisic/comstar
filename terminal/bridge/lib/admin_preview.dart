@@ -217,31 +217,90 @@ class PanelPreview extends _PreviewHub {
       throw StateError('grim_unavailable');
     }
 
+    // Prefer JPEG from grim; Pi builds often lack libjpeg ("jpeg support
+    // disabled") — fall back to PNG piped through ffmpeg → MJPEG.
+    final jpeg = await _runCapture(const ['-t', 'jpeg', '-']);
+    if (jpeg != null && jpeg.isNotEmpty) return jpeg;
+
+    final converted = await _runCaptureShell(
+      'grim -t png - | ffmpeg -hide_banner -loglevel error -i pipe:0 '
+      '-frames:v 1 -f image2pipe -vcodec mjpeg -',
+    );
+    if (converted != null && converted.isNotEmpty) return converted;
+
+    unavailableHint ??=
+        'grim capture failed — labwc/Wayland session may not be ready';
+    throw StateError('grim_capture_failed');
+  }
+
+  Future<Uint8List?> _runCapture(List<String> args) async {
     Process proc;
     try {
-      proc = await processRunner(grimPath, const ['-t', 'jpeg', '-']);
+      proc = await processRunner(grimPath, args);
     } on Object catch (e) {
       unavailableHint =
           'Failed to start grim — is WAYLAND_DISPLAY set for the bridge user? ($e)';
       throw StateError('grim_start_failed');
     }
 
-    final builder = BytesBuilder(copy: false);
-    await proc.stdout.forEach(builder.add);
+    final out = BytesBuilder(copy: false);
+    final err = StringBuffer();
+    final outSub = proc.stdout.listen(out.add);
+    final errSub = proc.stderr.listen((c) => err.write(utf8.decode(c)));
     final code = await proc.exitCode.timeout(
-      const Duration(seconds: 5),
+      const Duration(seconds: 8),
       onTimeout: () {
         proc.kill();
         return -1;
       },
     );
-    final bytes = builder.takeBytes();
-    if (code != 0 || bytes.isEmpty) {
-      unavailableHint =
-          'grim failed (exit $code) — labwc/Wayland session may not be ready';
-      throw StateError('grim_capture_failed');
+    await outSub.cancel();
+    await errSub.cancel();
+    final bytes = out.takeBytes();
+    if (code == 0 && bytes.isNotEmpty) {
+      unavailableHint = null;
+      return Uint8List.fromList(bytes);
     }
-    return Uint8List.fromList(bytes);
+    final errText = err.toString();
+    if (errText.toLowerCase().contains('jpeg')) {
+      return null; // try png→ffmpeg path
+    }
+    if (code != 0) {
+      unavailableHint =
+          'grim failed (exit $code)${errText.isEmpty ? '' : ': $errText'}';
+    }
+    return null;
+  }
+
+  Future<Uint8List?> _runCaptureShell(String script) async {
+    Process proc;
+    try {
+      proc = await processRunner('bash', ['-c', script]);
+    } on Object catch (e) {
+      unavailableHint = 'bash/ffmpeg grim fallback failed ($e)';
+      return null;
+    }
+    final out = BytesBuilder(copy: false);
+    final err = StringBuffer();
+    final outSub = proc.stdout.listen(out.add);
+    final errSub = proc.stderr.listen((c) => err.write(utf8.decode(c)));
+    final code = await proc.exitCode.timeout(
+      const Duration(seconds: 10),
+      onTimeout: () {
+        proc.kill();
+        return -1;
+      },
+    );
+    await outSub.cancel();
+    await errSub.cancel();
+    final bytes = out.takeBytes();
+    if (code == 0 && bytes.isNotEmpty) {
+      unavailableHint = null;
+      return Uint8List.fromList(bytes);
+    }
+    unavailableHint =
+        'grim|ffmpeg failed (exit $code)${err.isEmpty ? '' : ': $err'}';
+    return null;
   }
 }
 
