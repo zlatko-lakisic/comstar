@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:comstar_bridge/log.dart';
@@ -71,33 +72,57 @@ class WayvncPanel {
     if (!await checkAvailable()) {
       throw StateError('wayvnc_unavailable');
     }
+
+    // Start wayvnc and open upstream *before* upgrading the browser socket so
+    // a failed start returns HTTP 503 instead of a cryptic WS 1006.
     await _ensureStarted();
-    _subscribers++;
+    WebSocket upstream;
+    try {
+      upstream = await _connectUpstream();
+    } on Object catch (e) {
+      logWarn('preview_panel_error', 'wayvnc upstream connect failed', data: {
+        'error': e.toString(),
+        'port': port,
+      });
+      await _forceStop();
+      request.response.statusCode = HttpStatus.serviceUnavailable;
+      request.response.headers.contentType = ContentType.json;
+      request.response.write(
+        '{"ok":false,"error":"wayvnc_upstream","hint":'
+        '"wayvnc failed to accept WebSocket — is labwc running?"}',
+      );
+      await request.response.close();
+      return;
+    }
+
+    if (!WebSocketTransformer.isUpgradeRequest(request)) {
+      await upstream.close();
+      throw StateError('upgrade_required');
+    }
 
     WebSocket client;
     try {
       client = await WebSocketTransformer.upgrade(request);
     } on Object {
-      _subscribers--;
+      await upstream.close();
       await _maybeStop();
       rethrow;
     }
 
-    WebSocket? upstream;
+    _subscribers++;
     StreamSubscription<dynamic>? clientSub;
     StreamSubscription<dynamic>? upSub;
     try {
-      upstream = await webSocketConnect(Uri.parse('ws://127.0.0.1:$port/'));
       clientSub = client.listen(
         (data) {
           try {
-            upstream?.add(data);
+            upstream.add(data);
           } on Object {
             // upstream gone
           }
         },
-        onDone: () => unawaited(upstream?.close()),
-        onError: (_) => unawaited(upstream?.close()),
+        onDone: () => unawaited(upstream.close()),
+        onError: (_) => unawaited(upstream.close()),
         cancelOnError: true,
       );
       upSub = upstream.listen(
@@ -126,7 +151,7 @@ class WayvncPanel {
       await clientSub?.cancel();
       await upSub?.cancel();
       try {
-        await upstream?.close();
+        await upstream.close();
       } on Object {
         // ignore
       }
@@ -135,16 +160,35 @@ class WayvncPanel {
     }
   }
 
+  Future<WebSocket> _connectUpstream() async {
+    Object? last;
+    for (var i = 0; i < 20; i++) {
+      try {
+        return await webSocketConnect(Uri.parse('ws://127.0.0.1:$port/'));
+      } on Object catch (e) {
+        last = e;
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+    }
+    throw StateError('wayvnc_upstream_refused: $last');
+  }
+
   Future<void> _ensureStarted() async {
-    if (_proc != null) return;
+    if (_proc != null) {
+      await _waitListening();
+      return;
+    }
     if (_starting) {
-      // Wait briefly for in-flight start.
       for (var i = 0; i < 50 && _proc == null; i++) {
         await Future<void>.delayed(const Duration(milliseconds: 50));
       }
-      if (_proc != null) return;
+      if (_proc != null) {
+        await _waitListening();
+        return;
+      }
     }
     _starting = true;
+    final errBuf = StringBuffer();
     try {
       final env = Map<String, String>.from(Platform.environment);
       env.putIfAbsent('WAYLAND_DISPLAY', () => 'wayland-0');
@@ -158,6 +202,8 @@ class WayvncPanel {
         'fps': fps,
         'websocket': true,
         'view_only': true,
+        'wayland': env['WAYLAND_DISPLAY'],
+        'runtime_dir': env['XDG_RUNTIME_DIR'],
       });
       final proc = await processRunner(
         wayvncPath,
@@ -166,32 +212,93 @@ class WayvncPanel {
           '-d', // disable remote input (view-only)
           '-f',
           '$fps',
+          '-v',
+          '-S',
+          '${env['XDG_RUNTIME_DIR']}/comstar-wayvncctl',
           '127.0.0.1',
           '$port',
         ],
         environment: env,
       );
       _proc = proc;
+      proc.stderr
+          .transform(const Utf8Decoder(allowMalformed: true))
+          .listen(
+        (chunk) {
+          errBuf.write(chunk);
+          if (errBuf.length > 2000) {
+            final s = errBuf.toString();
+            errBuf
+              ..clear()
+              ..write(s.substring(s.length - 1500));
+          }
+        },
+        onError: (_) {},
+        cancelOnError: true,
+      );
       unawaited(proc.exitCode.then((code) {
         if (identical(_proc, proc)) {
           _proc = null;
-          logInfo('preview_panel_stop', 'wayvnc exited', data: {'code': code});
+          final err = errBuf.toString().trim();
+          logInfo('preview_panel_stop', 'wayvnc exited', data: {
+            'code': code,
+            if (err.isNotEmpty) 'stderr': err,
+          });
         }
       }));
-      // Brief settle so the listen socket is up before noVNC connects.
-      await Future<void>.delayed(const Duration(milliseconds: 200));
+      await _waitListening();
+      // Confirm process still alive after listen.
+      if (_proc == null) {
+        unavailableHint =
+            'wayvnc exited during start${errBuf.isEmpty ? '' : ': ${errBuf.toString().trim()}'}';
+        throw StateError('wayvnc_exited');
+      }
+      unavailableHint = null;
     } on Object catch (e) {
       unavailableHint =
           'Failed to start wayvnc — is labwc/Wayland ready? ($e)';
+      final proc = _proc;
       _proc = null;
+      if (proc != null) {
+        try {
+          proc.kill(ProcessSignal.sigkill);
+        } on Object {
+          // ignore
+        }
+      }
       rethrow;
     } finally {
       _starting = false;
     }
   }
 
+  Future<void> _waitListening() async {
+    Object? last;
+    for (var i = 0; i < 40; i++) {
+      try {
+        final s = await Socket.connect(
+          '127.0.0.1',
+          port,
+          timeout: const Duration(milliseconds: 200),
+        );
+        await s.close();
+        return;
+      } on Object catch (e) {
+        last = e;
+        // If the process already died, fail fast.
+        if (_proc == null) break;
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
+    }
+    throw StateError('wayvnc_not_listening: $last');
+  }
+
   Future<void> _maybeStop() async {
     if (_subscribers > 0) return;
+    await _forceStop();
+  }
+
+  Future<void> _forceStop() async {
     final proc = _proc;
     _proc = null;
     if (proc == null) return;
@@ -214,7 +321,7 @@ class WayvncPanel {
 
   Future<void> dispose() async {
     _subscribers = 0;
-    await _maybeStop();
+    await _forceStop();
   }
 
   String _uidHint() {
