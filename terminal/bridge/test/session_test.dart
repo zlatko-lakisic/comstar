@@ -533,6 +533,7 @@ void main() {
       fake.fakeRegisteredMcpIds = const [
         'client.google_workspace',
         'client.terminal',
+        'client.comstar_memory',
       ];
       await session.open(userid: 'guest', guest: true);
       expect(session.mcpProvidersForVoice(), isEmpty);
@@ -543,6 +544,35 @@ void main() {
       expect(
         session.mcpProvidersForVoice(),
         isNot(contains('client.terminal')),
+      );
+      expect(
+        session.mcpProvidersForVoice(),
+        isNot(contains('client.comstar_memory')),
+      );
+    });
+
+    test('voice includes client.comstar_memory when Reach registered it', () async {
+      fake.fakeRegisteredMcpIds = const [
+        'client.comstar_memory',
+        'client.terminal',
+      ];
+      await session.open(userid: 'zlatko', guest: false);
+      expect(
+        session.mcpProvidersForVoice(utterance: 'hello'),
+        equals(['home_assistant', 'client.comstar_memory']),
+      );
+      await session.directVoice('what do I prefer?');
+      expect(fake.lastMcpIds, contains('client.comstar_memory'));
+      expect(fake.lastMcpIds, contains('home_assistant'));
+      expect(fake.lastMcpIds, isNot(contains('client.terminal')));
+    });
+
+    test('voice omits client.comstar_memory when not registered', () async {
+      fake.fakeRegisteredMcpIds = const ['client.terminal'];
+      await session.open(userid: 'zlatko', guest: false);
+      expect(
+        session.mcpProvidersForVoice(),
+        equals(['home_assistant']),
       );
     });
 

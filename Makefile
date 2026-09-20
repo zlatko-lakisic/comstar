@@ -57,6 +57,9 @@ test:
 	cd terminal/bridge && dart test
 	cd channel && dart test
 	cd terminal/audio && python3 -m unittest test_capture test_stream test_wakeword test_vad test_devices
+	python3 -m unittest scripts.test_comstar_memory_server scripts.test_purge_junk_durable_facts scripts.test_export_resident_facts_rag scripts.test_memory_mcp_e2e
+	PYTHONPATH=mcp python3 mcp/memory_mcp/test_server.py
+	PYTHONPATH=mcp python3 mcp/terminal_mcp/test_tools_http.py
 
 channel-test:
 	cd channel && dart test

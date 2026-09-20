@@ -166,12 +166,16 @@ class ComstarConfig {
   static const _memoryKeys = {
     'enabled',
     'max_turns',
+    'prompt_max_turns',
     'max_inject_chars',
     'store_dir',
     'url',
     'durable',
     'max_facts_inject',
     'max_facts_chars',
+    'curated_rag_enabled',
+    'curated_rag_id',
+    'curated_rag_pack_dir',
   };
 
   static const _presenceKeys = {
@@ -580,6 +584,9 @@ class ComstarConfig {
       maxTurns: map.containsKey('max_turns')
           ? _requireInt(map, 'max_turns', 'memory')
           : 20,
+      promptMaxTurns: map.containsKey('prompt_max_turns')
+          ? _requireInt(map, 'prompt_max_turns', 'memory')
+          : 2,
       maxInjectChars: map.containsKey('max_inject_chars')
           ? _requireInt(map, 'max_inject_chars', 'memory')
           : 3500,
@@ -594,14 +601,26 @@ class ComstarConfig {
       maxFactsChars: map.containsKey('max_facts_chars')
           ? _requireInt(map, 'max_facts_chars', 'memory')
           : 1200,
+      curatedRagEnabled: map.containsKey('curated_rag_enabled')
+          ? _requireBool(map, 'curated_rag_enabled', 'memory')
+          : false,
+      curatedRagId: _optionalString(map, 'curated_rag_id') ??
+          'comstar_resident_facts',
+      curatedRagPackDir: _optionalString(map, 'curated_rag_pack_dir') ?? '',
     );
   }
 
   static void _validateMemory(MemoryConfig memory) {
     _rangeInt('memory.max_turns', memory.maxTurns, 2, 100);
-    _rangeInt('memory.max_inject_chars', memory.maxInjectChars, 500, 12000);
+    _rangeInt('memory.prompt_max_turns', memory.promptMaxTurns, 0, 20);
+    _rangeInt('memory.max_inject_chars', memory.maxInjectChars, 200, 12000);
     _rangeInt('memory.max_facts_inject', memory.maxFactsInject, 1, 32);
     _rangeInt('memory.max_facts_chars', memory.maxFactsChars, 200, 4000);
+    if (memory.curatedRagEnabled && memory.curatedRagId.trim().isEmpty) {
+      throw ConfigError(
+        'memory.curated_rag_id must be non-empty when curated_rag_enabled',
+      );
+    }
   }
 
   static PresenceConfig _parsePresence(Map<String, dynamic> map) {
@@ -1323,16 +1342,24 @@ class MemoryConfig {
   const MemoryConfig({
     this.enabled = true,
     this.maxTurns = 20,
+    this.promptMaxTurns = 2,
     this.maxInjectChars = 3500,
     this.storeDir = '',
     this.url = '',
     this.durable = true,
     this.maxFactsInject = 8,
     this.maxFactsChars = 1200,
+    this.curatedRagEnabled = false,
+    this.curatedRagId = 'comstar_resident_facts',
+    this.curatedRagPackDir = '',
   });
 
   final bool enabled;
   final int maxTurns;
+
+  /// Max recent turn lines injected into AO prompts (not store retention).
+  /// Each user/assistant message counts as one turn. Default 2 ≈ one exchange.
+  final int promptMaxTurns;
   final int maxInjectChars;
 
   /// Local/NFS directory for JSON histories when [url] is empty.
@@ -1342,10 +1369,20 @@ class MemoryConfig {
   /// Env `COMSTAR_MEMORY_URL` overrides when set.
   final String url;
 
-  /// Phase 2: extract + retrieve durable facts (prefs / remember-that).
+  /// Extract + store durable facts (prefs / remember-that). Facts are recalled
+  /// via `client.comstar_memory` MCP, not stuffed into every AO prompt.
   final bool durable;
   final int maxFactsInject;
   final int maxFactsChars;
+
+  /// Phase 3: attach curated durable-facts KB pack for open questions (never
+  /// transcript; news stays `rag_ids: []`).
+  final bool curatedRagEnabled;
+  final String curatedRagId;
+
+  /// Directory with `manifest.json` from `export_resident_facts_rag.py`.
+  /// Empty → default under store dir / `rag/<curated_rag_id>`.
+  final String curatedRagPackDir;
 }
 
 /// House-wide presence via HA person entities (ADR 0006). Yaml map first;

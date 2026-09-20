@@ -21,7 +21,7 @@ Hardware baseline: `docs/BASELINES.md`. Dev workflow: `docs/DEV_LOOP.md`.
 | Mic source | `COMSTAR_MIC_SOURCE` — sounddevice index or name substring (e.g. `C525`) |
 | Speaker source | `COMSTAR_SPEAKER_SOURCE` — Pulse/PipeWire sink for local `paplay` |
 | Phrase banks | `phrases:` in config — AO-refreshed engage / sleep_enter / sleep_wake / social lines (`~/.cache/comstar/phrase_banks.json`) |
-| Conversation memory | `memory:` + `comstar-memory` on `:8792` — rolling chat + durable FTS facts across terminals |
+| Conversation memory | `memory:` + `comstar-memory` on `:8792` — rolling chat + durable FTS facts; AO gets thin `prompt_max_turns` stub; recall via `client.comstar_memory` |
 | `~/.config/systemd/user/` | User units: `comstar-bridge`, `comstar-audio`, `comstar-kiosk`, `comstar-stt`, `comstar-tts`, `comstar-health.timer` |
 
 ### Health / auto-heal
@@ -798,6 +798,47 @@ cd terminal/bridge && dart run tool/nextcloud_ao_e2e.dart
 Tokens: `~/.local/share/comstar/nextcloud/<userid>.json` (`0600`). Guests never
 get Nextcloud tools. Say **Nextcloud / my cloud / NAS files** so routing attaches
 `client.nextcloud` (generic “calendar” still goes to Google).
+
+## Conversation memory hygiene
+
+AO prompts inject at most `memory.prompt_max_turns` pairs (default 2). Durable
+facts stay in SQLite for MCP recall — they are not stuffed into every prompt.
+
+After upgrading to thin-prompt memory, purge epistemic junk prefs once:
+
+```bash
+# Dry-run (lists junk ids; does not delete)
+python3 /opt/comstar/src/scripts/purge_junk_durable_facts.py --dry-run
+
+# Apply delete
+python3 /opt/comstar/src/scripts/purge_junk_durable_facts.py
+```
+
+Store dir defaults to `~/.local/share/comstar/conversation` (or
+`COMSTAR_MEMORY_DIR`). Restart `comstar-memory` / bridge after a large purge if
+needed.
+
+Dial-back `client.comstar_memory` (Phase 2): enabled unless
+`COMSTAR_MEMORY_MCP=0`. Guests never get the tunnel.
+
+### Curated RAG pack (Phase 3)
+
+Export scrubbed durable facts (never transcript / greeter / news):
+
+```bash
+python3 /opt/comstar/src/scripts/export_resident_facts_rag.py
+# → ~/.local/share/comstar/conversation/rag/comstar_resident_facts/
+```
+
+Then set in config (only when pack `fact_count` > 0):
+
+```yaml
+memory:
+  curated_rag_enabled: true
+  curated_rag_id: comstar_resident_facts
+```
+
+News/world prompts still force `rag_ids: []` (never `orchestrator_kb`).
 
 ## Local STT note
 

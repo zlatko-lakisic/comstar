@@ -176,6 +176,7 @@ class ComstarMcpBootstrap implements SessionMcpBootstrap {
     }
 
     await _maybeStartTerminal(host, mcps, warnings, aliases);
+    await _maybeStartMemory(host, mcps, warnings, aliases);
     await _startOverlayNpxMcps(host, mcps, warnings, aliases);
 
     return SessionMcpBootstrapResult(
@@ -248,6 +249,85 @@ class ComstarMcpBootstrap implements SessionMcpBootstrap {
     }
   }
 
+  /// Dial-back `client.comstar_memory` — loopback like terminal (not Ada URL).
+  /// Disabled with `COMSTAR_MEMORY_MCP=0`. Guests never reach here ([prepare]).
+  static bool memoryMcpEnvEnabled() {
+    final flag = Platform.environment['COMSTAR_MEMORY_MCP']?.trim() ?? '';
+    return flag != '0' && flag.toLowerCase() != 'false';
+  }
+
+  Future<void> _maybeStartMemory(
+    LocalMcpHost host,
+    List<Map<String, dynamic>> mcps,
+    List<String> warnings,
+    List<String> aliases,
+  ) async {
+    if (!memoryMcpEnvEnabled()) {
+      warnings.add('memory MCP skipped (COMSTAR_MEMORY_MCP=0)');
+      return;
+    }
+    final uid = userid?.trim().toLowerCase() ?? '';
+    if (uid.isEmpty || uid == 'guest' || uid == 'unknown') {
+      warnings.add('memory MCP skipped (no resident userid)');
+      return;
+    }
+
+    try {
+      final mcpRoot = _resolveMcpRoot();
+      final port = await host.pickFreePort();
+      final python = await _resolvePython();
+      final envUrl = Platform.environment['COMSTAR_MEMORY_URL']?.trim() ?? '';
+      final memoryUrl = envUrl.isNotEmpty
+          ? envUrl
+          : (config.memory.url.trim().isNotEmpty
+              ? config.memory.url.trim()
+              : 'http://127.0.0.1:8792');
+      final process = await Process.start(
+        python,
+        [
+          '-m',
+          'memory_mcp',
+          '--http',
+          '--host',
+          '127.0.0.1',
+          '--port',
+          '$port',
+        ],
+        workingDirectory: Directory.systemTemp.path,
+        environment: {
+          ...Platform.environment,
+          'PYTHONPATH': mcpRoot,
+          'COMSTAR_MEMORY_URL': memoryUrl,
+          'COMSTAR_MEMORY_USERID': uid,
+          'COMSTAR_MCP_HTTP': '1',
+          'COMSTAR_MCP_HTTP_PORT': '$port',
+        },
+        runInShell: false,
+      );
+      await host.attachManagedLoopback(
+        alias: 'comstar_memory',
+        port: port,
+        process: process,
+      );
+      logInfo('mcp_memory_ready', 'Memory MCP HTTP listening', data: {
+        'port': port,
+        'userid': uid,
+      });
+      mcps.add(
+        sessionTunnelMcpEntry(
+          clientId: 'client.comstar_memory',
+          description:
+              'COMSTAR resident memory (search_facts, recent_turns, recall_context)',
+          alias: 'comstar_memory',
+        ),
+      );
+      aliases.add('comstar_memory');
+    } catch (e) {
+      logWarn('mcp_memory_bootstrap', 'Memory MCP unavailable: $e');
+      warnings.add('memory MCP soft-fail: $e');
+    }
+  }
+
   Future<void> _startOverlayNpxMcps(
     LocalMcpHost host,
     List<Map<String, dynamic>> mcps,
@@ -256,6 +336,10 @@ class ComstarMcpBootstrap implements SessionMcpBootstrap {
   ) async {
     final defs = loadOverlayMcpProviders(config.orchestration.overlayRoot);
     for (final def in defs) {
+      // Dial-back loopback MCPs (memory) are started in _maybeStartMemory.
+      if (def.transport == 'loopback_tunnel') {
+        continue;
+      }
       if (def.transport != 'stdio_tunnel') {
         warnings.add('overlay MCP ${def.id}: unsupported transport');
         continue;
@@ -776,14 +860,18 @@ class ComstarSession {
     if (utterance != null && _looksLikeVisionComstar(utterance)) {
       return const ['vision_comstar'];
     }
-    // Default voice: stock MCP only. Attaching client.google_workspace (tunnel
-    // URL host 127.0.0.1) makes CrewAI mint OpenAI function names that start
-    // with a digit → every turn fails with the "could not get an answer" sorry
-    // line until AO normalizes tunnel URLs to localhost (post-1.28.0).
-    return [
+    // Default voice: stock MCP + dial-back memory when Reach registered it.
+    // Other client.* tunnels (google/nextcloud) stay utterance-gated — see above.
+    // Attaching google with a 127.0.0.1 tunnel host breaks CrewAI name minting;
+    // comstar_memory alias is safe (no leading digit).
+    final out = <String>[
       for (final id in fullMcpProviders)
         if (!id.startsWith('client.')) id,
     ];
+    if (registered.contains('client.comstar_memory')) {
+      out.add('client.comstar_memory');
+    }
+    return out;
   }
 
   static bool _looksLikeNextcloud(String text) {

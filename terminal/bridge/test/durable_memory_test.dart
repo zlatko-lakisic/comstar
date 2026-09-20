@@ -25,6 +25,22 @@ void main() {
       expect(extractDurableFacts('what time is it'), isEmpty);
       expect(extractDurableFacts('go to sleep'), isEmpty);
     });
+
+    test('rejects epistemic junk and stutter', () {
+      expect(extractDurableFacts("I don't know"), isEmpty);
+      expect(extractDurableFacts("don't hear you"), isEmpty);
+      expect(extractDurableFacts('Do not know anything useful'), isEmpty);
+      expect(
+        extractDurableFacts('Please remember that I do not know'),
+        isEmpty,
+      );
+    });
+
+    test('accepts explicit remember prefer tea', () {
+      final facts = extractDurableFacts('remember that I prefer tea');
+      expect(facts, isNotEmpty);
+      expect(facts.any((f) => f.text.toLowerCase().contains('tea')), isTrue);
+    });
   });
 
   test('formatFactsBlock', () {

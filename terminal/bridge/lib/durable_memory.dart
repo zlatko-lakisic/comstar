@@ -50,9 +50,14 @@ String _stableId(String kind, String text) {
 }
 
 /// Pull durable facts from a resident utterance (heuristic; no AO required).
+///
+/// Requires an explicit remember / prefer / call-me / favorite cue. Rejects
+/// epistemic junk ("I don't know…", stutter "do not" lines, "don't hear you").
 List<DurableFact> extractDurableFacts(String userText, {String? source}) {
   final raw = userText.trim();
   if (raw.isEmpty) return const [];
+  if (_isEpistemicJunk(raw)) return const [];
+
   final t = raw
       .toLowerCase()
       .replaceAll(RegExp(r"['\u2019]"), '')
@@ -60,11 +65,28 @@ List<DurableFact> extractDurableFacts(String userText, {String? source}) {
       .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
   if (t.isEmpty) return const [];
+  if (_isEpistemicJunk(t)) return const [];
+
+  // Require an explicit durable cue — bare "I like tea" still ok via prefer;
+  // "do not know" / random chatter never becomes a fact.
+  final hasCue = RegExp(
+    r'\b(remember|prefer|call me|my name is|i am called|favorite|'
+    r'i like|i love|i hate|i dislike|live in|live at|work at|work in|'
+    r'my (office|desk|room|lab) is)\b',
+  ).hasMatch(t);
+  if (!hasCue) return const [];
 
   final out = <DurableFact>[];
   void add(String kind, String text) {
     final cleaned = text.trim().replaceAll(RegExp(r'\s+'), ' ');
     if (cleaned.length < 3 || cleaned.length > 400) return;
+    if (_isEpistemicJunk(cleaned)) return;
+    if (_looksLikeEphemeral(cleaned)) return;
+    // Reject "Do not know…" style prefs from the old never-rule.
+    if (RegExp(r'^(do not|dont)\s+(know|hear|understand)\b')
+        .hasMatch(cleaned.toLowerCase())) {
+      return;
+    }
     out.add(
       DurableFact(
         id: _stableId(kind, cleaned),
@@ -82,11 +104,14 @@ List<DurableFact> extractDurableFacts(String userText, {String? source}) {
   if (remember != null) {
     var body = remember.group(1)!.trim();
     body = body.replaceFirst(RegExp(r'^(that|this)\s+'), '');
-    if (body.isNotEmpty) add('note', _sentenceCase(body));
+    if (body.isNotEmpty && !_isEpistemicJunk(body)) {
+      add('note', _sentenceCase(body));
+    }
   }
 
-  final callMe = RegExp(r'\b(?:call me|my name is|i am called)\s+([a-z][\w -]{1,40})\b')
-      .firstMatch(t);
+  final callMe =
+      RegExp(r'\b(?:call me|my name is|i am called)\s+([a-z][\w -]{1,40})\b')
+          .firstMatch(t);
   if (callMe != null) {
     add('identity', 'Prefers to be called ${_title(callMe.group(1)!)}');
   }
@@ -97,16 +122,21 @@ List<DurableFact> extractDurableFacts(String userText, {String? source}) {
   if (prefer != null) {
     final verb = prefer.group(1)!;
     final obj = prefer.group(2)!.trim();
-    if (!_looksLikeEphemeral(obj)) {
+    // Skip "I like to know…" / epistemic objects
+    if (!_looksLikeEphemeral(obj) &&
+        !_isEpistemicJunk(obj) &&
+        !obj.startsWith('to know') &&
+        !obj.startsWith('to hear')) {
       add('preference', 'Resident ${verb}s $obj');
     }
   }
 
-  final dontLike = RegExp(r"\bi\s+(don t|dont|do not)\s+(like|want)\s+(.+)$")
+  // Explicit "I don't like X" / "I do not want Y" — not "I don't know"
+  final dontLike = RegExp(r'\bi\s+(don t|dont|do not)\s+(like|want)\s+(.+)$')
       .firstMatch(t);
   if (dontLike != null) {
     final obj = dontLike.group(3)!.trim();
-    if (!_looksLikeEphemeral(obj)) {
+    if (!_looksLikeEphemeral(obj) && !_isEpistemicJunk(obj)) {
       add('preference', 'Resident does not ${dontLike.group(2)} $obj');
     }
   }
@@ -115,28 +145,49 @@ List<DurableFact> extractDurableFacts(String userText, {String? source}) {
     r'\bi\s+(live|work)\s+(in|at|from)\s+(.+)$',
   ).firstMatch(t);
   if (live != null) {
-    add(
-      'identity',
-      'Resident ${live.group(1)}s ${live.group(2)} ${live.group(3)!.trim()}',
-    );
+    final place = live.group(3)!.trim();
+    if (!_isEpistemicJunk(place)) {
+      add(
+        'identity',
+        'Resident ${live.group(1)}s ${live.group(2)} $place',
+      );
+    }
   }
 
   final office = RegExp(r'\bmy\s+(office|desk|room|lab)\s+is\s+(.+)$')
       .firstMatch(t);
   if (office != null) {
-    add(
-      'identity',
-      'Resident ${office.group(1)} is ${office.group(2)!.trim()}',
-    );
+    final place = office.group(2)!.trim();
+    if (!_isEpistemicJunk(place)) {
+      add(
+        'identity',
+        'Resident ${office.group(1)} is $place',
+      );
+    }
   }
 
+  // "Never do X" / "please don't Y" — only with remember/always/never cue,
+  // and never for epistemic verbs (know/hear/understand).
   final never = RegExp(
     r'\b(?:please\s+)?(?:never|dont|don t|do not)\s+(.+)$',
   ).firstMatch(t);
-  if (never != null && t.contains(RegExp(r'\b(remember|always|never|dont|don t)\b'))) {
+  if (never != null &&
+      RegExp(r'\b(remember|always|never)\b').hasMatch(t)) {
     final body = never.group(1)!.trim();
-    if (body.length >= 8 && !_looksLikeEphemeral(body)) {
+    if (body.length >= 8 &&
+        !_looksLikeEphemeral(body) &&
+        !_isEpistemicJunk(body) &&
+        !RegExp(r'^(know|hear|understand)\b').hasMatch(body)) {
       add('preference', 'Do not $body');
+    }
+  }
+
+  final fav = RegExp(r'\bmy favorite\s+(.+?)\s+is\s+(.+)$').firstMatch(t);
+  if (fav != null) {
+    final what = fav.group(1)!.trim();
+    final val = fav.group(2)!.trim();
+    if (!_isEpistemicJunk(val)) {
+      add('preference', 'Favorite $what: $val');
     }
   }
 
@@ -146,6 +197,29 @@ List<DurableFact> extractDurableFacts(String userText, {String? source}) {
     for (final f in out)
       if (seen.add(f.id)) f,
   ];
+}
+
+/// Epistemic / STT-stutter junk that must never become durable prefs.
+bool _isEpistemicJunk(String s) {
+  final t = s
+      .toLowerCase()
+      .replaceAll(RegExp(r"['\u2019]"), '')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+  if (t.isEmpty) return false;
+  if (RegExp(
+        r'\b(i\s+)?(don t|dont|do not)\s+(know|hear|understand|remember)\b',
+      ).hasMatch(t)) {
+    return true;
+  }
+  if (RegExp(r'\b(not sure|no idea|cant tell|i have no idea)\b').hasMatch(t)) {
+    return true;
+  }
+  // Stutter fragments: "do not. do not know"
+  if (RegExp(r'\bdo not\b.*\b(know|hear|understand)\b').hasMatch(t)) {
+    return true;
+  }
+  return false;
 }
 
 bool _looksLikeEphemeral(String s) {
