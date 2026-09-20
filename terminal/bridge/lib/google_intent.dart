@@ -63,21 +63,23 @@ GoogleIntent? parseGoogleIntent(String text) {
     return const GoogleIntent(GoogleIntentKind.status);
   }
 
-  // Explicit re-link.
+  // Explicit re-link / re-auth (must beat plain "connect" / "auth").
   if (RegExp(
-        r'\b(re ?connect|re ?link|re ?pair|connect again|link again)\b.*\b'
+        r'\b(re ?connect|re ?link|re ?pair|re ?auth(?:enticate)?|reauthenticate|'
+        r'connect again|link again|auth(?:enticate)? again)\b.*\b'
         r'(goog\w*|gmail)|'
-        r'\b(goog\w*|gmail)\b.*\b(re ?connect|re ?link|again)\b',
+        r'\b(goog\w*|gmail)\b.*\b(re ?connect|re ?link|re ?pair|re ?auth(?:enticate)?|'
+        r'reauthenticate|again)\b',
       ).hasMatch(t)) {
     return const GoogleIntent(GoogleIntentKind.reconnect);
   }
 
   // Fresh connect — do NOT match "connected" / "linked" / "paired".
   if (RegExp(
-        r'\b(connect|link|pair|sign ?in|log ?in|authorize|auth)'
+        r'\b(connect|link|pair|sign ?in|log ?in|authorize|auth(?:enticate)?)'
         r'(s|ing)?\b.{0,24}\b(goog\w*|gmail|calendar|drive)\b|'
-        r'\b(goog\w*|gmail)\b.{0,24}\b(connect|link|pair|sign ?in|log ?in)'
-        r'(s|ing)?\b|'
+        r'\b(goog\w*|gmail)\b.{0,24}\b(connect|link|pair|sign ?in|log ?in|'
+        r'authorize|auth(?:enticate)?)(s|ing)?\b|'
         r'\b(goog\w*|gmail) (account|workspace)\b',
       ).hasMatch(t)) {
     return const GoogleIntent(GoogleIntentKind.connect);
