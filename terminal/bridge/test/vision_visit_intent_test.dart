@@ -42,6 +42,24 @@ void main() {
       expect(i?.camera, '');
     });
 
+    test('around the house is not Frigate (HA presence)', () {
+      expect(
+        parseVisionVisitIntent(
+          'When is the last time we saw Adna around the house?',
+        ),
+        isNull,
+      );
+    });
+
+    test('driveway last-seen stays on Frigate', () {
+      final i = parseVisionVisitIntent(
+        'When was the last time you saw Adna on the driveway?',
+      );
+      expect(i?.kind, VisionVisitIntentKind.personLastSeen);
+      expect(i?.personName, 'Adna');
+      expect(i?.camera, 'driveway');
+    });
+
     test('STT last time see variant', () {
       final i = parseVisionVisitIntent(
         'When did you last time see Adna?',

@@ -27,6 +27,13 @@ void main() {
     expect(parseSocialIntent('what time is it'), isNull);
     expect(parseSocialIntent('go to sleep'), isNull);
     expect(parseSocialIntent('check my calendar'), isNull);
+    // World news must not become hallway smalltalk.
+    expect(
+      parseSocialIntent("What's happening in the world today?"),
+      isNull,
+    );
+    expect(parseSocialIntent('Tell me the news'), isNull);
+    expect(parseSocialIntent("What's going on in the world?"), isNull);
   });
 
   test('formatSocialAnswer prefers bank line', () {

@@ -426,13 +426,18 @@ class ConversationMemory {
           'If the current request is a short follow-up (e.g. "which one?", '
           '"which button?", "why?", "and then?"), answer in the context of the '
           'most recent assistant line above — treat it as the same conversation.\n'
+          'Ignore prior plan summaries, progress lines, and unfinished goals — '
+          'answer ONLY the Current request below.\n'
           '$block',
         );
       }
     }
 
     if (parts.isEmpty) return trimmed;
-    return '${parts.join('\n\n')}\n\nCurrent request:\n$trimmed';
+    return '${parts.join('\n\n')}\n\n'
+        'Current request:\n'
+        '(Authoritative — ignore conflicting prior goals or plan summaries.)\n'
+        '$trimmed';
   }
 
   /// Append a user + assistant exchange, persist turns, upsert durable facts.

@@ -405,6 +405,21 @@ void main() {
       expect(seen, contains('Planning…'));
     });
 
+    test('researchVoice pins fetch_url and seeds news URLs', () async {
+      await session.open(userid: 'zlatko', guest: false);
+      final seen = <String>[];
+      await session.researchVoice(
+        "What's going on in the world today?",
+        onStatus: (s) => seen.add(s.message),
+      );
+      expect(fake.lastAgentId, ComstarSession.researchAgentId);
+      expect(fake.lastMcpIds, equals(ComstarSession.researchMcpProviders));
+      expect(fake.lastText, contains('https://feeds.bbci.co.uk/news/world/rss.xml'));
+      expect(fake.lastText, contains('fetch_url'));
+      expect(fake.lastText, contains('RSS'));
+      expect(seen, contains('Searching…'));
+    });
+
 
     test('voice MCP list omits client.terminal when tunnel not registered', () async {
       fake.fakeRegisteredMcpIds = const [];

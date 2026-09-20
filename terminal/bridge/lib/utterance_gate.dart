@@ -254,6 +254,126 @@ bool _isConversationalReply(String lower, List<String> words) {
   return false;
 }
 
+/// True when STT looks mid-phrase (VAD cut on a thinking pause).
+///
+/// Example: "When was the last time we?" — hanging subject pronoun; keep
+/// listening rather than sending a truncated prompt to AO.
+bool looksIncompleteUtterance(String text) {
+  final raw = text.trim();
+  if (raw.isEmpty) return false;
+
+  final lower = collapseRepeatedUtterance(raw)
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^\w\s]'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+  if (lower.isEmpty) return false;
+
+  final words = lower.split(' ').where((w) => w.isNotEmpty).toList();
+  if (words.isEmpty) return false;
+
+  // Short identity / social check-ins that end on a pronoun.
+  if (words.length >= 3) {
+    final last3 = words.sublist(words.length - 3).join(' ');
+    const completeTails = {
+      'who am i',
+      'where am i',
+      'how am i',
+      'who are you',
+      'how are you',
+      'where are you',
+      'who is it',
+      'what is it',
+      'how is it',
+    };
+    if (completeTails.contains(last3)) return false;
+  }
+
+  const hanging = {
+    'a',
+    'an',
+    'the',
+    'to',
+    'of',
+    'for',
+    'and',
+    'or',
+    'but',
+    'with',
+    'from',
+    'by',
+    'at',
+    'in',
+    'on',
+    'into',
+    'onto',
+    'about',
+    'around',
+    'my',
+    'your',
+    'our',
+    'their',
+    'his',
+    'her',
+    'its',
+    'this',
+    'these',
+    'those',
+    'that',
+    'we',
+    'i',
+    'you',
+    'they',
+    'he',
+    'she',
+    'was',
+    'were',
+    'is',
+    'are',
+    'am',
+    'be',
+    'been',
+    'being',
+    'had',
+    'have',
+    'has',
+    'will',
+    'would',
+    'could',
+    'should',
+    'can',
+    'may',
+    'might',
+    'do',
+    'does',
+    'did',
+  };
+  if (hanging.contains(words.last)) return true;
+
+  if (words.length >= 2) {
+    final tail = '${words[words.length - 2]} ${words.last}';
+    const hangingPairs = {
+      'last time',
+      'first time',
+      'how much',
+      'how many',
+      'going to',
+      'want to',
+      'need to',
+      'have to',
+      'kind of',
+      'sort of',
+      'around the',
+      'in the',
+      'on the',
+      'of the',
+    };
+    if (hangingPairs.contains(tail)) return true;
+  }
+
+  return false;
+}
+
 /// If the transcript is the same phrase twice, keep one copy.
 String collapseRepeatedUtterance(String text) {
   final t = text.trim();

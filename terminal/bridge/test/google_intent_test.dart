@@ -51,6 +51,18 @@ void main() {
         parseGoogleIntent('connect google again')?.kind,
         GoogleIntentKind.reconnect,
       );
+      expect(
+        parseGoogleIntent("Let's re-authenticate with Google.")?.kind,
+        GoogleIntentKind.reconnect,
+      );
+      expect(
+        parseGoogleIntent('reauthenticate google')?.kind,
+        GoogleIntentKind.reconnect,
+      );
+      expect(
+        parseGoogleIntent('re auth my gmail')?.kind,
+        GoogleIntentKind.reconnect,
+      );
     });
 
     test('cancel', () {

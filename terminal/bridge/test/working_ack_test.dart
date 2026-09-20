@@ -36,6 +36,63 @@ void main() {
     });
   });
 
+  group('looksLikeNewsResearch', () {
+    test('matches news / world phrasing only', () {
+      expect(
+        looksLikeNewsResearch("What's going on in the world today?"),
+        isTrue,
+      );
+      expect(looksLikeNewsResearch('Tell me the news'), isTrue);
+      expect(looksLikeNewsResearch('Any current events I should know?'), isTrue);
+      expect(looksLikeNewsResearch('Explain photosynthesis'), isFalse);
+      expect(looksLikeNewsResearch('Thanks'), isFalse);
+    });
+  });
+
+  group('looksLikeWeatherResearch', () {
+    test('matches weather without stealing news', () {
+      expect(looksLikeWeatherResearch("What's the weather?"), isTrue);
+      expect(looksLikeWeatherResearch('Will it rain today?'), isTrue);
+      expect(looksLikeWeatherResearch("What's the forecast?"), isTrue);
+      expect(
+        looksLikeWeatherResearch("What's happening in the world today?"),
+        isFalse,
+      );
+      expect(looksLikeWeatherResearch('Thanks'), isFalse);
+    });
+  });
+
+  group('seedNewsFetchPrompt', () {
+    test('embeds RSS fetch URLs and anti-placeholder rules', () {
+      final prompt = seedNewsFetchPrompt("What's going on in the world today?");
+      expect(prompt, contains("What's going on in the world today?"));
+      expect(prompt, contains('https://feeds.bbci.co.uk/news/world/rss.xml'));
+      expect(prompt, contains('https://www.npr.org/rss/rss.php?id=1001'));
+      expect(prompt, isNot(contains('https://www.reuters.com/')));
+      expect(prompt, contains('[Description]'));
+      expect(prompt, contains('fetch_url'));
+      expect(prompt, contains('RSS'));
+    });
+  });
+
+  group('steerDynamicResearchChat', () {
+    test('requires step mcp_providers fetch_url and forbids weather drift', () {
+      final out = steerDynamicResearchChat(
+        'Current request:\nTell me the news',
+        'Tell me the news',
+      );
+      expect(out, contains('mcp_providers: ["fetch_url"]'));
+      expect(out, contains('https://feeds.bbci.co.uk/news/world/rss.xml'));
+      expect(out, contains('Do not attach weather_mcp'));
+      expect(out, isNot(contains('weather_mcp when useful')));
+      expect(out, contains('Current request:'));
+    });
+
+    test('leaves non-research prompts unchanged', () {
+      expect(steerDynamicResearchChat('hello', 'Thanks'), 'hello');
+    });
+  });
+
   group('shouldArmWorkingAck', () {
     test('arms only when utterance looks tool-heavy', () {
       expect(

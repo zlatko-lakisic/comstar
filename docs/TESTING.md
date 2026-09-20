@@ -21,6 +21,10 @@ Companion to `docs/IMPLEMENTATION_PLAN.md` and `docs/IMPLEMENTATION_TRACKER.md`.
 Property and branch tests for the attention machine live under
 `terminal/bridge/test/` (attention, session, speech_routing, intents).
 
+Spoken AO progress narration: `test/narration_policy_test.dart`,
+`test/narration_phrase_bank_test.dart` (closed banks, stage gates, golden
+transcripts). Toggle with `voice_narration.enabled`.
+
 ---
 
 ## UAT-0 — Ground truth
@@ -81,3 +85,26 @@ Blocked while `COMSTAR_FORCE_WAKE_SCORE` is the production path and
 `models/hey_comstar.onnx` is untrained. After ONNX + ROC (`make wake-sweep`),
 use soak false-accept counts to retune thresholds. Until then document force-wake
 RMS/refractory in `docs/RUNBOOK.md` §4.
+
+---
+
+## UAT-6b — Spoken AO progress narration
+
+Stand at the terminal in one sitting and run:
+
+1. Three fast turns (answer expected under ~2s) — expect **no** progress chatter
+   and no result preface, just the answer.
+2. One news / world turn — expect at most one “doing” line, then optional
+   heartbeat, then a short preface + headlines. No “Starting / Planning / Plan
+   ready” stack and no sanitizer/debug leaks.
+3. One open-ended planner turn — expect planning then doing (different banks),
+   not four near-synonyms.
+4. One turn while another is queued — expect silence at position 1; at position
+   2 or higher, one queue line (no “position 1 of 1”).
+5. One deliberately stalled turn (long research) — heartbeats should escalate
+   (tier 1 → 2 → 3) so a 90s wait sounds different from a 20s wait.
+
+Sign-off: the same opening line was not heard twice across ten hallway turns,
+and the stalled turn sounded different from the merely slow one. Rollback:
+`voice_narration.enabled: false` restores legacy `working_ack` + status pass-through
+without touching the kiosk card.

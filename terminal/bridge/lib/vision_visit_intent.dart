@@ -69,16 +69,30 @@ VisionVisitIntent? parseVisionVisitIntent(String text) {
 }
 
 VisionVisitIntent? _parsePersonLastSeen(String t) {
+  // House presence ("around the house" / "at home") is HA — not Frigate.
+  final housePresence = RegExp(
+    r'\b(around|at|in)\s+(the\s+)?(house|home)\b',
+  ).hasMatch(t);
+  final cameraCue = RegExp(
+    r'\b(driveway|front door|front_door|camera|cameras?)\b',
+  ).hasMatch(t);
+  if (housePresence && !cameraCue) return null;
+
   // Prefer explicit last-seen patterns so we never invent from chat memory.
+  // Include we/I (hallway speech) — not only "you".
   final patterns = <RegExp>[
     RegExp(
-      r"\b(?:when was|when's|whats?) the last time (?:that )?you (?:saw|seen) (.+)$",
+      r"\b(?:when was|when's|whats?|what was) the last time (?:that )?"
+      r'(?:you|we|i) (?:saw|seen) (.+)$',
     ),
-    RegExp(r'\bwhen did you last (?:time )?(?:see|saw) (.+)$'),
+    RegExp(r'\bwhen did (?:you|we|i) last (?:time )?(?:see|saw) (.+)$'),
     RegExp(r'\bwhen was (.+?) last seen\b'),
-    RegExp(r'\blast time you (?:saw|seen) (.+)$'),
-    RegExp(r'\bhave you (?:seen|saw) (.+?)(?: lately| recently| today| yesterday)?$'),
-    RegExp(r'\bwhere (?:was it that |did )?you (?:saw|see) (.+)$'),
+    RegExp(r'\blast time (?:you|we|i) (?:saw|seen) (.+)$'),
+    RegExp(
+      r'\bhave (?:you|we|i) (?:seen|saw) (.+?)'
+      r'(?: lately| recently| today| yesterday)?$',
+    ),
+    RegExp(r'\bwhere (?:was it that |did )?(?:you|we|i) (?:saw|see) (.+)$'),
   ];
 
   String? rawName;
@@ -95,8 +109,8 @@ VisionVisitIntent? _parsePersonLastSeen(String t) {
       .replaceAll(
         RegExp(
           r'\b(on (the |my )?(driveway|front door|camera|cameras?)|'
-          r'lately|recently|today|yesterday|this (morning|afternoon|evening)|'
-          r'around here|outside)\b',
+          r'lately|recently|today|yesterday|'
+          r'this (morning|afternoon|evening)|outside)\b',
         ),
         ' ',
       )

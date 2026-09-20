@@ -7,6 +7,7 @@ orchestration:
   ttl_seconds: 3600
   timeout_seconds: 15
   overlay_root: ./overlays/comstar
+  utterance_routing: split                   # split | ao
   # mtls:
   #   enabled: true
   #   client_name: comstar-dev
@@ -25,7 +26,7 @@ vision:
 audio:
   wakeword_model: ./models/hey_comstar.onnx
   wakeword_threshold: 0.55
-  vad_silence_ms: 700
+  vad_silence_ms: 1200
   max_utterance_seconds: 15
   followup_window_seconds: 25
   duplex: half
@@ -45,6 +46,9 @@ attention:
   working_ack_on_tools: true
   status_speak: true
   status_speak_interval_ms: 15000
+
+voice_narration:
+  enabled: true
 
 # Directory optional in Mac bring-up; require:false = fail-open to faceId.
 presence:

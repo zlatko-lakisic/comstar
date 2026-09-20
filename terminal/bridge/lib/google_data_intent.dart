@@ -1,5 +1,12 @@
 /// Read-only Google Workspace voice intents (calendar / drive / gmail).
-enum GoogleDataIntentKind { calendarToday, calendarList, driveList, gmailToday }
+enum GoogleDataIntentKind {
+  calendarToday,
+  calendarTomorrow,
+  calendarNext,
+  calendarList,
+  driveList,
+  gmailToday,
+}
 
 class GoogleDataIntent {
   const GoogleDataIntent(this.kind);
@@ -24,6 +31,24 @@ GoogleDataIntent? parseGoogleDataIntent(String text) {
         r'\b(google )?drive\b|\bmy (files|docs)\b',
       ).hasMatch(t)) {
     return const GoogleDataIntent(GoogleDataIntentKind.driveList);
+  }
+
+  // Next meeting before generic calendar today.
+  if (RegExp(
+        r'\b(next|upcoming)\s+(meeting|event|appointment|call)\b|'
+        r'\bwhen\s+is\s+my\s+next\s+(meeting|event|appointment)\b|'
+        r'\bwhats?\s+my\s+next\s+(meeting|event|appointment)\b',
+      ).hasMatch(t)) {
+    return const GoogleDataIntent(GoogleDataIntentKind.calendarNext);
+  }
+
+  if (RegExp(
+        r'\b(calendar|schedule|meetings?|appointments?|planned)\b.*\btomorrow\b|'
+        r'\btomorrow\b.*\b(calendar|schedule|meetings?|planned)\b|'
+        r'\bwhat.*(tomorrow)\b.*\b(calendar|schedule|meetings?)\b|'
+        r'\bon my (google )?calendar tomorrow\b',
+      ).hasMatch(t)) {
+    return const GoogleDataIntent(GoogleDataIntentKind.calendarTomorrow);
   }
 
   // Today / schedule before "list calendars" — "what's on my calendar" is today.
@@ -69,6 +94,27 @@ String speakCalendarToday(List<String> titles) {
   }
   final head = titles.take(titles.length - 1).join(', ');
   return 'On your calendar today: $head, and ${titles.last}.';
+}
+
+String speakCalendarTomorrow(List<String> titles) {
+  if (titles.isEmpty) {
+    return 'Your primary Google Calendar looks clear for tomorrow.';
+  }
+  if (titles.length == 1) {
+    return 'On your calendar tomorrow: ${titles.first}.';
+  }
+  if (titles.length == 2) {
+    return 'On your calendar tomorrow: ${titles[0]}, and ${titles[1]}.';
+  }
+  final head = titles.take(titles.length - 1).join(', ');
+  return 'On your calendar tomorrow: $head, and ${titles.last}.';
+}
+
+String speakCalendarNext(String? title) {
+  if (title == null || title.trim().isEmpty) {
+    return 'I do not see an upcoming event on your primary Google Calendar.';
+  }
+  return 'Your next calendar event is $title.';
 }
 
 String speakCalendarList(List<String> names) {

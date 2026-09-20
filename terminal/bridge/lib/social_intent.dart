@@ -1,5 +1,7 @@
 import 'dart:math';
 
+import 'package:comstar_bridge/working_ack.dart';
+
 /// Local social / smalltalk intents when there is no task context.
 ///
 /// Answered on the bridge (phrase bank + templates) so AO is not burned for
@@ -33,6 +35,10 @@ SocialIntent? parseSocialIntent(String text) {
     return null;
   }
 
+  // "What's happening in the world" must go to news research, not hallway
+  // smalltalk ("Any plans today?").
+  if (looksLikeNewsResearch(t)) return null;
+
   if (RegExp(
         r'\b(thanks|thank you|thankyou|appreciate it|much appreciated)\b',
       ).hasMatch(t)) {
@@ -49,7 +55,7 @@ SocialIntent? parseSocialIntent(String text) {
 
   if (RegExp(
         r'\b(whats? up|what is up|whats? shaking|whats? good|whats? new|'
-        r'whats? happening|whats? crackin|whats? crackling|'
+        r'whats? crackin|whats? crackling|'
         r'what is shaking|what is good|wassup|wussup)\b',
       ).hasMatch(t) ||
       t == 'sup' ||

@@ -19,12 +19,17 @@ void main() {
       expect(config.orchestration.mtls.enabled, isFalse);
       expect(config.orchestration.dynamicPlanning, isFalse);
       expect(config.orchestration.voiceBackend, 'hybrid');
+      expect(config.orchestration.utteranceRouting, 'split');
+      expect(config.orchestration.useClosedFormRouting, isTrue);
       expect(config.orchestration.dynamicTimeoutSeconds, 300);
       expect(config.orchestration.aoRespondingTimeoutMs, 300000);
       expect(config.orchestration.allowedAgentProviderIds, isNotEmpty);
       expect(config.attention.strangerMode, 'restricted');
       expect(config.attention.workingAckMs, 4500);
       expect(config.attention.workingAckOnTools, isTrue);
+      expect(config.voiceNarration.enabled, isTrue);
+      expect(config.voiceNarration.firstSpeechDelayMs, 2500);
+      expect(config.voiceNarration.minGapMs, 12000);
       expect(config.dev.bindLan, isFalse);
       expect(config.phrases.enabled, isTrue);
       expect(config.phrases.refreshHours, 6);

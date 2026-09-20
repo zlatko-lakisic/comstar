@@ -42,12 +42,7 @@ bool looksLikeLongToolQuery(String text) {
 
 /// Open-ended research / explain intents (dynamic planning / stock research).
 bool looksLikeResearch(String text) {
-  final t = text
-      .toLowerCase()
-      .replaceAll(RegExp(r"['\u2019]"), '')
-      .replaceAll(RegExp(r'[^\w\s]'), ' ')
-      .replaceAll(RegExp(r'\s+'), ' ')
-      .trim();
+  final t = _normalizeUtterance(text);
   if (t.isEmpty) return false;
   return RegExp(
     r'\b(research|investigate|look (this|that|it) up|look up|'
@@ -57,6 +52,94 @@ bool looksLikeResearch(String text) {
     r'do some research|dig into|background on|'
     r'news|headlines|current events|in the world|going on in (the )?world)\b',
   ).hasMatch(t);
+}
+
+/// News / current-events phrasing that needs live `fetch_url`, not planner prose.
+bool looksLikeNewsResearch(String text) {
+  final t = _normalizeUtterance(text);
+  if (t.isEmpty) return false;
+  return RegExp(
+    r'\b(news|headlines|current events|in the world|'
+    r'going on in (the )?world|whats going on|whats happening|'
+    r'what is going on|what is happening)\b',
+  ).hasMatch(t);
+}
+
+/// Weather / forecast phrasing — pinned `weather_mcp`, never bolted onto news.
+bool looksLikeWeatherResearch(String text) {
+  final t = _normalizeUtterance(text);
+  if (t.isEmpty) return false;
+  if (looksLikeNewsResearch(t)) return false;
+  return RegExp(
+    r'\b(weather|forecast|temperature outside|how (hot|cold|warm) (is|will)|'
+    r'(is it|will it) (going to )?(rain|snow|sunny|cloudy)|'
+    r'chance of (rain|snow)|umbrella|humid outside)\b',
+  ).hasMatch(t);
+}
+
+/// HTTPS sources seeded so AO's ollama+fetch_url fast-path can run.
+/// Prefer RSS over HTML homepages — Reuters/AP/BBC HTML often 401/403 or CSS junk.
+const kNewsFetchUrls = <String>[
+  'https://feeds.bbci.co.uk/news/world/rss.xml',
+  'https://feeds.bbci.co.uk/news/rss.xml',
+  'https://www.npr.org/rss/rss.php?id=1001',
+  'https://rss.nytimes.com/services/xml/rss/nyt/World.xml',
+];
+
+/// Direct-agent prompt: concrete URLs + anti-placeholder instructions.
+String seedNewsFetchPrompt(String text) {
+  final urls = kNewsFetchUrls.join('\n');
+  return '${text.trim()}\n\n'
+      'Call fetch_url / fetch on each RSS URL below. Read the <title> items from '
+      'the feed XML and speak 3–5 real world headlines in short spoken English. '
+      'Do not invent stories. Never invent bracket placeholders like '
+      '[Description] or [Current temperature]. Do not answer weather unless '
+      'asked. If every fetch fails, say you could not fetch the news.\n'
+      '$urls';
+}
+
+/// Direct-agent prompt for weather_mcp (no news/RSS drift).
+String seedWeatherPrompt(String text) {
+  return '${text.trim()}\n\n'
+      'Weather tools are attached (weather_mcp). Call them before answering. '
+      'Speak a short spoken English summary of conditions and/or forecast. '
+      'Do not invent temperatures. Do not fetch news or talk about world '
+      'headlines unless asked. If tools fail, say you could not get weather.';
+}
+
+/// Steer Reach `chat` toward stock research agents + mandatory step MCP.
+String steerDynamicResearchChat(String wrapped, String utterance) {
+  if (!looksLikeResearch(utterance)) return wrapped;
+  final urls = kNewsFetchUrls.map((u) => '  $u').join('\n');
+  final steer = 'Planning constraints for this request:\n'
+      '- Prefer agent_provider_id ollama_qwen2_5_14b_instruct (or gpt_research / '
+      'claude_research only if listed). Never use client.greeter or '
+      'client.phrase_bank for research/news.\n'
+      '- Exactly one step for news/world questions. Do not add weather steps '
+      'unless the user asked about weather.\n'
+      '- Set rag_ids to [] on the plan and every step. Do not attach '
+      'orchestrator_kb or any RAG source.\n'
+      '- Every step MUST set mcp_providers: ["fetch_url"] (non-empty on the '
+      'step object). Do not leave step mcps empty. Do not attach weather_mcp '
+      'unless the user asked about weather.\n'
+      '- Include these HTTPS URLs in the step topic so tools can run:\n'
+      '$urls\n'
+      '- Final answer: real headlines only; never invent [bracket] placeholders; '
+      'if fetch fails, say you could not fetch news.\n'
+      '- Produce a factual spoken English answer; do not only acknowledge.';
+  if (wrapped.contains('Current request:')) {
+    return '$steer\n\n$wrapped';
+  }
+  return '$steer\n\nCurrent request:\n${wrapped.trim()}';
+}
+
+String _normalizeUtterance(String text) {
+  return text
+      .toLowerCase()
+      .replaceAll(RegExp(r"['\u2019]"), '')
+      .replaceAll(RegExp(r'[^\w\s]'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
 }
 
 final _conversationalContinuity = RegExp(

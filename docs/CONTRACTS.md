@@ -352,8 +352,8 @@ ignored, never fatal — this is how we ship kiosk and bridge independently.
 | `speak` | `{text, audioUrl, visemes?, mood?}` | Render this utterance. `audioUrl` is a loopback HTTP URL served by the bridge. |
 | `speak.cancel` | `{}` | Barge-in or timeout. Stop immediately, return to idle. |
 | `listening` | `{active, level?}` | Show/hide listening indicator; `level` 0–1 for a mic meter. |
-| `thinking` | `{active}` | Orchestration in flight. Kiosk emblem opacity pulses (~0.72↔1.0) and phase shows “Talking to AO…”. Optional bridge UX: after `attention.working_ack_ms` (default 4500; `0` off) while AO is still in flight — for tool/query turns **or** dynamic/research turns — the bridge may speak a one-shot phrase-bank `working` line without completing the turn; if that ack played, the final AO reply is prefixed with `result_ready`. Working ack also extends the AO Responding deadline so planner time is not treated as a silent failure. Casual continuity (“okay, good to know”) never arms. |
-| `ao.progress` | `{active, message?, phase?, processing?, step?, step_count?, agent_provider_id?}` | Live AO run status (Reach `ReachRunStatus`). Hallway shows a centered activity card under the avatar (slide-replace; blink while `processing`). When `attention.status_speak` is true (default), the bridge also speaks user-facing `message` immediately on change and re-speaks (“Still …”) every `attention.status_speak_interval_ms` (default 15000; `0` = change-only). Heartbeats without a new message do not barge TTS. `active:false` starts client hold (~1.8s) then exit. Admin polls the same snapshot via `/admin/api/status` → `ao_progress`. |
+| `thinking` | `{active}` | Orchestration in flight. Kiosk emblem opacity pulses (~0.72↔1.0) and phase shows “Talking to AO…”. Spoken progress: when `voice_narration.enabled` (default), stage-gated phrase-bank narration (replaces the old working-ack race). When narration is off: after `attention.working_ack_ms` (default 4500; `0` off) while AO is still in flight — for tool/query turns **or** dynamic/research turns — the bridge may speak a one-shot phrase-bank `working` line; if that ack played, the final AO reply is prefixed with `result_ready`. Casual continuity (“okay, good to know”) never arms. |
+| `ao.progress` | `{active, message?, phase?, processing?, step?, step_count?, agent_provider_id?}` | Live AO run status (Reach `ReachRunStatus`). Hallway shows a centered activity card under the avatar (slide-replace; blink while `processing`). Spoken progress is separate: when `voice_narration.enabled` (default), the bridge narrates stage changes from closed phrase banks (never AO `message` verbatim); when disabled, legacy `attention.status_speak` speaks `message` on change and re-speaks (“Still …”) every `attention.status_speak_interval_ms`. `active:false` starts client hold (~1.8s) then exit. Admin polls the same snapshot via `/admin/api/status` → `ao_progress`. |
 | `pairing.qr` | `{active, phase?, url?, userCode?, qrSvg?}` | Show/hide QR overlay for **Google** device-code OAuth **or** messaging-channel pairing (ADR 0015). `phase` is `awaiting` \| `verifying` \| `idle`. Same attempt as the spoken user code. `active:false` clears the overlay. |
 | `admin.qr` | `{active, url?, qrSvg?, ip?, iface?, port?, type?, hotspot?, ssid?}` | Debug / `COMSTAR_ENV=dev`, or **fallback SoftAP** (ADR 0014): small QR opening `http://<ip>:8781/admin/?token=…`. Prefer ethernet, then Wi‑Fi client, then hotspot `10.87.65.1`. When `hotspot` is true, `ssid` is the temporary AP name (shown under the QR). `active:false` clears. Never log the token. |
 | `error` | `{code, message}` | Display a non-fatal error affordance. |
@@ -609,7 +609,9 @@ await bridge.start(
 ### Turn
 
 Hybrid (`voice_backend: hybrid`): specialty MCP / home-control → `direct_agent`;
-otherwise when dynamic planning is on → `chat`.
+news / world-events → `direct_agent` on `ollama_qwen2_5_14b_instruct` with
+`mcpProviderIds: ["fetch_url"]` and seeded HTTPS URLs (bypass planner so step
+MCPs are never empty); otherwise when dynamic planning is on → `chat`.
 
 ```dart
 // Home / tools
@@ -619,7 +621,14 @@ final result = await bridge.directAgent(
   mcpProviderIds: mcpProvidersForVoice(utterance: transcript),
 );
 
-// Open-ended (dynamic planning)
+// News / world (fetch_url pinned; URLs in prompt for ollama fetch fast-path)
+final news = await bridge.directAgent(
+  agentProviderId: 'ollama_qwen2_5_14b_instruct',
+  text: seedNewsFetchPrompt(transcript),
+  mcpProviderIds: const ['fetch_url'],
+);
+
+// Other open-ended (dynamic planning)
 final planned = await bridge.chat(
   text: transcript,
   runMode: 'dynamic',
@@ -891,11 +900,12 @@ See `config/comstar.example.yaml` for the annotated version. Validation rules:
 | `audio.wakeword_threshold` | 0.2 ≤ x ≤ 0.95 |
 | `audio.vad_silence_ms` | 300 ≤ x ≤ 2000 |
 | `audio.followup_window_seconds` | 0 ≤ x ≤ 30 |
-| `orchestration.timeout_seconds` | 5 ≤ x ≤ 60 (direct_agent / chat default) |
-| `orchestration.dynamic_timeout_seconds` | 15 ≤ x ≤ 600; Reach `chat` / dynamic research budget (default **300**). Responding Tick uses `max(direct≥90s, dynamic)` so hallway does not SpeakFallback while AO research is still running. |
+| `orchestration.timeout_seconds` | 5 ≤ x ≤ 60. Idle budget for `direct_agent`: no Reach status/heartbeat for this long → timeout. Live status resets the idle clock; absolute ceiling is `max(6×, 30m)`. |
+| `orchestration.dynamic_timeout_seconds` | 15 ≤ x ≤ 600 (default **300**). Same **idle** semantics for Reach `chat` / dynamic research. Queue waits and heartbeats keep the turn alive. Responding Tick uses `max(direct≥90s, dynamic)` initially and extends up to 45m while status flows. |
 | `orchestration.dynamic_planning` | bool; Reach sticky dynamic planning |
 | `orchestration.allowed_agent_provider_ids` | curated stock ids (`gpt_research`, `claude_research`, …) → Reach `allowedAgentProviderIds` |
 | `orchestration.voice_backend` | `hybrid` \| `direct` \| `dynamic` |
+| `orchestration.utterance_routing` | `split` (default) \| `ao`. **split** = Pi closed-form intents + pinned AO + open AO. **ao** = skip content closed-form (clock, social, home, google data, vision, news/weather pins); send those to AO. Env override: `COMSTAR_UTTERANCE_ROUTING`. Terminal self-care (sleep/volume/heal/restart) and account pairing always stay bridge-local. See [VOICE_CLOSED_FORM.md](VOICE_CLOSED_FORM.md). |
 | `orchestration.mtls.enabled` | when true, `base_url` must be `https://…` |
 | `orchestration.mtls.material_dir` | optional; default `~/.local/share/comstar/ao-mtls` |
 | `orchestration.mtls.client_name` | optional CN for enroll (default hostname) |
@@ -905,8 +915,18 @@ See `config/comstar.example.yaml` for the annotated version. Validation rules:
 | `attention.idle_sleep_seconds` | 0–86400; `0` disables; silent auto-sleep after idle (default 600) |
 | `attention.working_ack_ms` | 0–60000; ms before spoken progress ack while AO in flight; `0` disables (default 4500) |
 | `attention.working_ack_on_tools` | bool; when true, also require non-empty `mcpProvidersForVoice` (default true). Either way, utterance must look like tool/query work — not chit-chat. |
-| `attention.status_speak` | bool; speak Reach `ReachRunStatus` progress at the hallway (default true). Change → speak immediately; same status → re-speak every `status_speak_interval_ms`. |
-| `attention.status_speak_interval_ms` | 0–120000; periodic re-speak of unchanged AO status (default 15000). `0` disables periodic; change-immediate still applies when `status_speak` is true. |
+| `attention.status_speak` | bool; speak Reach `ReachRunStatus` progress at the hallway (default true). When `voice_narration.enabled` is true, speech uses the narration policy (closed phrase banks) instead of AO `message` pass-through. Legacy change-immediate + periodic re-speak when narration is off. |
+| `attention.status_speak_interval_ms` | 0–120000; legacy periodic re-speak of unchanged AO status (default 15000). Ignored when `voice_narration.enabled`. |
+| `voice_narration.enabled` | bool; closed-bank spoken progress for AO turns (default true). `false` restores legacy `working_ack` + `status_speak` pass-through. Kiosk `ao.progress` card is unchanged either way. |
+| `voice_narration.first_speech_delay_ms` | 0–60000; no progress speech before this (default 2500) |
+| `voice_narration.min_gap_ms` | 0–120000; minimum gap between spoken progress lines (default 12000) |
+| `voice_narration.heartbeat_interval_ms` | 0–120000; re-nudge interval while AO still running (default 15000) |
+| `voice_narration.heartbeat_tier2_after_ms` | escalate heartbeat wording after this elapsed (default 30000) |
+| `voice_narration.heartbeat_tier3_after_ms` | escalate again after this elapsed (default 60000) |
+| `voice_narration.suppress_preface_within_ms` | skip `result_preface` if last progress line was within this window (default 3000) |
+| `voice_narration.queue_min_position` | speak queue bank only at this 1-based position or higher (default 2) |
+| `voice_narration.speak_stage3` | bool; allow composing-stage progress lines (default true; usually discarded if answer arrives first) |
+| `voice_narration.recent_ring_size` | 0–20; per-bank recent picks excluded across turns (default 3) |
 | `avatar.render` | enum: local \| streamed |
 | `directory.enabled` | bool |
 | `directory.sidecar_url` | non-empty when `enabled` |
@@ -954,13 +974,20 @@ Response:
 **Non-goal:** this API does **not** drive the attention FSM or open AO sessions
 (ADR 0006). Local camera identity remains the terminal identity terminator.
 
-Optional voice paths (bridge-local, no AO):
+Optional voice paths (bridge-local, no AO) when `orchestration.utterance_routing: split`
+(default). Under `ao`, these content paths are skipped and AO handles them (except
+terminal control + pairing — always local). Full catalog: [VOICE_CLOSED_FORM.md](VOICE_CLOSED_FORM.md).
 
 | utterance | behavior |
 |---|---|
 | “Who’s home?” | Summarize people with HA state `home` (yaml + auto-discovered) |
 | “Where is Adna?” / “Is Zlatko home?” | Resolve spoken name → HA person state. If `home` / named zone, say that. Else reverse-geocode GPS (`latitude`/`longitude`) vs `zone.home` and speak by tier (below). If HA is `unknown` / no GPS, append Frigate `person_last_seen` when `COMSTAR_VISION_MCP_URL` is set |
-| “When did Adna leave?” / “When did they leave?” | HA history (`GET /api/history/list`) for last `home`→away transition. Pronouns use the last successful where-is / leave person |
+| “When did Adna leave?” / “When did they leave?” / “When is the last time we saw Adna around the house?” / “When was Adna last home?” | HA history (`GET /api/history/list`) for last `home`→away transition. Pronouns use the last successful where-is / leave person. **House / home phrasing is presence — not Frigate.** |
+| “Who was in the driveway?” / “When was the last time you saw Adna on the driveway?” | Frigate visitor / camera last-seen via vision MCP (`who_visited` / `person_last_seen`) |
+| “Where’s the family car?” | HA Frigate LPR sensors (`sensor.frigate_family_car_last_camera`, driveway car occupancy) — **not** `person.*` |
+| “Is the front door locked?” / “Is the garage door open?” | HA lock/cover entity reads |
+| “What’s the weather?” | Pinned AO `weather_mcp` (split mode) |
+| “What’s happening in the world?” | Pinned AO `fetch_url` news (split mode; must not match social whats-up) |
 
 **Location speech tiers** (distance from `zone.home`, country/state from reverse geocode — Nominatim, cached):
 
@@ -1039,6 +1066,7 @@ While engaged, vision may keep recognizing at a reduced rate. The machine tracks
 | engaged | Tick | idle > identity_ttl AND absent | ambient | `SessionBridge.stop()` |
 | ambient / noticed / engaged | Tick | idle_sleep_seconds > 0 AND no interaction for that long | sleeping | silent `EnterSleep` (no sleep-ack TTS) |
 | listening | SpeechEnd | — | listening | finalize capture, call STT |
+| listening | STT incomplete phrase | hanging mid-phrase (e.g. ends with `we`/`the`/`to`) | listening | keep PCM, restart `listen.start` (no `TranscriptReady`); after max soft restarts accept as-is |
 | listening | Tick | elapsed > max_utterance_seconds | responding | force-close capture with what we have |
 | listening | TranscriptReady | text non-empty | responding | `thinking` on, call `directAgent` |
 | listening | TranscriptReady | text empty | engaged | play `error` tone, `listen.stop` |

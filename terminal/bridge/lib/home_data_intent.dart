@@ -6,6 +6,9 @@ enum HomeDataIntentKind {
   presenceHome,
   whereIsPerson,
   whenPersonLeft,
+  familyCar,
+  lockStatus,
+  garageStatus,
 }
 
 class HomeDataIntent {
@@ -13,6 +16,7 @@ class HomeDataIntent {
     this.kind, {
     this.query = '',
     this.personName,
+    this.lockKey,
   });
   final HomeDataIntentKind kind;
 
@@ -21,6 +25,9 @@ class HomeDataIntent {
 
   /// Spoken name for person lookups (e.g. Adna). Null when pronouns need context.
   final String? personName;
+
+  /// Lock map key: front, office, garage_entry, back, all.
+  final String? lockKey;
 }
 
 /// Returns a [HomeDataIntent] when [text] asks about HA-backed household data
@@ -33,6 +40,28 @@ HomeDataIntent? parseHomeDataIntent(String text) {
       .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
   if (t.isEmpty) return null;
+
+  // Family car / LPR nickname — before person where-is ("where's the family car").
+  if (RegExp(
+        r'\b(family car|our car|the car|household car)\b|'
+        r'\bwhere.*(family )?car\b|'
+        r'\b(when|last).*(family )?car\b|'
+        r'\bcar (arrive|arrived|leave|left|home|here|in the driveway)\b',
+      ).hasMatch(t)) {
+    return HomeDataIntent(HomeDataIntentKind.familyCar, query: t);
+  }
+
+  // Garage door open/closed (before lock — "garage door").
+  if (RegExp(
+        r'\bgarage door\b|'
+        r'\bis the garage (open|closed|door)\b|'
+        r'\b(open|closed).*garage door\b',
+      ).hasMatch(t)) {
+    return HomeDataIntent(HomeDataIntentKind.garageStatus, query: t);
+  }
+
+  final lock = _parseLockStatus(t);
+  if (lock != null) return lock;
 
   final left = _parseWhenPersonLeft(t);
   if (left != null) return left;
@@ -99,8 +128,92 @@ HomeDataIntent? parseHomeDataIntent(String text) {
   return null;
 }
 
+HomeDataIntent? _parseLockStatus(String t) {
+  if (!RegExp(r'\b(lock|locked|unlocked|deadbolt)\b').hasMatch(t)) {
+    return null;
+  }
+  final String key;
+  if (RegExp(r'\bfront door\b|\bfront lock\b').hasMatch(t)) {
+    key = 'front';
+  } else if (RegExp(r'\boffice door\b|\boffice lock\b').hasMatch(t)) {
+    key = 'office';
+  } else if (RegExp(r'\bdoor to garage\b|\bgarage (door )?lock\b').hasMatch(t)) {
+    key = 'garage_entry';
+  } else if (RegExp(r'\bback door\b|\bback lock\b').hasMatch(t)) {
+    key = 'back';
+  } else if (RegExp(r'\ball (the )?locks\b|\bdoors locked\b').hasMatch(t)) {
+    key = 'all';
+  } else {
+    key = 'front';
+  }
+  return HomeDataIntent(HomeDataIntentKind.lockStatus, query: t, lockKey: key);
+}
+
+/// HA entity ids for lock status reads (ha_security_voice skill map).
+const kHomeLockEntities = <String, String>{
+  'front': 'lock.front_door',
+  'office': 'lock.office_door',
+  'garage_entry': 'lock.door_to_garage',
+  'back': 'lock.back_door',
+};
+
+const kGarageCoverEntity = 'cover.garage_door_door';
+const kFamilyCarLastCamera = 'sensor.frigate_family_car_last_camera';
+const kDrivewayCarOccupancy = 'binary_sensor.driveway_car_occupancy';
+
+const kHomeLockLabels = <String, String>{
+  'front': 'front door',
+  'office': 'office door',
+  'garage_entry': 'door to the garage',
+  'back': 'back door',
+};
+
+String speakLockState(String label, String? state) {
+  final s = (state ?? '').toLowerCase().trim();
+  if (s == 'locked') return 'The $label is locked.';
+  if (s == 'unlocked') return 'The $label is unlocked.';
+  if (s.isEmpty || s == 'unavailable' || s == 'unknown') {
+    return 'I could not read the $label lock right now.';
+  }
+  return 'The $label reports $s.';
+}
+
+String speakGarageState(String? state) {
+  final s = (state ?? '').toLowerCase().trim();
+  if (s == 'open' || s == 'opening') return 'The garage door is open.';
+  if (s == 'closed' || s == 'closing') return 'The garage door is closed.';
+  if (s.isEmpty || s == 'unavailable' || s == 'unknown') {
+    return 'I could not read the garage door right now.';
+  }
+  return 'The garage door reports $s.';
+}
+
+String speakFamilyCar({
+  required String? lastCamera,
+  required String? drivewayOccupancy,
+}) {
+  final cam = (lastCamera ?? '').trim();
+  final occ = (drivewayOccupancy ?? '').toLowerCase().trim();
+  if (occ == 'on') {
+    return 'The family car looks like it is in the driveway right now.';
+  }
+  final camKnown = cam.isNotEmpty &&
+      cam.toLowerCase() != 'unknown' &&
+      cam.toLowerCase() != 'unavailable';
+  if (camKnown) {
+    return 'The family car was last seen on the $cam camera.';
+  }
+  if (occ == 'off') {
+    return 'The family car is not showing in the driveway right now, '
+        'and I do not have a recent Frigate sighting.';
+  }
+  return 'I could not find a recent sighting of the family car.';
+}
+
 HomeDataIntent? _parseWhenPersonLeft(String t) {
   // "when did Adna leave" / "when did they leave home" / "how long has she been gone"
+  // Also house presence last-seen: "last time we saw Adna around the house"
+  // (HA person history — not Frigate cameras).
   final patterns = <RegExp>[
     RegExp(
       r'\bwhen\s+did\s+(.+?)\s+leave(?:\s+(?:home|the\s+house|here))?\b',
@@ -113,6 +226,23 @@ HomeDataIntent? _parseWhenPersonLeft(String t) {
     ),
     RegExp(
       r'\bwhat\s+time\s+did\s+(.+?)\s+leave(?:\s+(?:home|the\s+house))?\b',
+    ),
+    RegExp(
+      r"\b(?:when\s+(?:was|is)|whats?|what\s+was)\s+the\s+last\s+time\s+"
+      r"(?:that\s+)?(?:you|we|i)\s+(?:saw|seen)\s+(.+?)\s+"
+      r"(?:around|at|in)\s+(?:the\s+)?(?:house|home)\b",
+    ),
+    RegExp(
+      r'\blast\s+time\s+(?:you|we|i)\s+(?:saw|seen)\s+(.+?)\s+'
+      r'(?:around|at|in)\s+(?:the\s+)?(?:house|home)\b',
+    ),
+    RegExp(
+      r'\bwhen\s+was\s+(.+?)\s+last\s+(?:home|at\s+home|in\s+the\s+house|'
+      r'around\s+(?:the\s+)?house)\b',
+    ),
+    RegExp(
+      r'\blast\s+time\s+(.+?)\s+was\s+(?:home|at\s+home|in\s+the\s+house|'
+      r'around\s+(?:the\s+)?house)\b',
     ),
   ];
 
@@ -188,7 +318,8 @@ String? _cleanPersonName(String raw) {
       .replaceAll(
         RegExp(
           r'\b(right now|now|today|please|at home|in the house|'
-          r'located|living|staying|home|the house|here)\b',
+          r'around the house|around house|located|living|staying|home|'
+          r'the house|here)\b',
         ),
         ' ',
       )
@@ -200,8 +331,8 @@ String? _cleanPersonName(String raw) {
   // Reject non-person / household aggregate queries.
   if (RegExp(
         r'^(everyone|everybody|anyone|anybody|someone|somebody|'
-        r'home|house|camera|driveway|front door|keys|car|wifi|network|'
-        r'light|lights|thermostat)$',
+        r'home|house|camera|driveway|front door|keys|car|family car|'
+        r'wifi|network|light|lights|thermostat)$',
       ).hasMatch(name)) {
     return null;
   }
