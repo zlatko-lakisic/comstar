@@ -36,6 +36,7 @@ class MjpegFramer {
 abstract class _PreviewHub {
   final _clients = <HttpResponse>{};
   Timer? _timer;
+  var _tickInFlight = false;
 
   int get subscribers => _clients.length;
   bool get active => _clients.isNotEmpty;
@@ -81,41 +82,51 @@ abstract class _PreviewHub {
     final hadTimer = _timer != null;
     _timer?.cancel();
     _timer = null;
+    await cancelInFlightCapture();
     if (hadTimer) {
       await onLastSubscriber();
     }
   }
 
+  /// Skip overlapping ticks — grim/ffmpeg can exceed [period] and would pile up.
   Future<void> _tick() async {
-    if (_clients.isEmpty) return;
-    Uint8List? jpeg;
+    if (_clients.isEmpty || _tickInFlight) return;
+    _tickInFlight = true;
     try {
-      jpeg = await captureFrame();
-    } on Object catch (e) {
-      logWarn(errorEvt, 'Preview frame capture failed', data: {
-        'error': e.toString(),
-      });
-      return;
-    }
-    if (jpeg == null || jpeg.isEmpty || _clients.isEmpty) return;
-    final part = MjpegFramer.part(jpeg);
-    for (final client in List<HttpResponse>.from(_clients)) {
+      Uint8List? jpeg;
       try {
-        client.add(part);
-        unawaited(client.flush());
-      } on Object {
-        _clients.remove(client);
+        jpeg = await captureFrame();
+      } on Object catch (e) {
+        logWarn(errorEvt, 'Preview frame capture failed', data: {
+          'error': e.toString(),
+        });
+        return;
+      }
+      if (jpeg == null || jpeg.isEmpty || _clients.isEmpty) return;
+      final part = MjpegFramer.part(jpeg);
+      for (final client in List<HttpResponse>.from(_clients)) {
         try {
-          await client.close();
+          client.add(part);
+          unawaited(client.flush());
         } on Object {
-          // ignore
+          _clients.remove(client);
+          try {
+            await client.close();
+          } on Object {
+            // ignore
+          }
         }
       }
-    }
-    if (_clients.isEmpty) {
-      await _stopProducer();
+      if (_clients.isEmpty) {
+        await _stopProducer();
+      }
+    } finally {
+      _tickInFlight = false;
     }
   }
+
+  /// Kill any still-running capture child when the last subscriber leaves.
+  Future<void> cancelInFlightCapture() async {}
 
   String get errorEvt;
   Future<void> onFirstSubscriber();
@@ -159,6 +170,9 @@ class PanelPreview extends _PreviewHub {
 
   bool? _grimOk;
   String? unavailableHint;
+  Process? _activeProc;
+  /// After first "jpeg disabled" failure, skip direct JPEG forever.
+  var _jpegUnsupported = false;
 
   @override
   Duration get period {
@@ -168,6 +182,18 @@ class PanelPreview extends _PreviewHub {
 
   @override
   String get errorEvt => 'preview_panel_error';
+
+  @override
+  Future<void> cancelInFlightCapture() async {
+    final p = _activeProc;
+    _activeProc = null;
+    if (p == null) return;
+    try {
+      p.kill(ProcessSignal.sigkill);
+    } on Object {
+      // ignore
+    }
+  }
 
   Future<bool> checkAvailable() async {
     if (injectCapture != null) {
@@ -219,8 +245,10 @@ class PanelPreview extends _PreviewHub {
 
     // Prefer JPEG from grim; Pi builds often lack libjpeg ("jpeg support
     // disabled") — fall back to PNG piped through ffmpeg → MJPEG.
-    final jpeg = await _runCapture(const ['-t', 'jpeg', '-']);
-    if (jpeg != null && jpeg.isNotEmpty) return jpeg;
+    if (!_jpegUnsupported) {
+      final jpeg = await _runCapture(const ['-t', 'jpeg', '-']);
+      if (jpeg != null && jpeg.isNotEmpty) return jpeg;
+    }
 
     final converted = await _runCaptureShell(
       'grim -t png - | ffmpeg -hide_banner -loglevel error -i pipe:0 '
@@ -242,34 +270,40 @@ class PanelPreview extends _PreviewHub {
           'Failed to start grim — is WAYLAND_DISPLAY set for the bridge user? ($e)';
       throw StateError('grim_start_failed');
     }
+    _activeProc = proc;
 
-    final out = BytesBuilder(copy: false);
-    final err = StringBuffer();
-    final outSub = proc.stdout.listen(out.add);
-    final errSub = proc.stderr.listen((c) => err.write(utf8.decode(c)));
-    final code = await proc.exitCode.timeout(
-      const Duration(seconds: 8),
-      onTimeout: () {
-        proc.kill();
-        return -1;
-      },
-    );
-    await outSub.cancel();
-    await errSub.cancel();
-    final bytes = out.takeBytes();
-    if (code == 0 && bytes.isNotEmpty) {
-      unavailableHint = null;
-      return Uint8List.fromList(bytes);
+    try {
+      final out = BytesBuilder(copy: false);
+      final err = StringBuffer();
+      final outSub = proc.stdout.listen(out.add);
+      final errSub = proc.stderr.listen((c) => err.write(utf8.decode(c)));
+      final code = await proc.exitCode.timeout(
+        const Duration(seconds: 8),
+        onTimeout: () {
+          proc.kill(ProcessSignal.sigkill);
+          return -1;
+        },
+      );
+      await outSub.cancel();
+      await errSub.cancel();
+      final bytes = out.takeBytes();
+      if (code == 0 && bytes.isNotEmpty) {
+        unavailableHint = null;
+        return Uint8List.fromList(bytes);
+      }
+      final errText = err.toString();
+      if (errText.toLowerCase().contains('jpeg')) {
+        _jpegUnsupported = true;
+        return null; // try png→ffmpeg path
+      }
+      if (code != 0) {
+        unavailableHint =
+            'grim failed (exit $code)${errText.isEmpty ? '' : ': $errText'}';
+      }
+      return null;
+    } finally {
+      if (identical(_activeProc, proc)) _activeProc = null;
     }
-    final errText = err.toString();
-    if (errText.toLowerCase().contains('jpeg')) {
-      return null; // try png→ffmpeg path
-    }
-    if (code != 0) {
-      unavailableHint =
-          'grim failed (exit $code)${errText.isEmpty ? '' : ': $errText'}';
-    }
-    return null;
   }
 
   Future<Uint8List?> _runCaptureShell(String script) async {
@@ -280,27 +314,33 @@ class PanelPreview extends _PreviewHub {
       unavailableHint = 'bash/ffmpeg grim fallback failed ($e)';
       return null;
     }
-    final out = BytesBuilder(copy: false);
-    final err = StringBuffer();
-    final outSub = proc.stdout.listen(out.add);
-    final errSub = proc.stderr.listen((c) => err.write(utf8.decode(c)));
-    final code = await proc.exitCode.timeout(
-      const Duration(seconds: 10),
-      onTimeout: () {
-        proc.kill();
-        return -1;
-      },
-    );
-    await outSub.cancel();
-    await errSub.cancel();
-    final bytes = out.takeBytes();
-    if (code == 0 && bytes.isNotEmpty) {
-      unavailableHint = null;
-      return Uint8List.fromList(bytes);
+    _activeProc = proc;
+
+    try {
+      final out = BytesBuilder(copy: false);
+      final err = StringBuffer();
+      final outSub = proc.stdout.listen(out.add);
+      final errSub = proc.stderr.listen((c) => err.write(utf8.decode(c)));
+      final code = await proc.exitCode.timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          proc.kill(ProcessSignal.sigkill);
+          return -1;
+        },
+      );
+      await outSub.cancel();
+      await errSub.cancel();
+      final bytes = out.takeBytes();
+      if (code == 0 && bytes.isNotEmpty) {
+        unavailableHint = null;
+        return Uint8List.fromList(bytes);
+      }
+      unavailableHint =
+          'grim|ffmpeg failed (exit $code)${err.isEmpty ? '' : ': $err'}';
+      return null;
+    } finally {
+      if (identical(_activeProc, proc)) _activeProc = null;
     }
-    unavailableHint =
-        'grim|ffmpeg failed (exit $code)${err.isEmpty ? '' : ': $err'}';
-    return null;
   }
 }
 

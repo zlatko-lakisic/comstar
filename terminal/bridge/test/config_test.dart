@@ -32,8 +32,10 @@ void main() {
       expect(config.voiceNarration.minGapMs, 12000);
       expect(config.dev.bindLan, isFalse);
       expect(config.admin.previewEnabled, isTrue);
+      expect(config.admin.previewPanel, 'wayvnc');
       expect(config.admin.previewPanelFps, 1.0);
       expect(config.admin.previewCameraFps, 2.0);
+      expect(config.admin.previewWayvncFps, 15);
       expect(config.phrases.enabled, isTrue);
       expect(config.phrases.refreshHours, 6);
       expect(config.phrases.bankSize, 8);

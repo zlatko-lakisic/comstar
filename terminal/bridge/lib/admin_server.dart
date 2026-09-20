@@ -19,6 +19,7 @@ import 'package:comstar_bridge/house_presence.dart';
 import 'package:comstar_bridge/log.dart';
 import 'package:comstar_bridge/admin_ops.dart';
 import 'package:comstar_bridge/admin_preview.dart';
+import 'package:comstar_bridge/admin_wayvnc.dart';
 import 'package:comstar_bridge/ao_mtls/service.dart';
 import 'package:comstar_bridge/net/service.dart';
 import 'package:comstar_bridge/road/service.dart';
@@ -46,6 +47,7 @@ class AdminServer {
     this.httpClientFactory,
     PanelPreview? panelPreview,
     CameraPreview? cameraPreview,
+    WayvncPanel? wayvncPanel,
     Future<Process> Function(String executable, List<String> arguments)?
         processRunner,
   })  : processRunner = processRunner ??
@@ -61,6 +63,13 @@ class AdminServer {
               lastFrameProvider: () => coordinator.visionLastJpeg,
               visionActiveProvider: () => coordinator.visionActive,
               cameraInput: cameraSource(),
+            ),
+        wayvncPanel = wayvncPanel ??
+            WayvncPanel(
+              maxFps: config.admin.previewWayvncFps,
+              processRunner: processRunner == null
+                  ? null
+                  : (exe, args, {environment}) => processRunner(exe, args),
             );
 
   final AttentionCoordinator coordinator;
@@ -76,6 +85,7 @@ class AdminServer {
   final int port;
   final PanelPreview panelPreview;
   final CameraPreview cameraPreview;
+  final WayvncPanel wayvncPanel;
 
   /// Injectable for tests.
   final HttpClient Function()? httpClientFactory;
@@ -125,6 +135,7 @@ class AdminServer {
     _logStreams.clear();
     await panelPreview.dispose();
     await cameraPreview.dispose();
+    await wayvncPanel.dispose();
     await _server?.close(force: true);
     _server = null;
   }
@@ -223,6 +234,11 @@ class AdminServer {
 
       if (request.method == 'GET' && adminPath == '/admin/api/preview/status') {
         await _handlePreviewStatus(request);
+        return;
+      }
+
+      if (adminPath == '/admin/api/preview/panel.ws') {
+        await _handlePreviewPanelWs(request);
         return;
       }
 
@@ -459,6 +475,7 @@ class AdminServer {
         'ok': true,
         'enabled': false,
         'panel': {
+          'backend': config.admin.previewPanel,
           'available': false,
           'hint': 'admin.preview_enabled is false',
           'subscribers': 0,
@@ -471,16 +488,34 @@ class AdminServer {
         },
       };
     }
-    final panelOk = await panelPreview.checkAvailable();
-    return {
-      'ok': true,
-      'enabled': true,
-      'panel': {
+
+    Map<String, Object?> panel;
+    if (config.admin.previewPanelIsWayvnc) {
+      final ok = await wayvncPanel.checkAvailable();
+      panel = {
+        'backend': 'wayvnc',
+        'available': ok,
+        'ws': '/admin/api/preview/panel.ws',
+        'subscribers': wayvncPanel.subscribers,
+        'running': wayvncPanel.active,
+        if (wayvncPanel.unavailableHint != null)
+          'hint': wayvncPanel.unavailableHint,
+      };
+    } else {
+      final panelOk = await panelPreview.checkAvailable();
+      panel = {
+        'backend': 'grim',
         'available': panelOk,
         if (panelPreview.unavailableHint != null)
           'hint': panelPreview.unavailableHint,
         'subscribers': panelPreview.subscribers,
-      },
+      };
+    }
+
+    return {
+      'ok': true,
+      'enabled': true,
+      'panel': panel,
       'camera': cameraPreview.statusMap(),
     };
   }
@@ -489,12 +524,62 @@ class AdminServer {
     await _writeJson(request, 200, await _previewStatusMap());
   }
 
+  Future<void> _handlePreviewPanelWs(HttpRequest request) async {
+    if (!config.admin.previewEnabled) {
+      await _writeJson(request, 503, {
+        'ok': false,
+        'error': 'preview_disabled',
+        'hint': 'Set admin.preview_enabled: true',
+      });
+      return;
+    }
+    if (!config.admin.previewPanelIsWayvnc) {
+      await _writeJson(request, 503, {
+        'ok': false,
+        'error': 'panel_backend_grim',
+        'hint': 'Set admin.preview_panel: wayvnc for WebSocket panel',
+      });
+      return;
+    }
+    if (!WebSocketTransformer.isUpgradeRequest(request)) {
+      await _writeJson(request, 426, {
+        'ok': false,
+        'error': 'upgrade_required',
+        'hint': 'Connect with WebSocket (noVNC)',
+      });
+      return;
+    }
+    if (!await wayvncPanel.checkAvailable()) {
+      await _writeJson(request, 503, {
+        'ok': false,
+        'error': 'panel_unavailable',
+        'hint': wayvncPanel.unavailableHint ?? 'wayvnc unavailable',
+      });
+      return;
+    }
+    try {
+      await wayvncPanel.attachWebSocket(request);
+    } on Object catch (e) {
+      logWarn('preview_panel_error', 'panel.ws failed', data: {
+        'error': e.toString(),
+      });
+    }
+  }
+
   Future<void> _handlePreviewPanel(HttpRequest request) async {
     if (!config.admin.previewEnabled) {
       await _writeJson(request, 503, {
         'ok': false,
         'error': 'preview_disabled',
         'hint': 'Set admin.preview_enabled: true',
+      });
+      return;
+    }
+    if (config.admin.previewPanelIsWayvnc) {
+      await _writeJson(request, 503, {
+        'ok': false,
+        'error': 'use_panel_ws',
+        'hint': 'Panel backend is wayvnc — connect to /admin/api/preview/panel.ws',
       });
       return;
     }

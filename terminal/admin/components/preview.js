@@ -1,4 +1,6 @@
-/** Admin Live view — dual-pane MJPEG modal (panel + camera). */
+/** Admin Live view — wayvnc panel (noVNC) + camera MJPEG. */
+
+import RFB from '../vendor/novnc/core/rfb.js';
 
 function paneStatus(el, text, tone) {
   if (!el) return;
@@ -9,9 +11,17 @@ function paneStatus(el, text, tone) {
   else if (tone === 'amber') el.classList.add('is-amber');
 }
 
+function wsUrlFromApi(api, path) {
+  const rel = api.url(path);
+  const u = new URL(rel, location.href);
+  u.protocol = u.protocol === 'https:' ? 'wss:' : 'ws:';
+  return u.toString();
+}
+
 export function createLivePreview({ api, modalRoot, button }) {
   let open = false;
   let onKey = null;
+  let rfb = null;
 
   function setButtonState(preview) {
     if (!button) return;
@@ -28,6 +38,14 @@ export function createLivePreview({ api, modalRoot, button }) {
   }
 
   function stopStreams() {
+    if (rfb) {
+      try {
+        rfb.disconnect();
+      } catch (_) {
+        // ignore
+      }
+      rfb = null;
+    }
     const panelImg = modalRoot.querySelector('#previewPanelImg');
     const camImg = modalRoot.querySelector('#previewCameraImg');
     if (panelImg) {
@@ -53,6 +71,45 @@ export function createLivePreview({ api, modalRoot, button }) {
     modalRoot.innerHTML = '';
   }
 
+  function startWayvnc(screenEl, panelStatus, hint) {
+    paneStatus(panelStatus, 'connecting…', 'amber');
+    const url = wsUrlFromApi(api, '/api/preview/panel.ws');
+    try {
+      rfb = new RFB(screenEl, url, {
+        wsProtocols: ['binary'],
+      });
+      rfb.viewOnly = true;
+      rfb.scaleViewport = true;
+      rfb.resizeSession = false;
+      rfb.addEventListener('connect', () => {
+        paneStatus(panelStatus, 'live (wayvnc)', 'live');
+      });
+      rfb.addEventListener('disconnect', (e) => {
+        const clean = e?.detail?.clean;
+        if (open) {
+          paneStatus(
+            panelStatus,
+            clean ? 'disconnected' : (hint || 'unavailable'),
+            clean ? 'amber' : 'bad',
+          );
+        }
+      });
+      rfb.addEventListener('securityfailure', () => {
+        paneStatus(panelStatus, hint || 'auth failed', 'bad');
+      });
+    } catch (e) {
+      paneStatus(panelStatus, e.message || 'wayvnc failed', 'bad');
+    }
+  }
+
+  function startGrim(panelImg, panelStatus, hint) {
+    paneStatus(panelStatus, 'connecting…', 'amber');
+    panelImg.onload = () => paneStatus(panelStatus, 'live (grim)', 'live');
+    panelImg.onerror = () =>
+      paneStatus(panelStatus, hint || 'unavailable', 'bad');
+    panelImg.src = api.url('/api/preview/panel.mjpeg');
+  }
+
   async function openModal() {
     if (open) return;
     open = true;
@@ -64,6 +121,9 @@ export function createLivePreview({ api, modalRoot, button }) {
       status = { enabled: false, error: e.message || String(e) };
     }
 
+    const backend = status?.panel?.backend || 'wayvnc';
+    const useWayvnc = backend === 'wayvnc';
+
     modalRoot.innerHTML = `
       <div class="modal modal--preview" role="dialog" aria-modal="true" aria-label="Live view">
         <div class="modal__card modal__card--preview">
@@ -71,12 +131,14 @@ export function createLivePreview({ api, modalRoot, button }) {
             <h2 class="preview-title">Live view</h2>
             <button type="button" class="btn btn--ghost" id="previewClose" aria-label="Close">Close</button>
           </div>
-          <p class="preview-note">Streams run only while this dialog is open. Camera frames are not recorded.</p>
+          <p class="preview-note">Panel is view-only wayvnc while this dialog is open. Camera frames are not recorded.</p>
           <div class="preview-grid">
             <div class="preview-pane">
               <div class="preview-pane__label">Panel</div>
-              <div class="preview-pane__frame">
-                <img id="previewPanelImg" alt="Hallway panel" />
+              <div class="preview-pane__frame${useWayvnc ? ' preview-pane__frame--vnc' : ''}">
+                ${useWayvnc
+                  ? '<div id="previewPanelScreen" class="preview-vnc"></div>'
+                  : '<img id="previewPanelImg" alt="Hallway panel" />'}
               </div>
               <p class="preview-pane__status mono" id="previewPanelStatus">connecting…</p>
             </div>
@@ -94,7 +156,6 @@ export function createLivePreview({ api, modalRoot, button }) {
 
     const panelStatus = modalRoot.querySelector('#previewPanelStatus');
     const camStatus = modalRoot.querySelector('#previewCameraStatus');
-    const panelImg = modalRoot.querySelector('#previewPanelImg');
     const camImg = modalRoot.querySelector('#previewCameraImg');
 
     modalRoot.querySelector('#previewClose')?.addEventListener('click', close);
@@ -117,12 +178,12 @@ export function createLivePreview({ api, modalRoot, button }) {
 
     if (status?.panel?.available === false) {
       paneStatus(panelStatus, panelHint || 'unavailable', 'bad');
+    } else if (useWayvnc) {
+      const screen = modalRoot.querySelector('#previewPanelScreen');
+      startWayvnc(screen, panelStatus, panelHint);
     } else {
-      paneStatus(panelStatus, 'connecting…', 'amber');
-      panelImg.onload = () => paneStatus(panelStatus, 'live', 'live');
-      panelImg.onerror = () =>
-        paneStatus(panelStatus, panelHint || 'unavailable', 'bad');
-      panelImg.src = api.url('/api/preview/panel.mjpeg');
+      const panelImg = modalRoot.querySelector('#previewPanelImg');
+      startGrim(panelImg, panelStatus, panelHint);
     }
 
     if (status?.camera?.available === false) {

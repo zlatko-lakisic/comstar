@@ -156,8 +156,10 @@ class ComstarConfig {
     'bind_lan',
     'token',
     'preview_enabled',
+    'preview_panel',
     'preview_panel_fps',
     'preview_camera_fps',
+    'preview_wayvnc_fps',
   };
 
   static const _phrasesKeys = {
@@ -551,6 +553,11 @@ class ComstarConfig {
 
   static AdminConfig _parseAdmin(Map<String, dynamic> map) {
     _assertKnownKeys(map.keys, _adminKeys, 'admin');
+    final panelBackend = (map.containsKey('preview_panel')
+            ? (_optionalString(map, 'preview_panel') ?? 'wayvnc')
+            : 'wayvnc')
+        .trim()
+        .toLowerCase();
     return AdminConfig(
       bindLan: map.containsKey('bind_lan')
           ? _requireBool(map, 'bind_lan', 'admin')
@@ -559,18 +566,29 @@ class ComstarConfig {
       previewEnabled: map.containsKey('preview_enabled')
           ? _requireBool(map, 'preview_enabled', 'admin')
           : true,
+      previewPanel: panelBackend,
       previewPanelFps: map.containsKey('preview_panel_fps')
           ? _requireDouble(map, 'preview_panel_fps', 'admin')
           : 1.0,
       previewCameraFps: map.containsKey('preview_camera_fps')
           ? _requireDouble(map, 'preview_camera_fps', 'admin')
           : 2.0,
+      previewWayvncFps: map.containsKey('preview_wayvnc_fps')
+          ? _requireInt(map, 'preview_wayvnc_fps', 'admin')
+          : 15,
     );
   }
 
   static void _validateAdmin(AdminConfig admin) {
+    const backends = {'wayvnc', 'grim'};
+    if (!backends.contains(admin.previewPanel)) {
+      throw ConfigError(
+        'admin.preview_panel must be one of: ${backends.join(', ')}',
+      );
+    }
     _range('admin.preview_panel_fps', admin.previewPanelFps, 0.5, 5);
     _range('admin.preview_camera_fps', admin.previewCameraFps, 0.5, 5);
+    _rangeInt('admin.preview_wayvnc_fps', admin.previewWayvncFps, 5, 30);
   }
 
   static PhrasesConfig _parsePhrases(Map<String, dynamic> map) {
@@ -1295,21 +1313,32 @@ class AdminConfig {
     this.bindLan = false,
     this.token = '',
     this.previewEnabled = true,
+    this.previewPanel = 'wayvnc',
     this.previewPanelFps = 1.0,
     this.previewCameraFps = 2.0,
+    this.previewWayvncFps = 15,
   });
 
   final bool bindLan;
   final String token;
 
-  /// Master switch for Live view panel/camera MJPEG streams.
+  /// Master switch for Live view panel/camera streams.
   final bool previewEnabled;
+
+  /// Panel backend: `wayvnc` (default, embedded noVNC) or `grim` (MJPEG).
+  final String previewPanel;
 
   /// Wayland (`grim`) capture rate while ≥1 Admin client is connected.
   final double previewPanelFps;
 
   /// Camera re-emit / ffmpeg grab rate while ≥1 Admin client is connected.
   final double previewCameraFps;
+
+  /// wayvnc `-f` rate limit while Live view panel is connected.
+  final int previewWayvncFps;
+
+  bool get previewPanelIsWayvnc => previewPanel == 'wayvnc';
+  bool get previewPanelIsGrim => previewPanel == 'grim';
 }
 
 /// Periodic AO phrase banks for engage / sleep / social lines.

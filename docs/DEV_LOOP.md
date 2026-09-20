@@ -229,11 +229,11 @@ everything else.
 standard `attach` launch config on `localhost:5678`.
 
 **Pi screen, if you need the real framebuffer.** Prefer Admin **Live view**
-(Health → Live view): MJPEG of the Wayland panel via `grim` plus the hallway
-camera, only while the modal is open. For interactive remote desktop (not just
-watching), `wayvnc` on the Pi + any VNC client on the Mac remains available.
-Opening the kiosk URL locally is still fastest for UI/CSS work — that is the
-web page, not the HDMI composite.
+(Health → Live view): embedded **wayvnc** (view-only noVNC) of the Wayland panel
+plus the hallway camera, only while the modal is open. For interactive remote
+desktop outside Admin, run a VNC client against wayvnc. Opening the kiosk URL
+locally is still fastest for UI/CSS work — that is the web page, not the HDMI
+composite.
 
 ---
 
