@@ -703,15 +703,24 @@ not route these through AO `time` MCP.
 
 **Conversation memory:** per recognized `userid` rolling transcript
 (last `memory.max_turns` turns) plus durable facts (`memory.durable`) extracted
-from “remember that…”, prefs, name, etc. Injected into AO voice prompts; guests
-get none. Shared across terminals via `memory.url` →
-`scripts/comstar_memory_server.py` (SQLite FTS for facts). This is COMSTAR-owned
-RAG-lite — not AO `memory` MCP (still unavailable on this Ada host).
+from explicit “remember that…”, prefs, name, etc. **AO prompts** receive only a
+thin stub: the last `memory.prompt_max_turns` conversational **pairs** (default
+2), with greeter / sleep / working-ack / status / empty-apology / news-dump
+noise filtered out — **no** durable-facts block in the prompt. Guests get none.
+Shared across terminals via `memory.url` → `scripts/comstar_memory_server.py`
+(SQLite FTS for facts). Older prefs/facts are recalled on demand via dial-back
+`client.comstar_memory` (CONTRACTS §5), not by stuffing the transcript or
+auto-attaching `orchestrator_kb`. Purge epistemic junk with
+`scripts/purge_junk_durable_facts.py`. Optional Phase 3 curated pack:
+`scripts/export_resident_facts_rag.py` → `comstar_resident_facts` (enable with
+`memory.curated_rag_enabled` only when the pack is non-empty); news/world asks
+keep `rag_ids: []`. This is COMSTAR-owned memory — not AO stock `memory` MCP.
 
 Every spoken COMSTAR line (AO replies, local intents, greeter, sleep-wake
 phrases, working acks, announces) is appended as an `assistant` turn — including
 unsolicited lines with no matching user text — so short follow-ups (“which
-button?”) resolve against the last thing COMSTAR said.
+button?”) resolve against the last thing COMSTAR said (subject to the thin
+prompt window + noise filter).
 
 ---
 
@@ -799,6 +808,27 @@ pauses auto-adapt for 60 s and becomes the new recovery ceiling.
 Disable with `COMSTAR_AVATAR_ADAPT=0`.
 
 See `docs/adr/0004-terminal-control.md`.
+
+### Tunnelled, Pi-local (`mcp/memory_mcp/`) — `client.comstar_memory`
+
+Reach dial-back / session tunnel — same family as `client.terminal`. Pi starts
+`memory_mcp` on loopback; overlay alias `comstar_memory` →
+`tunnel://session-mcp/comstar_memory` → session id `client.comstar_memory`.
+**No** Ada `COMSTAR_MEMORY_MCP_URL` / EXTRA catalog hardcoding.
+
+Talks to local `comstar-memory` REST (`COMSTAR_MEMORY_URL`, default
+`http://127.0.0.1:8792`). Scoped to session userid (`COMSTAR_MEMORY_USERID`).
+Disable with `COMSTAR_MEMORY_MCP=0`. Guests never register this MCP.
+
+| tool | args | returns |
+|---|---|---|
+| `search_facts` | `{query?, limit?, userid?}` | `{ok, userid, facts[], count}` |
+| `recent_turns` | `{limit?, userid?}` | `{ok, userid, turns[], count}` |
+| `recall_context` | `{query?, fact_limit?, turn_limit?, userid?}` | `{ok, userid, facts[], turns[]}` |
+
+Voice attach: when Reach reports `client.comstar_memory` registered and the
+session is non-guest, `mcpProvidersForVoice` includes it alongside stock MCPs
+(unless a specialized utterance gate returned google/nextcloud/ldap/vision alone).
 
 ### Tunnelled Google Workspace (off-the-shelf MCP)
 

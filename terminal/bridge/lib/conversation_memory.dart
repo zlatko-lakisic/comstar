@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:comstar_bridge/config.dart';
+import 'package:comstar_bridge/curated_rag.dart';
 import 'package:comstar_bridge/durable_memory.dart';
 import 'package:comstar_bridge/working_ack.dart';
 import 'package:http/http.dart' as http;
@@ -326,6 +327,7 @@ class ConversationMemory {
   ConversationMemory({
     required this.store,
     this.maxTurns = 20,
+    this.promptMaxTurns = 2,
     this.maxInjectChars = 3500,
     this.maxTurnChars = 500,
     this.maxFactsInject = 8,
@@ -333,6 +335,10 @@ class ConversationMemory {
     this.durableEnabled = true,
     this.terminalId,
     this.enabled = true,
+    this.curatedRagEnabled = false,
+    this.curatedRagId = 'comstar_resident_facts',
+    this.curatedRagPackDir = '',
+    this.storeDir = '',
     DateTime Function()? now,
   }) : _now = now ?? DateTime.now;
 
@@ -356,17 +362,26 @@ class ConversationMemory {
     return ConversationMemory(
       store: store,
       maxTurns: config.memory.maxTurns,
+      promptMaxTurns: config.memory.promptMaxTurns,
       maxInjectChars: config.memory.maxInjectChars,
       maxFactsInject: config.memory.maxFactsInject,
       maxFactsChars: config.memory.maxFactsChars,
       durableEnabled: config.memory.durable,
       terminalId: terminal,
       enabled: config.memory.enabled,
+      curatedRagEnabled: config.memory.curatedRagEnabled,
+      curatedRagId: config.memory.curatedRagId,
+      curatedRagPackDir: config.memory.curatedRagPackDir,
+      storeDir: config.memory.storeDir,
     );
   }
 
   final ConversationMemoryStore store;
   final int maxTurns;
+
+  /// Max recent **pairs** (user+assistant) injected into AO prompts.
+  /// Durable facts are not stuffed here — use `client.comstar_memory` MCP.
+  final int promptMaxTurns;
   final int maxInjectChars;
   final int maxTurnChars;
   final int maxFactsInject;
@@ -374,6 +389,10 @@ class ConversationMemory {
   final bool durableEnabled;
   final String? terminalId;
   final bool enabled;
+  final bool curatedRagEnabled;
+  final String curatedRagId;
+  final String curatedRagPackDir;
+  final String storeDir;
   final DateTime Function() _now;
 
   static bool isMemoryUser(String? userid) {
@@ -382,59 +401,59 @@ class ConversationMemory {
     return u.isNotEmpty && u != 'guest' && u != 'unknown';
   }
 
-  /// Build the agent prompt with durable facts + prior turns prepended.
+  /// Thin AO prompt: last [promptMaxTurns] pairs only — no durable-facts block.
   Future<String> wrapForAgent(String userid, String text) async {
     final trimmed = text.trim();
     if (!enabled || !isMemoryUser(userid) || trimmed.isEmpty) return trimmed;
 
+    final wantNews = looksLikeNewsResearch(trimmed);
     final parts = <String>[];
 
-    if (durableEnabled) {
-      final facts = await store.searchFacts(
-        userid,
-        query: trimmed,
-        limit: maxFactsInject,
+    if (!wantNews && curatedRagEnabled) {
+      final pack = loadCuratedRagPack(
+        MemoryConfig(
+          curatedRagEnabled: true,
+          curatedRagId: curatedRagId,
+          curatedRagPackDir: curatedRagPackDir,
+          storeDir: storeDir,
+        ),
       );
-      // If query search is thin, also pull recent facts.
-      final recent = facts.length < 3
-          ? await store.searchFacts(userid, limit: maxFactsInject)
-          : facts;
-      final merged = <String, DurableFact>{
-        for (final f in [...facts, ...recent]) f.id: f,
-      };
-      final block = formatFactsBlock(
-        merged.values.take(maxFactsInject).toList(),
-        maxChars: maxFactsChars,
-      );
-      if (block.isNotEmpty) {
-        parts.add(
-          'Known facts about this resident (durable memory across terminals). '
-          'Use when relevant; do not dump the whole list.\n$block',
-        );
+      if (pack != null && pack.isUsable) {
+        parts.add(curatedRagSteer(pack));
       }
+    }
+
+    if (promptMaxTurns <= 0) {
+      if (parts.isEmpty) return trimmed;
+      return '${parts.join('\n\n')}\n\nCurrent request:\n$trimmed';
     }
 
     final history = await store.load(userid);
     if (history.turns.isNotEmpty) {
-      final wantNews = looksLikeNewsResearch(trimmed);
-      final block = formatHistoryBlock(
+      final recent = recentPromptTurns(
         history.turns,
-        maxChars: maxInjectChars,
+        maxPairs: promptMaxTurns,
         suppressNewsAnswers: !wantNews,
       );
-      if (block.isNotEmpty) {
-        parts.add(
-          'Prior conversation with this resident across COMSTAR terminals '
-          '(oldest first). Use it for continuity; do not recite it unless asked.\n'
-          'If the current request is a short follow-up (e.g. "which one?", '
-          '"which button?", "why?", "and then?"), answer in the context of the '
-          'most recent assistant line above — treat it as the same conversation.\n'
-          'Ignore prior plan summaries, progress lines, and unfinished goals — '
-          'answer ONLY the Current request below.\n'
-          'Do not recite prior world news or headlines unless the Current '
-          'request explicitly asks for news, world events, or headlines.\n'
-          '$block',
+      if (recent.isNotEmpty) {
+        final block = formatHistoryBlock(
+          recent,
+          maxChars: maxInjectChars,
+          suppressNewsAnswers: false,
+          filterNoise: false,
         );
+        if (block.isNotEmpty) {
+          parts.add(
+            'Prior conversation (same resident; most recent only — use memory '
+            'tools for older prefs/facts). Use for short follow-ups; do not recite '
+            'unless asked.\n'
+            'Ignore prior plan summaries, progress lines, and unfinished goals — '
+            'answer ONLY the Current request below.\n'
+            'Do not recite prior world news or headlines unless the Current '
+            'request explicitly asks for news, world events, or headlines.\n'
+            '$block',
+          );
+        }
       }
     }
 
@@ -443,6 +462,89 @@ class ConversationMemory {
         'Current request:\n'
         '(Authoritative — ignore conflicting prior goals or plan summaries.)\n'
         '$trimmed';
+  }
+
+  /// Last [maxPairs] user+assistant pairs that are prompt-worthy (newest last).
+  static List<ConversationTurn> recentPromptTurns(
+    List<ConversationTurn> turns, {
+    required int maxPairs,
+    bool suppressNewsAnswers = false,
+  }) {
+    if (maxPairs <= 0 || turns.isEmpty) return const [];
+    final filtered = <ConversationTurn>[];
+    for (final t in turns) {
+      if (!isPromptWorthy(t, suppressNewsAnswers: suppressNewsAnswers)) {
+        continue;
+      }
+      filtered.add(t);
+    }
+    if (filtered.isEmpty) return const [];
+    final maxLines = maxPairs * 2;
+    if (filtered.length <= maxLines) return filtered;
+    return filtered.sublist(filtered.length - maxLines);
+  }
+
+  /// Greeter / sleep / working-ack / status / empty HA apology / news dump.
+  static bool isPromptWorthy(
+    ConversationTurn t, {
+    bool suppressNewsAnswers = false,
+  }) {
+    final text = t.text.trim();
+    if (text.isEmpty) return false;
+    if (t.role == 'assistant') {
+      if (isTimeoutApology(text)) return false;
+      if (isNoiseAssistant(text)) return false;
+      if (suppressNewsAnswers && isNewsHeadlineDump(text)) return false;
+    }
+    if (t.role == 'user' && isNoiseUser(text)) return false;
+    return true;
+  }
+
+  static bool isNoiseAssistant(String text) {
+    final t = text.toLowerCase().trim();
+    if (t.isEmpty) return true;
+    if (isWorkingAckPhrase(t)) return true;
+    if (_assistantNoise.hasMatch(t)) return true;
+    if (t.contains('awaiting your voice')) return true;
+    // Empty HA / reach apologies with no house content.
+    if ((t.contains('sorry') || t.contains('could not')) &&
+        (t.contains("couldn't reach") ||
+            t.contains('could not reach') ||
+            t.contains('no entities') ||
+            t.contains('nothing to report') ||
+            (t.length < 80 &&
+                (t.startsWith('sorry') || t.contains('i apologize'))))) {
+      return true;
+    }
+    return false;
+  }
+
+  static bool isNoiseUser(String text) {
+    final t = text.toLowerCase().trim();
+    return _userNoise.hasMatch(t);
+  }
+
+  static final _assistantNoise = RegExp(
+    r'^(good (morning|afternoon|evening)|welcome back|hello[,!. ]|'
+    r'going to sleep|entering sleep|sleep mode|'
+    r'status:|system status|i.?m (here|listening)|ready when you are)',
+    caseSensitive: false,
+  );
+
+  static final _userNoise = RegExp(
+    r'^(go to sleep|sleep|wake up|wake|status|what.?s your status|'
+    r'system status)\.?$',
+    caseSensitive: false,
+  );
+
+  /// Short progress / working-ack one-liners (not useful as AO context).
+  static bool isWorkingAckPhrase(String lower) {
+    return RegExp(
+      r'^(one (moment|sec|second)|working on (it|that)|looking (that|it) up|'
+      r'hang on|just a (sec|second|moment)|on it\.?$|got it\.?$|'
+      r'still working|almost there)',
+      caseSensitive: false,
+    ).hasMatch(lower);
   }
 
   /// Append a user + assistant exchange, persist turns, upsert durable facts.
@@ -507,23 +609,28 @@ class ConversationMemory {
 
   /// Render history for the model; drop oldest lines if over [maxChars].
   ///
-  /// Strips repeated timeout / empty-reply apologies so they do not bias the
-  /// local planner toward acknowledging instead of researching.
-  /// When [suppressNewsAnswers] is true, drop assistant turns that look like
-  /// headline dumps so they cannot be re-spoken on unrelated requests.
+  /// Strips timeout apologies, optional news dumps, and (when [filterNoise])
+  /// greeter / sleep / working-ack spam.
   static String formatHistoryBlock(
     List<ConversationTurn> turns, {
     required int maxChars,
     bool suppressNewsAnswers = false,
+    bool filterNoise = true,
   }) {
     if (turns.isEmpty || maxChars <= 0) return '';
     final lines = <String>[];
     for (final t in turns) {
-      if (t.role == 'assistant' && isTimeoutApology(t.text)) continue;
-      if (suppressNewsAnswers &&
-          t.role == 'assistant' &&
-          isNewsHeadlineDump(t.text)) {
-        continue;
+      if (filterNoise) {
+        if (!isPromptWorthy(t, suppressNewsAnswers: suppressNewsAnswers)) {
+          continue;
+        }
+      } else {
+        if (t.role == 'assistant' && isTimeoutApology(t.text)) continue;
+        if (suppressNewsAnswers &&
+            t.role == 'assistant' &&
+            isNewsHeadlineDump(t.text)) {
+          continue;
+        }
       }
       final who = t.role == 'user' ? 'Resident' : 'COMSTAR';
       final where =

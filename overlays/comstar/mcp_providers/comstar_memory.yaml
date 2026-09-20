@@ -1,0 +1,27 @@
+# Comstar overlay MCP — dial-back hallway memory (Pi loopback → Reach tunnel).
+# Reach OverlayPacker does not read this file; ComstarMcpBootstrap / mcp_yaml.dart does.
+# Session MCP id becomes client.comstar_memory via tunnel://session-mcp/comstar_memory.
+id: comstar_memory
+description: >
+  Resident hallway memory — durable facts and recent turns from comstar-memory
+  SQLite (prefs, remember-that). Not a rolling transcript dump into the prompt.
+capabilities: >
+  search_facts, recent_turns, recall_context over the resident's COMSTAR memory store.
+good_for: preferences, remember, what did I say, prior conversation, facts about me
+planner_hint: >
+  Attach for preference / continuity questions. Prefer tools over inventing history.
+  Do not dump full transcripts; news asks stay without orchestrator_kb.
+user_goal_keywords:
+  - remember
+  - prefer
+  - preference
+  - what did I
+  - what do I like
+  - facts about me
+  - earlier
+  - last time
+
+# COMSTAR bridge bootstrap (loopback HTTP like client.terminal — not Ada URL)
+transport: loopback_tunnel
+alias: comstar_memory
+guest_allowed: false

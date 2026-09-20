@@ -92,15 +92,21 @@ phrases:
 # Rolling conversation memory (per recognized userid). Guests get none.
 # Prefer url (shared HTTP) so multiple hallway terminals share one history.
 # Env overrides: COMSTAR_MEMORY_URL, COMSTAR_MEMORY_DIR, COMSTAR_TERMINAL_ID.
+# AO prompts get a thin stub only (prompt_max_turns pairs); durable facts are
+# recalled via client.comstar_memory MCP, not stuffed into every prompt.
 memory:
   enabled: true
-  max_turns: 20                                # 2–100
-  max_inject_chars: 3500                       # 500–12000
+  max_turns: 20                                # 2–100 store retention
+  prompt_max_turns: 2                          # 0–20 pairs injected into AO prompts
+  max_inject_chars: 3500                       # 200–12000
   store_dir: ""                                # default ~/.local/share/comstar/conversation
   url: "http://127.0.0.1:8792"                 # scripts/comstar_memory_server.py
-  durable: true                                # Phase 2 prefs / remember-that facts
-  max_facts_inject: 8                          # 1–32
+  durable: true                                # extract prefs / remember-that facts
+  max_facts_inject: 8                          # 1–32 (MCP / legacy helpers)
   max_facts_chars: 1200                        # 200–4000
+  curated_rag_enabled: false                   # Phase 3: attach KB pack when present
+  curated_rag_id: comstar_resident_facts       # never orchestrator_kb; news stays []
+  curated_rag_pack_dir: ""                     # default: <store>/rag/<id>
 
 # House-wide presence via HA person.* (ADR 0006). Does not drive attention FSM.
 # Bridge auto-discovers Assist-exposed person.* (friendly_name match for where-is).

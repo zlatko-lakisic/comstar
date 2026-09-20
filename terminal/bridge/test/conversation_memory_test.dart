@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:comstar_bridge/conversation_memory.dart';
+import 'package:comstar_bridge/durable_memory.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -12,8 +13,9 @@ void main() {
       tmp = Directory.systemTemp.createTempSync('comstar-memory-test');
       memory = ConversationMemory(
         store: FileConversationMemoryStore(root: tmp),
-        maxTurns: 4,
-        maxInjectChars: 200,
+        maxTurns: 20,
+        promptMaxTurns: 2,
+        maxInjectChars: 2000,
         terminalId: 'hall',
         now: () => DateTime.utc(2026, 8, 5, 2, 0),
       );
@@ -30,7 +32,7 @@ void main() {
       expect(ConversationMemory.isMemoryUser(null), isFalse);
     });
 
-    test('records and wraps prior turns', () async {
+    test('wrapForAgent is thin: recent pairs only, no facts block', () async {
       await memory.recordExchange(
         userid: 'zlatko',
         userText: "What's up?",
@@ -39,17 +41,19 @@ void main() {
       await memory.recordExchange(
         userid: 'zlatko',
         userText: 'Remember that I prefer quiet evenings',
-        assistantText: 'Got it.',
+        assistantText: 'Got it — quiet evenings noted.',
       );
 
       final prompt = await memory.wrapForAgent('zlatko', 'What do I prefer?');
       expect(prompt, contains('Prior conversation'));
-      expect(prompt, contains("What's up?"));
-      expect(prompt, contains('Known facts'));
-      expect(prompt.toLowerCase(), contains('quiet'));
       expect(prompt, contains('Current request:'));
       expect(prompt, contains('What do I prefer?'));
+      expect(prompt, contains('quiet evenings'));
       expect(prompt, contains('[hall]'));
+      // No durable-facts dump in the prompt.
+      expect(prompt, isNot(contains('Known facts')));
+      // Two pairs fit in promptMaxTurns=2.
+      expect(prompt, contains("What's up?"));
     });
 
     test('wrapForAgent drops timeout apology spam', () async {
@@ -69,7 +73,30 @@ void main() {
       expect(prompt, isNot(contains('could not get an answer in time')));
     });
 
-    test('trims to maxTurns', () async {
+    test('wrapForAgent filters greeter and working-ack noise', () async {
+      await memory.recordExchange(
+        userid: 'zlatko',
+        userText: 'hello',
+        assistantText: 'Good morning — welcome back.',
+      );
+      await memory.recordExchange(
+        userid: 'zlatko',
+        userText: 'turn on the kitchen light',
+        assistantText: 'One moment.',
+      );
+      await memory.recordExchange(
+        userid: 'zlatko',
+        userText: 'the under-cabinet one',
+        assistantText: 'Done — under-cabinet kitchen light is on.',
+      );
+      final prompt = await memory.wrapForAgent('zlatko', 'dim it a bit');
+      expect(prompt, contains('under-cabinet'));
+      expect(prompt, isNot(contains('Good morning')));
+      expect(prompt, isNot(contains('One moment')));
+      expect(prompt, isNot(contains('Awaiting your voice')));
+    });
+
+    test('trims store to maxTurns', () async {
       for (var i = 0; i < 5; i++) {
         await memory.recordExchange(
           userid: 'zlatko',
@@ -78,8 +105,22 @@ void main() {
         );
       }
       final hist = await memory.store.load('zlatko');
-      expect(hist.turns.length, 4);
-      expect(hist.turns.first.text, 'user 3');
+      // maxTurns on this fixture is 20; use a tight memory for trim.
+      final tight = ConversationMemory(
+        store: FileConversationMemoryStore(root: tmp),
+        maxTurns: 4,
+        promptMaxTurns: 2,
+      );
+      for (var i = 0; i < 5; i++) {
+        await tight.recordExchange(
+          userid: 'ace',
+          userText: 'user $i',
+          assistantText: 'asst $i',
+        );
+      }
+      final trimmed = await tight.store.load('ace');
+      expect(trimmed.turns.length, 4);
+      expect(trimmed.turns.first.text, 'user 3');
     });
 
     test('formatHistoryBlock drops oldest when over budget', () {
@@ -151,6 +192,26 @@ void main() {
       expect(prompt, isNot(contains('headlines from around the world')));
     });
 
+    test('fat history stays within prompt_max_turns pairs', () async {
+      for (var i = 0; i < 8; i++) {
+        await memory.recordExchange(
+          userid: 'zlatko',
+          userText: 'seed-user-$i with filler about world news headlines',
+          assistantText:
+              'seed-asst-$i long reply that must not all fit in the prompt window xxx',
+        );
+      }
+      final prompt = await memory.wrapForAgent('zlatko', 'home status please');
+      expect(prompt, contains('home status please'));
+      expect(prompt, contains('seed-user-7'));
+      expect(prompt, contains('seed-asst-7'));
+      // promptMaxTurns=2 → at most 4 turn lines (+ framing).
+      expect(prompt, isNot(contains('seed-user-0')));
+      expect(prompt, isNot(contains('seed-asst-0')));
+      expect(prompt, isNot(contains('Known facts')));
+      expect(prompt.length, lessThan(2500));
+    });
+
     test('guests get no wrap', () async {
       final prompt = await memory.wrapForAgent('guest', 'hello');
       expect(prompt, 'hello');
@@ -164,11 +225,53 @@ void main() {
       );
       final prompt = await memory.wrapForAgent('zlatko', 'which button');
       expect(prompt, contains('Just push the button'));
-      expect(prompt, contains('short follow-up'));
       expect(prompt, contains('which button'));
       final hist = await memory.store.load('zlatko');
       expect(hist.turns.length, 1);
       expect(hist.turns.single.role, 'assistant');
+    });
+
+    test('durable facts still recorded but not wrapped', () async {
+      await memory.recordExchange(
+        userid: 'zlatko',
+        userText: 'Remember that I prefer Assam tea',
+        assistantText: 'Noted.',
+      );
+      final facts = await memory.store.searchFacts('zlatko', query: 'tea');
+      expect(facts, isNotEmpty);
+      final prompt = await memory.wrapForAgent('zlatko', 'any tea prefs?');
+      expect(prompt, isNot(contains('Known facts')));
+    });
+  });
+
+  group('extractDurableFacts hardened', () {
+    test('accepts remember / prefer', () {
+      final facts = extractDurableFacts('Remember that I prefer dark mode');
+      expect(facts, isNotEmpty);
+      expect(facts.any((f) => f.text.toLowerCase().contains('dark')), isTrue);
+    });
+
+    test('rejects epistemic junk', () {
+      expect(extractDurableFacts("I don't know what that is"), isEmpty);
+      expect(extractDurableFacts("I don't hear you"), isEmpty);
+      expect(extractDurableFacts('Do not. Do not know the answer'), isEmpty);
+      expect(extractDurableFacts('Remember that I do not know'), isEmpty);
+    });
+
+    test('call me / prefer still work', () {
+      expect(
+        extractDurableFacts('Call me Ace').single.text,
+        contains('Ace'),
+      );
+      expect(
+        extractDurableFacts('I prefer soft music in the hallway').single.kind,
+        'preference',
+      );
+    });
+
+    test('ignores ephemeral', () {
+      expect(extractDurableFacts('what time is it'), isEmpty);
+      expect(extractDurableFacts('go to sleep'), isEmpty);
     });
   });
 }
