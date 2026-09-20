@@ -1049,6 +1049,7 @@ While engaged, vision may keep recognizing at a reduced rate. The machine tracks
 | engaged | Tick | idle > identity_ttl AND absent | ambient | `SessionBridge.stop()` |
 | ambient / noticed / engaged | Tick | idle_sleep_seconds > 0 AND no interaction for that long | sleeping | silent `EnterSleep` (no sleep-ack TTS) |
 | listening | SpeechEnd | — | listening | finalize capture, call STT |
+| listening | STT incomplete phrase | hanging mid-phrase (e.g. ends with `we`/`the`/`to`) | listening | keep PCM, restart `listen.start` (no `TranscriptReady`); after max soft restarts accept as-is |
 | listening | Tick | elapsed > max_utterance_seconds | responding | force-close capture with what we have |
 | listening | TranscriptReady | text non-empty | responding | `thinking` on, call `directAgent` |
 | listening | TranscriptReady | text empty | engaged | play `error` tone, `listen.stop` |

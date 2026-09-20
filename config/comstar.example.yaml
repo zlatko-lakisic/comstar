@@ -44,7 +44,7 @@ vision:
 audio:
   wakeword_model: ./models/hey_comstar.onnx
   wakeword_threshold: 0.55                   # 0.2–0.95
-  vad_silence_ms: 700                        # 300–2000
+  vad_silence_ms: 1200                       # 300–2000; mid-phrase pause headroom
   max_utterance_seconds: 15
   followup_window_seconds: 25                # 0–30
   duplex: half                               # half | full

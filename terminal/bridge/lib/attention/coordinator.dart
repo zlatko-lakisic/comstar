@@ -626,7 +626,8 @@ class AttentionCoordinator {
           data: {
             'turn_id': turnId,
             // Cap one utterance; speech_end usually finishes earlier.
-            'maxMs': 8000,
+            // 15s leaves room for mid-phrase thinking pauses before VAD end.
+            'maxMs': 15000,
             'preRollMs': 0,
             'vadSettleMs': 0,
             'clearRing': true,
@@ -1104,10 +1105,65 @@ class AttentionCoordinator {
         turnId: turnId,
         data: {
           'turn_id': turnId,
-          'maxMs': 8000,
+          'maxMs': 15000,
           'preRollMs': 0,
           'vadSettleMs': 500,
           'clearRing': clear,
+        },
+      ),
+    );
+    return true;
+  }
+
+  /// Mid-phrase STT (e.g. "last time we?") — keep PCM and resume listen.
+  bool _tryContinueIncompleteUtterance(String text, String turnId) {
+    if (!looksIncompleteUtterance(text)) return false;
+
+    final now = clock.nowMs;
+    if (now - _lastDeferRestartAtMs < _deferRestartCooldownMs) {
+      return true;
+    }
+    if (_deferRestartCount >= _maxDeferRestarts) {
+      logWarn(
+        'stt_incomplete_exhausted',
+        'Incomplete phrase after max restarts; accepting',
+        data: {
+          'turn_id': turnId,
+          'restarts': _deferRestartCount,
+          'text': text.length > 80 ? '${text.substring(0, 80)}…' : text,
+        },
+      );
+      return false;
+    }
+
+    _deferRestartCount += 1;
+    _lastDeferRestartAtMs = now;
+    machine.context.sttPending = false;
+    machine.context.listeningStartedAtMs = clock.nowMs;
+    logInfo(
+      'stt_incomplete',
+      'Incomplete phrase; keeping PCM and continuing listen',
+      data: {
+        'turn_id': turnId,
+        'bytes': _captureBuffer.length,
+        'restart': _deferRestartCount,
+        'text': text.length > 80 ? '${text.substring(0, 80)}…' : text,
+      },
+    );
+    _broadcastPhase('listening', detail: 'Still listening…');
+    _broadcastKiosk(
+      Envelope.create(type: 'listening', data: {'active': true}),
+    );
+    _sendAudio(
+      Envelope.create(
+        type: 'listen.start',
+        turnId: turnId,
+        data: {
+          'turn_id': turnId,
+          'maxMs': 15000,
+          'preRollMs': 0,
+          'vadSettleMs': 400,
+          'clearRing': false,
         },
       ),
     );
@@ -1258,6 +1314,7 @@ class AttentionCoordinator {
 
   Future<void> _runStt(String turnId) async {
     final span = Span('stt');
+    var keepCaptureStats = false;
     try {
       var pcm = _captureBuffer.toBytes();
       final peak = _capturePeakRms;
@@ -1342,12 +1399,19 @@ class AttentionCoordinator {
         handle(const TranscriptReady(''));
         return;
       }
+      if (_tryContinueIncompleteUtterance(cleaned, turnId)) {
+        keepCaptureStats = true;
+        return;
+      }
+      _deferRestartCount = 0;
       final clipped =
           cleaned.length > 80 ? '${cleaned.substring(0, 80)}…' : cleaned;
       _broadcastPhase('heard', detail: clipped);
       handle(TranscriptReady(cleaned));
     } finally {
-      _resetCaptureStats();
+      if (!keepCaptureStats) {
+        _resetCaptureStats();
+      }
       span.close();
     }
   }

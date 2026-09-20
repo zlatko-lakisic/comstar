@@ -24,7 +24,7 @@ async def _main() -> None:
         "./models/hey_comstar.onnx",
     )
     wakeword_threshold = float(os.environ.get("COMSTAR_WAKEWORD_THRESHOLD", "0.55"))
-    vad_silence_ms = int(os.environ.get("COMSTAR_VAD_SILENCE_MS", "1000"))
+    vad_silence_ms = int(os.environ.get("COMSTAR_VAD_SILENCE_MS", "1200"))
     # Dev bypass when ONNX is missing — score must exceed threshold (default 0.55).
     force_wake_score = os.environ.get("COMSTAR_FORCE_WAKE_SCORE") or None
     if force_wake_score is not None and not force_wake_score.strip():

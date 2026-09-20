@@ -67,4 +67,29 @@ void main() {
       );
     });
   });
+
+  group('looksIncompleteUtterance', () {
+    test('flags mid-phrase VAD cuts', () {
+      expect(looksIncompleteUtterance('When was the last time we?'), isTrue);
+      expect(looksIncompleteUtterance('When was the last time we'), isTrue);
+      expect(looksIncompleteUtterance('Check my'), isTrue);
+      expect(looksIncompleteUtterance('What about the'), isTrue);
+      expect(looksIncompleteUtterance('I want to'), isTrue);
+    });
+
+    test('allows complete questions and check-ins', () {
+      expect(
+        looksIncompleteUtterance(
+          'When was the last time we saw Adna around the house?',
+        ),
+        isFalse,
+      );
+      expect(looksIncompleteUtterance('What time is it?'), isFalse);
+      expect(looksIncompleteUtterance('Who am I?'), isFalse);
+      expect(looksIncompleteUtterance('How are you?'), isFalse);
+      expect(looksIncompleteUtterance('Check my email'), isFalse);
+      expect(looksIncompleteUtterance("What's next?"), isFalse);
+      expect(looksIncompleteUtterance('Did you see?'), isFalse);
+    });
+  });
 }

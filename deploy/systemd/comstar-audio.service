@@ -15,7 +15,7 @@ Environment=COMSTAR_FORCE_WAKE_SCORE=0.99
 Environment=COMSTAR_FORCE_WAKE_RMS=0.08
 Environment=COMSTAR_FORCE_WAKE_REFRACTORY_S=5.0
 Environment=COMSTAR_LOG=info
-Environment=COMSTAR_VAD_SILENCE_MS=1000
+Environment=COMSTAR_VAD_SILENCE_MS=1200
 # Mic: empty = default; index ("3") or name substring ("C525") for sounddevice
 # Environment=COMSTAR_MIC_SOURCE=C525
 # Soft baseline for C525; software AGC trims hot speech.

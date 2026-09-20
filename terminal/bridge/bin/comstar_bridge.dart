@@ -312,7 +312,7 @@ Future<void> _runVisionOnce() async {
         'audio': {
           'wakeword_model': './models/hey_comstar.onnx',
           'wakeword_threshold': 0.55,
-          'vad_silence_ms': 700,
+          'vad_silence_ms': 1200,
           'max_utterance_seconds': 15,
           'followup_window_seconds': 10,
           'duplex': 'half',
