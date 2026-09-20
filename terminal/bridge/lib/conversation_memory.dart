@@ -327,7 +327,7 @@ class ConversationMemory {
   ConversationMemory({
     required this.store,
     this.maxTurns = 20,
-    this.promptMaxTurns = 2,
+    this.promptMaxTurns = 0,
     this.maxInjectChars = 3500,
     this.maxTurnChars = 500,
     this.maxFactsInject = 8,
@@ -379,8 +379,8 @@ class ConversationMemory {
   final ConversationMemoryStore store;
   final int maxTurns;
 
-  /// Max recent **pairs** (user+assistant) injected into AO prompts.
-  /// Durable facts are not stuffed here — use `client.comstar_memory` MCP.
+  /// Max recent **pairs** injected into AO prompts.
+  /// Default 0 — rely on `client.comstar_memory` (`recent_turns` / recall).
   final int promptMaxTurns;
   final int maxInjectChars;
   final int maxTurnChars;
