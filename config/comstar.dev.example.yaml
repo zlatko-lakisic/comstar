@@ -47,6 +47,9 @@ attention:
   status_speak: true
   status_speak_interval_ms: 15000
 
+voice_narration:
+  enabled: true
+
 # Directory optional in Mac bring-up; require:false = fail-open to faceId.
 presence:
   ha_person_by_uid:

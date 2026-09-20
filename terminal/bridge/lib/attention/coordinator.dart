@@ -63,6 +63,8 @@ import 'package:comstar_bridge/vision_visit_intent.dart';
 import 'package:comstar_bridge/wake_phrase.dart';
 import 'package:comstar_bridge/wav_duration.dart';
 import 'package:comstar_bridge/working_ack.dart';
+import 'package:comstar_bridge/voice/narration_policy.dart';
+import 'package:comstar_bridge/voice/phrase_bank.dart';
 import 'package:comstar_bridge/vision/vision_poller.dart' as vision;
 import 'package:path/path.dart' as p;
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -219,13 +221,18 @@ class AttentionCoordinator {
   String? _workingAckSpokenTurnId;
   Completer<void>? _workingAckPlayback;
 
-  /// Spoken Reach status progress (change-immediate + periodic still).
+  /// Spoken Reach status progress (legacy change-immediate + periodic still).
   Timer? _aoStatusPeriodicTimer;
   String? _lastSpokenAoStatusLine;
   String? _aoStatusBaseLine;
   var _aoStatusSpeakInFlight = false;
   String? _pendingAoStatusLine;
   String? _aoStatusSpeakTurnId;
+
+  /// Closed-bank narration policy (when [config.voiceNarration.enabled]).
+  NarrationPolicy? _narration;
+  String? _narrationCategoryHint;
+  var _narrationTickCounter = 0;
 
   /// Wait for the current speak to finish (speak.ended / watchdog / local play).
   Completer<void>? _playbackWait;
@@ -344,6 +351,11 @@ class AttentionCoordinator {
           !machine.context.playing &&
           !machine.context.announcedThisEngage) {
         unawaited(announce?.evaluateAndMaybeDeliver());
+      }
+      // Narration policy tick ~200ms (every 2nd 100ms machine tick).
+      _narrationTickCounter++;
+      if (_narrationTickCounter % 2 == 0) {
+        _tickNarration();
       }
     }
   }
@@ -1776,17 +1788,27 @@ class AttentionCoordinator {
         if (newsResearch) 'family': 'news',
         if (weatherResearch) 'family': 'weather',
       });
-      _armWorkingAck(
-        turnId: turnId,
-        mcpProviders: newsResearch
-            ? const ['fetch_url']
-            : weatherResearch
-                ? const ['weather_mcp']
-                : mcp,
-        utterance: text,
-        force: useDynamic || pinned,
-      );
+      if (!config.voiceNarration.enabled) {
+        _armWorkingAck(
+          turnId: turnId,
+          mcpProviders: newsResearch
+              ? const ['fetch_url']
+              : weatherResearch
+                  ? const ['weather_mcp']
+                  : mcp,
+          utterance: text,
+          force: useDynamic || pinned,
+        );
+      }
       _resetAoStatusSpeak(turnId);
+      _beginNarrationTurn(
+        turnId: turnId,
+        categoryHint: newsResearch
+            ? NarrationCategory.web
+            : weatherResearch
+                ? NarrationCategory.house
+                : null,
+      );
       void onStatus(ReachRunStatus status) {
         _onAoRunStatus(status, turnId: turnId);
       }
@@ -1810,6 +1832,7 @@ class AttentionCoordinator {
               ? '${response.substring(0, 80)}…'
               : response,
         });
+        _endNarrationError();
         // Prefer real HA entity reads over speaking stall text.
         final haFallback = await _tryHomeDataIntent(text, turnId);
         if (haFallback) return;
@@ -1823,6 +1846,7 @@ class AttentionCoordinator {
         logWarn('direct_agent_empty', 'AO returned empty reply', data: {
           'turn_id': turnId,
         });
+        _endNarrationError();
         await _speakFallback(
           "I heard you, but I don't have a reply right now.",
           turnId,
@@ -1836,15 +1860,28 @@ class AttentionCoordinator {
               ? '${response.substring(0, 80)}…'
               : response,
         });
+        _endNarrationError();
         await _speakFallback(
           "I got a garbled reply — try that again in a moment.",
           turnId,
         );
         return;
       }
-      final ackSpoken = _workingAckSpokenTurnId == turnId;
-      if (ackSpoken) {
+      final narrationEnabled = config.voiceNarration.enabled;
+      var progressSpoken = false;
+      String? narrationPreface;
+      if (narrationEnabled && _narration != null && _narration!.isActive) {
+        progressSpoken = _narration!.didSpeak;
+        narrationPreface =
+            _narration!.onDone(nowMs: clock.nowMs).preface;
+      }
+      final legacyAck = !narrationEnabled && _workingAckSpokenTurnId == turnId;
+      if (progressSpoken || legacyAck) {
         await _awaitWorkingAckPlayback();
+      }
+      if (narrationPreface != null) {
+        response = prefixResultReady(response, preface: narrationPreface);
+      } else if (legacyAck) {
         final preface = _phraseFor(
           PhraseCategory.resultReady,
           fallback: 'I have what you asked for.',
@@ -1854,7 +1891,8 @@ class AttentionCoordinator {
       logInfo('direct_agent_ok', 'AO reply ready', data: {
         'turn_id': turnId,
         'chars': response.length,
-        'working_ack': ackSpoken,
+        'working_ack': progressSpoken || legacyAck,
+        'narration': narrationEnabled,
         'preview': response.length > 80
             ? '${response.substring(0, 80)}…'
             : response,
@@ -1870,6 +1908,7 @@ class AttentionCoordinator {
     } catch (e) {
       logWarn('direct_agent_failed', e.toString(), data: {'turn_id': turnId});
       _clearAoProgress();
+      _endNarrationError();
       final failure = aoFailureSpeakLine(e);
       await _speakFallback(
         failure ?? 'Sorry, I could not get an answer in time.',
@@ -1895,13 +1934,18 @@ class AttentionCoordinator {
         !status.isQueued &&
         !heartbeat &&
         speakLine == null) {
+      // Still feed narration so phase-only frames advance stages.
+      _feedNarrationStatus(status, turnId: turnId);
       return;
     }
     if (message == _lastAoProgressMessage &&
         status.processing &&
         !status.isQueued &&
         !heartbeat) {
-      _maybeSpeakAoStatus(status, turnId: turnId, heartbeat: heartbeat);
+      _feedNarrationStatus(status, turnId: turnId);
+      if (!config.voiceNarration.enabled) {
+        _maybeSpeakAoStatus(status, turnId: turnId, heartbeat: heartbeat);
+      }
       return;
     }
     if (message.isNotEmpty) _lastAoProgressMessage = message;
@@ -1926,7 +1970,10 @@ class AttentionCoordinator {
     _broadcastKiosk(
       Envelope.create(type: 'ao.progress', data: payload, turnId: turnId),
     );
-    _maybeSpeakAoStatus(status, turnId: turnId, heartbeat: heartbeat);
+    _feedNarrationStatus(status, turnId: turnId);
+    if (!config.voiceNarration.enabled) {
+      _maybeSpeakAoStatus(status, turnId: turnId, heartbeat: heartbeat);
+    }
   }
 
   void _maybeSpeakAoStatus(
@@ -1934,6 +1981,8 @@ class AttentionCoordinator {
     required String turnId,
     required bool heartbeat,
   }) {
+    // Legacy path only — narration policy owns speech when enabled.
+    if (config.voiceNarration.enabled) return;
     if (!config.attention.statusSpeak) return;
     if (!machine.context.directAgentInFlight) return;
     if (machine.context.turnId != turnId) return;
@@ -1955,6 +2004,89 @@ class AttentionCoordinator {
     if (heartbeat || status.processing || status.isQueued) {
       _armAoStatusPeriodic(turnId);
     }
+  }
+
+  bool get _narrationEnabled => config.voiceNarration.enabled;
+
+  void _beginNarrationTurn({
+    required String turnId,
+    String? categoryHint,
+  }) {
+    if (!_narrationEnabled) {
+      _narration?.cancelTurn();
+      _narration = null;
+      _narrationCategoryHint = null;
+      return;
+    }
+    _narrationCategoryHint = categoryHint;
+    _narration ??= NarrationPolicy(
+      phrases: NarrationPhraseBank.load(
+        recentRingSize: config.voiceNarration.recentRingSize,
+      ),
+      settings: config.voiceNarration.toSettings(),
+      onInfoLog: (msg, {data}) {
+        logInfo(
+          'ao_narration',
+          msg,
+          data: data == null ? null : Map<String, dynamic>.from(data),
+        );
+      },
+    );
+    _narration!.startTurn(turnId: turnId, nowMs: clock.nowMs);
+  }
+
+  void _feedNarrationStatus(
+    ReachRunStatus status, {
+    required String turnId,
+  }) {
+    final policy = _narration;
+    if (!_narrationEnabled || policy == null || !policy.isActive) return;
+    if (machine.context.turnId != turnId) return;
+
+    final toolHint = NarrationPolicy.toolHintFromStatus(
+      agentProviderId: status.agentProviderId,
+      message: status.message,
+      detail: status.detail,
+      raw: status.raw,
+    );
+    policy.onStatus(
+      NarrationStatusFrame(
+        phase: status.phase,
+        queuePosition: status.queuePosition,
+        toolHint: toolHint,
+        categoryHint: _narrationCategoryHint,
+        heartbeat: status.raw['heartbeat'] == true,
+      ),
+      nowMs: clock.nowMs,
+    );
+  }
+
+  void _tickNarration() {
+    final policy = _narration;
+    if (!_narrationEnabled || policy == null || !policy.isActive) return;
+    if (!machine.context.directAgentInFlight) return;
+    if (machine.state is! Responding) return;
+    if (!config.attention.statusSpeak) return;
+
+    final utterance = policy.onTick(nowMs: clock.nowMs);
+    if (utterance == null) return;
+    final turnId = machine.context.turnId;
+    if (turnId == null || turnId.isEmpty) return;
+
+    logInfo('ao_narration_speak', 'Speaking narration line', data: {
+      'turn_id': turnId,
+      'bank': utterance.bank,
+      'text': utterance.text,
+      if (utterance.stage != null) 'stage': utterance.stage,
+      if (utterance.heartbeatTier != null)
+        'heartbeat_tier': utterance.heartbeatTier,
+    });
+    _requestAoStatusSpeak(turnId, utterance.text);
+  }
+
+  void _endNarrationError() {
+    _narration?.onError(nowMs: clock.nowMs);
+    _narrationCategoryHint = null;
   }
 
   void _resetAoStatusSpeak(String turnId) {
@@ -2071,6 +2203,10 @@ class AttentionCoordinator {
     _pendingAoStatusLine = null;
     _lastSpokenAoStatusLine = null;
     _aoStatusBaseLine = null;
+    if (_narration != null && _narration!.isActive) {
+      _narration!.cancelTurn();
+    }
+    _narrationCategoryHint = null;
     _broadcastKiosk(
       Envelope.create(
         type: 'ao.progress',

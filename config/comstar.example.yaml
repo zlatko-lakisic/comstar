@@ -66,6 +66,21 @@ attention:
   working_ack_on_tools: true                   # also require mcpProvidersForVoice non-empty; never for chit-chat
   status_speak: true                           # speak Reach AO progress at the hallway
   status_speak_interval_ms: 15000              # re-speak same status; 0 = change-only
+                                               # (legacy path when voice_narration.enabled: false)
+
+# Spoken AO progress narration — closed phrase banks (never speak AO text verbatim).
+# When enabled, replaces working_ack + status_speak pass-through. Kiosk card unchanged.
+voice_narration:
+  enabled: true
+  first_speech_delay_ms: 2500
+  min_gap_ms: 12000
+  heartbeat_interval_ms: 15000
+  heartbeat_tier2_after_ms: 30000
+  heartbeat_tier3_after_ms: 60000
+  suppress_preface_within_ms: 3000
+  queue_min_position: 2
+  speak_stage3: true
+  recent_ring_size: 3
 
 # AO phrase banks — periodic short lines for engage / sleep / social.
 # Text only; TTS runs at speak time. Optional [[name]] slots filled with display name.

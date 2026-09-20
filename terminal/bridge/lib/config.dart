@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:comstar_bridge/announce/config.dart';
 import 'package:comstar_bridge/road/config.dart';
+import 'package:comstar_bridge/voice/narration_policy.dart';
 import 'package:path/path.dart' as p;
 import 'package:yaml/yaml.dart';
 
@@ -27,6 +28,7 @@ class ComstarConfig {
     this.presence = const PresenceConfig(),
     this.announce = const AnnounceConfig(),
     this.road = const RoadConfig(),
+    this.voiceNarration = const VoiceNarrationConfig(),
     required this.sourcePath,
   });
 
@@ -43,6 +45,7 @@ class ComstarConfig {
   final PresenceConfig presence;
   final AnnounceConfig announce;
   final RoadConfig road;
+  final VoiceNarrationConfig voiceNarration;
   final String sourcePath;
 
   static const _topLevelKeys = {
@@ -59,6 +62,20 @@ class ComstarConfig {
     'presence',
     'announce',
     'road',
+    'voice_narration',
+  };
+
+  static const _voiceNarrationKeys = {
+    'enabled',
+    'first_speech_delay_ms',
+    'min_gap_ms',
+    'heartbeat_interval_ms',
+    'heartbeat_tier2_after_ms',
+    'heartbeat_tier3_after_ms',
+    'suppress_preface_within_ms',
+    'queue_min_position',
+    'speak_stage3',
+    'recent_ring_size',
   };
 
   static const _orchestrationKeys = {
@@ -259,12 +276,23 @@ class ComstarConfig {
                 ? Map<String, dynamic>.from(roadRaw)
                 : (throw ConfigError('Section road must be a mapping')),
           );
+    final voiceNarrationRaw = root['voice_narration'];
+    final voiceNarration = voiceNarrationRaw == null
+        ? const VoiceNarrationConfig()
+        : _parseVoiceNarration(
+            voiceNarrationRaw is Map
+                ? Map<String, dynamic>.from(voiceNarrationRaw)
+                : (throw ConfigError(
+                    'Section voice_narration must be a mapping',
+                  )),
+          );
 
     _validateRanges(vision, audio, orchestration, avatar, attention, directory);
     _validatePhrases(phrases);
     _validateMemory(memory);
     _validatePresence(presence);
     _validateRoad(road);
+    _validateVoiceNarration(voiceNarration);
 
     return ComstarConfig(
       orchestration: orchestration,
@@ -280,6 +308,7 @@ class ComstarConfig {
       presence: presence,
       announce: announce,
       road: road,
+      voiceNarration: voiceNarration,
       sourcePath: sourcePath,
     );
   }
@@ -695,6 +724,88 @@ class ComstarConfig {
     }
   }
 
+  static VoiceNarrationConfig _parseVoiceNarration(Map<String, dynamic> map) {
+    _assertKnownKeys(map.keys, _voiceNarrationKeys, 'voice_narration');
+    return VoiceNarrationConfig(
+      enabled: map.containsKey('enabled')
+          ? _requireBool(map, 'enabled', 'voice_narration')
+          : true,
+      firstSpeechDelayMs: map.containsKey('first_speech_delay_ms')
+          ? _requireInt(map, 'first_speech_delay_ms', 'voice_narration')
+          : 2500,
+      minGapMs: map.containsKey('min_gap_ms')
+          ? _requireInt(map, 'min_gap_ms', 'voice_narration')
+          : 12000,
+      heartbeatIntervalMs: map.containsKey('heartbeat_interval_ms')
+          ? _requireInt(map, 'heartbeat_interval_ms', 'voice_narration')
+          : 15000,
+      heartbeatTier2AfterMs: map.containsKey('heartbeat_tier2_after_ms')
+          ? _requireInt(map, 'heartbeat_tier2_after_ms', 'voice_narration')
+          : 30000,
+      heartbeatTier3AfterMs: map.containsKey('heartbeat_tier3_after_ms')
+          ? _requireInt(map, 'heartbeat_tier3_after_ms', 'voice_narration')
+          : 60000,
+      suppressPrefaceWithinMs: map.containsKey('suppress_preface_within_ms')
+          ? _requireInt(map, 'suppress_preface_within_ms', 'voice_narration')
+          : 3000,
+      queueMinPosition: map.containsKey('queue_min_position')
+          ? _requireInt(map, 'queue_min_position', 'voice_narration')
+          : 2,
+      speakStage3: map.containsKey('speak_stage3')
+          ? _requireBool(map, 'speak_stage3', 'voice_narration')
+          : true,
+      recentRingSize: map.containsKey('recent_ring_size')
+          ? _requireInt(map, 'recent_ring_size', 'voice_narration')
+          : 3,
+    );
+  }
+
+  static void _validateVoiceNarration(VoiceNarrationConfig cfg) {
+    _rangeInt(
+      'voice_narration.first_speech_delay_ms',
+      cfg.firstSpeechDelayMs,
+      0,
+      60000,
+    );
+    _rangeInt('voice_narration.min_gap_ms', cfg.minGapMs, 0, 120000);
+    _rangeInt(
+      'voice_narration.heartbeat_interval_ms',
+      cfg.heartbeatIntervalMs,
+      0,
+      120000,
+    );
+    _rangeInt(
+      'voice_narration.heartbeat_tier2_after_ms',
+      cfg.heartbeatTier2AfterMs,
+      0,
+      600000,
+    );
+    _rangeInt(
+      'voice_narration.heartbeat_tier3_after_ms',
+      cfg.heartbeatTier3AfterMs,
+      0,
+      600000,
+    );
+    _rangeInt(
+      'voice_narration.suppress_preface_within_ms',
+      cfg.suppressPrefaceWithinMs,
+      0,
+      60000,
+    );
+    _rangeInt(
+      'voice_narration.queue_min_position',
+      cfg.queueMinPosition,
+      1,
+      100,
+    );
+    _rangeInt(
+      'voice_narration.recent_ring_size',
+      cfg.recentRingSize,
+      0,
+      20,
+    );
+  }
+
   static void _validatePresence(PresenceConfig presence) {
     // Entity shape checked in _parsePresence.
   }
@@ -997,7 +1108,8 @@ class OrchestrationConfig {
   /// `hybrid` | `direct` | `dynamic`
   final String voiceBackend;
 
-  /// Wall-clock budget for Reach `chat` / dynamic planning turns (seconds).
+  /// Idle budget for Reach `chat` / dynamic planning turns (seconds).
+  /// Live status / heartbeats reset this clock; see ao_reach idle timeout.
   final int dynamicTimeoutSeconds;
 
   /// `split` (Pi closed-form + AO) | `ao` (exclusive AO for content turns).
@@ -1164,6 +1276,46 @@ class PhrasesConfig {
   final int bankSize;
 
   Duration get refreshEvery => Duration(hours: refreshHours);
+}
+
+/// Spoken AO progress narration (closed phrase banks; see voice/narration_policy).
+class VoiceNarrationConfig {
+  const VoiceNarrationConfig({
+    this.enabled = true,
+    this.firstSpeechDelayMs = 2500,
+    this.minGapMs = 12000,
+    this.heartbeatIntervalMs = 15000,
+    this.heartbeatTier2AfterMs = 30000,
+    this.heartbeatTier3AfterMs = 60000,
+    this.suppressPrefaceWithinMs = 3000,
+    this.queueMinPosition = 2,
+    this.speakStage3 = true,
+    this.recentRingSize = 3,
+  });
+
+  final bool enabled;
+  final int firstSpeechDelayMs;
+  final int minGapMs;
+  final int heartbeatIntervalMs;
+  final int heartbeatTier2AfterMs;
+  final int heartbeatTier3AfterMs;
+  final int suppressPrefaceWithinMs;
+  final int queueMinPosition;
+  final bool speakStage3;
+  final int recentRingSize;
+
+  VoiceNarrationSettings toSettings() => VoiceNarrationSettings(
+        enabled: enabled,
+        firstSpeechDelayMs: firstSpeechDelayMs,
+        minGapMs: minGapMs,
+        heartbeatIntervalMs: heartbeatIntervalMs,
+        heartbeatTier2AfterMs: heartbeatTier2AfterMs,
+        heartbeatTier3AfterMs: heartbeatTier3AfterMs,
+        suppressPrefaceWithinMs: suppressPrefaceWithinMs,
+        queueMinPosition: queueMinPosition,
+        speakStage3: speakStage3,
+        recentRingSize: recentRingSize,
+      );
 }
 
 /// Per-userid rolling conversation memory (cross-terminal via [url] or shared dir).

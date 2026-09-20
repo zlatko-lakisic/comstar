@@ -27,6 +27,9 @@ void main() {
       expect(config.attention.strangerMode, 'restricted');
       expect(config.attention.workingAckMs, 4500);
       expect(config.attention.workingAckOnTools, isTrue);
+      expect(config.voiceNarration.enabled, isTrue);
+      expect(config.voiceNarration.firstSpeechDelayMs, 2500);
+      expect(config.voiceNarration.minGapMs, 12000);
       expect(config.dev.bindLan, isFalse);
       expect(config.phrases.enabled, isTrue);
       expect(config.phrases.refreshHours, 6);
