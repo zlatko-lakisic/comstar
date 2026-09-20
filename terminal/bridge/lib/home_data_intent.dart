@@ -4,6 +4,7 @@ enum HomeDataIntentKind {
   irrigationSummary,
   networkSummary,
   presenceHome,
+  homeStatus,
   whereIsPerson,
   whenPersonLeft,
   familyCar,
@@ -62,6 +63,11 @@ HomeDataIntent? parseHomeDataIntent(String text) {
 
   final lock = _parseLockStatus(t);
   if (lock != null) return lock;
+
+  // Whole-home status before person where-is ("how is my home" ≠ person "My").
+  if (_looksLikeHomeStatus(t)) {
+    return HomeDataIntent(HomeDataIntentKind.homeStatus, query: t);
+  }
 
   final left = _parseWhenPersonLeft(t);
   if (left != null) return left;
@@ -126,6 +132,38 @@ HomeDataIntent? parseHomeDataIntent(String text) {
   }
 
   return null;
+}
+
+/// House / home status overview (not world news, not "who's home").
+bool _looksLikeHomeStatus(String t) {
+  // Explicit world/news cues → leave for pinned news / AO.
+  if (RegExp(
+        r'\b(world|news|headline|headlines|current events|globally)\b',
+      ).hasMatch(t)) {
+    return false;
+  }
+  if (RegExp(
+        r'\b(status|state|condition|health)\s+of\s+(my|the|our)\s+(home|house)\b|'
+        r'\b(my|the|our)\s+(home|house)\s+(status|state|condition|health)\b|'
+        r'\b(home|house)\s+status\b|'
+        r'\bhow\s+is\s+(my|the|our)\s+(home|house)\b|'
+        r'\bhows\s+(my|the|our)\s+(home|house)\b|'
+        r'\bhow\s+are\s+things\s+(at\s+home|around\s+(the\s+)?(home|house)|with\s+(the\s+)?(home|house))\b|'
+        r'\bwhats?\s+going\s+on\s+(at|around|with)\s+(my|the|our)?\s*(home|house)\b|'
+        r'\bwhats?\s+happening\s+(at|around|with)\s+(my|the|our)?\s*(home|house)\b|'
+        r'\bwhats?\s+going\s+on\s+around\s+(my|the|our)\s+house\b|'
+        r'\bgive\s+me\s+(a\s+)?(home|house)\s+(status|update|rundown|report)\b|'
+        r'\b(home|house)\s+(update|rundown|report)\b|'
+        r'\bcheck\s+(on\s+)?(my|the|our)\s+(home|house)\b|'
+        r'\bcheck\s+(the\s+)?(home|house)\s+status\b|'
+        r'\bany\s+(issues|problems|alarms)\s+(at|with)\s+(my|the|our)\s+(home|house)\b|'
+        r'\bis\s+everything\s+(ok|okay|alright|fine)\s+(at\s+home|with\s+(the\s+)?(home|house))\b|'
+        r'\bhow\s+are\s+we\s+looking\s+(at\s+home|around\s+the\s+house)\b|'
+        r'\brun\s+(a\s+)?(home|house)\s+(check|status)\b',
+      ).hasMatch(t)) {
+    return true;
+  }
+  return false;
 }
 
 HomeDataIntent? _parseLockStatus(String t) {

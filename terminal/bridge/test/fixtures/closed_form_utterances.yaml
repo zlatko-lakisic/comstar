@@ -58,6 +58,18 @@
   expect: home_data
 - utterance: "Is anyone home?"
   expect: home_data
+- utterance: "What's the status of my home?"
+  expect: home_data
+- utterance: "What's going on around my house?"
+  expect: home_data
+- utterance: "How is the house?"
+  expect: home_data
+- utterance: "Give me a home status update"
+  expect: home_data
+- utterance: "Check on my home"
+  expect: home_data
+- utterance: "Is everything okay at home?"
+  expect: home_data
 - utterance: "Where is Adna?"
   expect: home_data
 - utterance: "Is Zlatko home?"

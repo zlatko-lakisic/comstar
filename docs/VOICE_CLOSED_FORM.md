@@ -28,6 +28,7 @@ Regression utterances: `terminal/bridge/test/fixtures/closed_form_utterances.yam
 | Cue | Lane / source |
 |---|---|
 | around the house / last home / leave | HA `person.*` presence |
+| status of my home / house status / around my house | HA home overview (presence + locks + garage) |
 | driveway / front door / camera / saw you | Frigate vision MCP |
 | family car / plate / LPR | Frigate/HA car sensors — never `person.*` |
 | in the world / news / headlines | pinned `fetch_url` |
@@ -71,6 +72,7 @@ Regression utterances: `terminal/bridge/test/fixtures/closed_form_utterances.yam
 | who’s home, anyone home | bridge-local | done |
 | where is Adna, is Zlatko home | bridge-local | done |
 | when did Adna leave, last time around the house | bridge-local | done |
+| status of my home, house status, what’s going on around my house | bridge-local | done |
 
 ### E. Cameras / visitors / LPR
 

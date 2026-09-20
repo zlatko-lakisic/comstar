@@ -484,7 +484,8 @@ class ConversationMemory {
     return filtered.sublist(filtered.length - maxLines);
   }
 
-  /// Greeter / sleep / working-ack / status / empty HA apology / news dump.
+  /// Greeter / sleep / working-ack / status / empty HA apology / news dump /
+  /// bloated fabricated "house is fine" replies.
   static bool isPromptWorthy(
     ConversationTurn t, {
     bool suppressNewsAnswers = false,
@@ -494,6 +495,7 @@ class ConversationMemory {
     if (t.role == 'assistant') {
       if (isTimeoutApology(text)) return false;
       if (isNoiseAssistant(text)) return false;
+      if (isBloatedHouseStatusDump(text)) return false;
       if (suppressNewsAnswers && isNewsHeadlineDump(text)) return false;
     }
     if (t.role == 'user' && isNoiseUser(text)) return false;
@@ -506,6 +508,7 @@ class ConversationMemory {
     if (isWorkingAckPhrase(t)) return true;
     if (_assistantNoise.hasMatch(t)) return true;
     if (t.contains('awaiting your voice')) return true;
+    if (t.contains('stand by for voice')) return true;
     // Empty HA / reach apologies with no house content.
     if ((t.contains('sorry') || t.contains('could not')) &&
         (t.contains("couldn't reach") ||
@@ -517,6 +520,22 @@ class ConversationMemory {
       return true;
     }
     return false;
+  }
+
+  /// Long AO boilerplate that invents a rosy house report and often offers news.
+  static bool isBloatedHouseStatusDump(String text) {
+    final t = text.toLowerCase().trim();
+    if (t.length < 200) return false;
+    final houseBoiler = t.contains('running smoothly') ||
+        (t.contains('security systems') && t.contains('climate')) ||
+        (t.contains('irrigation') && t.contains('no alarms')) ||
+        t.contains('everything around your house');
+    final newsBleed = t.contains('global news') ||
+        t.contains('if you were asking about') ||
+        t.contains("here's a quick update") ||
+        t.contains('heres a quick update') ||
+        t.contains('insert recent global');
+    return houseBoiler || (newsBleed && t.length > 280);
   }
 
   static bool isNoiseUser(String text) {
@@ -610,12 +629,14 @@ class ConversationMemory {
   /// Render history for the model; drop oldest lines if over [maxChars].
   ///
   /// Strips timeout apologies, optional news dumps, and (when [filterNoise])
-  /// greeter / sleep / working-ack spam.
+  /// greeter / sleep / working-ack spam. Each line is hard-clipped for the
+  /// thin prompt window.
   static String formatHistoryBlock(
     List<ConversationTurn> turns, {
     required int maxChars,
     bool suppressNewsAnswers = false,
     bool filterNoise = true,
+    int maxLineChars = 160,
   }) {
     if (turns.isEmpty || maxChars <= 0) return '';
     final lines = <String>[];
@@ -626,6 +647,7 @@ class ConversationMemory {
         }
       } else {
         if (t.role == 'assistant' && isTimeoutApology(t.text)) continue;
+        if (t.role == 'assistant' && isBloatedHouseStatusDump(t.text)) continue;
         if (suppressNewsAnswers &&
             t.role == 'assistant' &&
             isNewsHeadlineDump(t.text)) {
@@ -637,7 +659,8 @@ class ConversationMemory {
           (t.terminal != null && t.terminal!.trim().isNotEmpty)
               ? ' [${t.terminal}]'
               : '';
-      lines.add('$who$where: ${t.text}');
+      final body = _clipInject(t.text, maxLineChars);
+      lines.add('$who$where: $body');
     }
     if (lines.isEmpty) return '';
     var joined = lines.join('\n');
@@ -646,6 +669,12 @@ class ConversationMemory {
       joined = lines.join('\n');
     }
     return joined;
+  }
+
+  static String _clipInject(String text, int maxChars) {
+    final t = text.trim().replaceAll(RegExp(r'\s+'), ' ');
+    if (maxChars <= 0 || t.length <= maxChars) return t;
+    return '${t.substring(0, maxChars - 1)}…';
   }
 
   /// Prior hallway timeout / empty-reply lines that poison research prompts.
