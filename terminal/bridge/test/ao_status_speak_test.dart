@@ -46,6 +46,19 @@ void main() {
       );
     });
 
+    test('truncates plan-ready summaries', () {
+      expect(
+        aoStatusSpeakLine(ReachRunStatus(
+          processing: true,
+          phase: 'planning',
+          message:
+              'Plan ready: The resident has requested information on current '
+              'global news and weather. The plan involves researching…',
+        )),
+        'Plan ready…',
+      );
+    });
+
     test('skips done and empty', () {
       expect(
         aoStatusSpeakLine(ReachRunStatus(

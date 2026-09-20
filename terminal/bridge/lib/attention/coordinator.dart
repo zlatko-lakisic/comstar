@@ -1513,15 +1513,32 @@ class AttentionCoordinator {
     return false;
   }
 
-  /// CrewAI / AO tool-loop stalls that must not be spoken aloud.
+  /// CrewAI / AO tool-loop stalls / bare tool ids that must not be spoken.
   bool _looksLikeToolStallProse(String text) {
     final t = text.trim().toLowerCase();
     if (t.isEmpty) return false;
-    return t.contains('provide the tool result') ||
+    if (t.contains('provide the tool result') ||
         t.contains('tool result for analysis') ||
         t.contains('waiting for the tool') ||
         t.contains('need the tool output') ||
-        t.contains('share the tool result');
+        t.contains('share the tool result')) {
+      return true;
+    }
+    // Bare MCP/tool ids leaked as the "answer" (e.g. calendar_list_calendars).
+    final stripped = t
+        .replaceFirst(
+          RegExp(
+            r'^(your requested information is ready\.?\s*|'
+            r'i have what you asked for\.?\s*|the results are ready\.?\s*)',
+          ),
+          '',
+        )
+        .trim();
+    if (RegExp(r'^[a-z][a-z0-9_]{2,60}$').hasMatch(stripped) &&
+        stripped.contains('_')) {
+      return true;
+    }
+    return false;
   }
 
   Future<void> _runDirectAgent(String text, String turnId) async {
@@ -1851,7 +1868,8 @@ class AttentionCoordinator {
         ),
       );
       unawaited(_maybePlayLocal(audioUrl));
-      _rememberSpoken(line);
+      // Do NOT write progress lines into conversation memory — plan summaries
+      // ("Plan ready: … news and weather") poison the next planner turn.
       await _awaitWorkingAckPlayback();
     } catch (e) {
       logWarn('ao_status_speak_failed', e.toString(), data: {'turn_id': turnId});
@@ -1993,7 +2011,7 @@ class AttentionCoordinator {
         ),
       );
       unawaited(_maybePlayLocal(audioUrl));
-      _rememberSpoken(line);
+      // Progress ack is not a conversational answer — keep it out of memory.
     } catch (e) {
       logWarn('working_ack_failed', e.toString(), data: {'turn_id': turnId});
       machine.context.playing = false;

@@ -144,6 +144,14 @@ bool _isInternalAoStatusMessage(String message) {
 /// Soften model-id progress into hallway English.
 String _humanizeStatusMessage(String message) {
   final m = message.trim();
+  // Full plan summaries recycle into memory and derail the next turn.
+  if (RegExp(r'^plan ready\b', caseSensitive: false).hasMatch(m)) {
+    return 'Plan ready…';
+  }
+  if (RegExp(r'^working through\s+\d+\s+steps?\b', caseSensitive: false)
+      .hasMatch(m)) {
+    return 'Working through the steps…';
+  }
   final consulting = RegExp(
     r'^consulting\s+([^\s…]+)…?$',
     caseSensitive: false,
