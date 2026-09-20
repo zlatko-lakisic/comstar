@@ -476,6 +476,7 @@ class ComstarSession {
   static const researchAgentId = 'ollama_qwen2_5_14b_instruct';
 
   static const researchMcpProviders = <String>['fetch_url'];
+  static const weatherMcpProviders = <String>['weather_mcp'];
   static const greeterAgentId = 'client.greeter';
   static const phraseBankAgentId = 'client.phrase_bank';
 
@@ -969,6 +970,49 @@ class ComstarSession {
         agentProviderId: researchAgentId,
         text: seedNewsFetchPrompt(text),
         mcpProviderIds: researchMcpProviders,
+        timeout: Duration(seconds: timeoutSec),
+        onStatus: onStatus,
+      );
+      return result['text']?.toString() ?? '';
+    }
+  }
+
+  /// Weather turns: pin `weather_mcp` so the planner cannot skip tools.
+  Future<String> weatherVoice(
+    String text, {
+    void Function(ReachRunStatus status)? onStatus,
+  }) async {
+    await ensureReady();
+    final orch = config.orchestration;
+    final timeoutSec = orch.dynamicTimeoutSeconds > orch.timeoutSeconds
+        ? orch.dynamicTimeoutSeconds
+        : orch.timeoutSeconds;
+    final prompt = seedWeatherPrompt(text);
+    try {
+      final result = await _bridge.directAgent(
+        agentProviderId: researchAgentId,
+        text: prompt,
+        mcpProviderIds: weatherMcpProviders,
+        timeout: Duration(seconds: timeoutSec),
+        onStatus: onStatus,
+      );
+      return result['text']?.toString() ?? '';
+    } catch (e) {
+      final msg = e.toString();
+      final bridgeDead = msg.contains('not active') ||
+          msg.contains('session bridge') ||
+          msg.contains('disconnected');
+      if (!bridgeDead) rethrow;
+      logWarn(
+        'session_renew_retry',
+        'AO weather research failed; renewing session and retrying',
+        data: {'error': msg},
+      );
+      await _reopen(userid: _userid!, guest: _guest);
+      final result = await _bridge.directAgent(
+        agentProviderId: researchAgentId,
+        text: seedWeatherPrompt(text),
+        mcpProviderIds: weatherMcpProviders,
         timeout: Duration(seconds: timeoutSec),
         onStatus: onStatus,
       );

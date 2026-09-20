@@ -65,6 +65,18 @@ bool looksLikeNewsResearch(String text) {
   ).hasMatch(t);
 }
 
+/// Weather / forecast phrasing — pinned `weather_mcp`, never bolted onto news.
+bool looksLikeWeatherResearch(String text) {
+  final t = _normalizeUtterance(text);
+  if (t.isEmpty) return false;
+  if (looksLikeNewsResearch(t)) return false;
+  return RegExp(
+    r'\b(weather|forecast|temperature outside|how (hot|cold|warm) (is|will)|'
+    r'(is it|will it) (going to )?(rain|snow|sunny|cloudy)|'
+    r'chance of (rain|snow)|umbrella|humid outside)\b',
+  ).hasMatch(t);
+}
+
 /// HTTPS sources seeded so AO's ollama+fetch_url fast-path can run.
 /// Prefer RSS over HTML homepages — Reuters/AP/BBC HTML often 401/403 or CSS junk.
 const kNewsFetchUrls = <String>[
@@ -84,6 +96,15 @@ String seedNewsFetchPrompt(String text) {
       '[Description] or [Current temperature]. Do not answer weather unless '
       'asked. If every fetch fails, say you could not fetch the news.\n'
       '$urls';
+}
+
+/// Direct-agent prompt for weather_mcp (no news/RSS drift).
+String seedWeatherPrompt(String text) {
+  return '${text.trim()}\n\n'
+      'Weather tools are attached (weather_mcp). Call them before answering. '
+      'Speak a short spoken English summary of conditions and/or forecast. '
+      'Do not invent temperatures. Do not fetch news or talk about world '
+      'headlines unless asked. If tools fail, say you could not get weather.';
 }
 
 /// Steer Reach `chat` toward stock research agents + mandatory step MCP.

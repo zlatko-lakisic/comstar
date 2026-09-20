@@ -49,6 +49,19 @@ void main() {
     });
   });
 
+  group('looksLikeWeatherResearch', () {
+    test('matches weather without stealing news', () {
+      expect(looksLikeWeatherResearch("What's the weather?"), isTrue);
+      expect(looksLikeWeatherResearch('Will it rain today?'), isTrue);
+      expect(looksLikeWeatherResearch("What's the forecast?"), isTrue);
+      expect(
+        looksLikeWeatherResearch("What's happening in the world today?"),
+        isFalse,
+      );
+      expect(looksLikeWeatherResearch('Thanks'), isFalse);
+    });
+  });
+
   group('seedNewsFetchPrompt', () {
     test('embeds RSS fetch URLs and anti-placeholder rules', () {
       final prompt = seedNewsFetchPrompt("What's going on in the world today?");

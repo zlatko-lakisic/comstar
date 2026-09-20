@@ -73,6 +73,7 @@ class ComstarConfig {
     'allowed_agent_provider_ids',
     'voice_backend',
     'dynamic_timeout_seconds',
+    'utterance_routing',
   };
 
   static const _orchestrationMtlsKeys = {
@@ -363,6 +364,7 @@ class ComstarConfig {
         'orchestration.voice_backend must be one of: ${voiceBackends.join(', ')}',
       );
     }
+    final utteranceRouting = _resolveUtteranceRouting(map);
     return OrchestrationConfig(
       baseUrl: baseUrl,
       token: _optionalString(map, 'token') ?? '',
@@ -390,7 +392,24 @@ class ComstarConfig {
       dynamicTimeoutSeconds: map.containsKey('dynamic_timeout_seconds')
           ? _requireInt(map, 'dynamic_timeout_seconds', 'orchestration')
           : 300,
+      utteranceRouting: utteranceRouting,
     );
+  }
+
+  /// Env `COMSTAR_UTTERANCE_ROUTING` overrides yaml when set to `split` or `ao`.
+  static String _resolveUtteranceRouting(Map<String, dynamic> map) {
+    final env =
+        Platform.environment['COMSTAR_UTTERANCE_ROUTING']?.trim().toLowerCase();
+    if (env == 'split' || env == 'ao') return env!;
+    final fromYaml =
+        (_optionalString(map, 'utterance_routing') ?? 'split').trim().toLowerCase();
+    const allowed = {'split', 'ao'};
+    if (!allowed.contains(fromYaml)) {
+      throw ConfigError(
+        'orchestration.utterance_routing must be one of: ${allowed.join(', ')}',
+      );
+    }
+    return fromYaml;
   }
 
   static OrchestrationMtlsConfig _parseOrchestrationMtls(
@@ -956,6 +975,7 @@ class OrchestrationConfig {
     ],
     this.voiceBackend = 'hybrid',
     this.dynamicTimeoutSeconds = 300,
+    this.utteranceRouting = 'split',
   });
 
   final String baseUrl;
@@ -979,6 +999,13 @@ class OrchestrationConfig {
 
   /// Wall-clock budget for Reach `chat` / dynamic planning turns (seconds).
   final int dynamicTimeoutSeconds;
+
+  /// `split` (Pi closed-form + AO) | `ao` (exclusive AO for content turns).
+  /// Env `COMSTAR_UTTERANCE_ROUTING` overrides yaml when set.
+  final String utteranceRouting;
+
+  /// True when closed-form content intents (clock, presence, news pin, …) run.
+  bool get useClosedFormRouting => utteranceRouting == 'split';
 
   /// Responding-state Tick deadline for in-flight AO turns (ms).
   ///

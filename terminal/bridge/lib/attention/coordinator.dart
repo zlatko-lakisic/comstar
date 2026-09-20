@@ -160,6 +160,7 @@ class AttentionCoordinator {
           'userid': _memoryUserid,
         },
         'ao_progress': latestAoProgress,
+        'utterance_routing': config.orchestration.utteranceRouting,
       };
 
   /// Latest Reach run status for Admin poll (null when idle).
@@ -1608,45 +1609,133 @@ class AttentionCoordinator {
   Future<void> _runDirectAgent(String text, String turnId) async {
     final turnSpan = Span('turn_total');
     try {
+      final routing = config.orchestration.utteranceRouting;
+      final split = config.orchestration.useClosedFormRouting;
+
       final local = await _tryTerminalIntent(text, turnId);
-      if (local) return;
+      if (local) {
+        logInfo('utterance_route', 'Routed utterance', data: {
+          'turn_id': turnId,
+          'utterance_routing': routing,
+          'lane': 'terminal',
+        });
+        return;
+      }
 
-      final identity = await _tryIdentityIntent(text, turnId);
-      if (identity) return;
-
-      final clock = await _tryClockIntent(text, turnId);
-      if (clock) return;
-
-      final social = await _trySocialIntent(text, turnId);
-      if (social) return;
-
+      // Pairing stays local in both modes so reconnect works without AO.
       final nextcloud = await _tryNextcloudIntent(text, turnId);
-      if (nextcloud) return;
+      if (nextcloud) {
+        logInfo('utterance_route', 'Routed utterance', data: {
+          'turn_id': turnId,
+          'utterance_routing': routing,
+          'lane': 'closed_form',
+          'family': 'pairing_nextcloud',
+        });
+        return;
+      }
 
       final google = await _tryGoogleIntent(text, turnId);
-      if (google) return;
+      if (google) {
+        logInfo('utterance_route', 'Routed utterance', data: {
+          'turn_id': turnId,
+          'utterance_routing': routing,
+          'lane': 'closed_form',
+          'family': 'pairing_google',
+        });
+        return;
+      }
 
       final channel = await _tryChannelIntent(text, turnId);
-      if (channel) return;
+      if (channel) {
+        logInfo('utterance_route', 'Routed utterance', data: {
+          'turn_id': turnId,
+          'utterance_routing': routing,
+          'lane': 'closed_form',
+          'family': 'pairing_channel',
+        });
+        return;
+      }
 
-      final googleData = await _tryGoogleDataIntent(text, turnId);
-      if (googleData) return;
+      if (split) {
+        final identity = await _tryIdentityIntent(text, turnId);
+        if (identity) {
+          logInfo('utterance_route', 'Routed utterance', data: {
+            'turn_id': turnId,
+            'utterance_routing': routing,
+            'lane': 'closed_form',
+            'family': 'identity',
+          });
+          return;
+        }
 
-      final homeData = await _tryHomeDataIntent(text, turnId);
-      if (homeData) return;
+        final clockLocal = await _tryClockIntent(text, turnId);
+        if (clockLocal) {
+          logInfo('utterance_route', 'Routed utterance', data: {
+            'turn_id': turnId,
+            'utterance_routing': routing,
+            'lane': 'closed_form',
+            'family': 'clock',
+          });
+          return;
+        }
 
-      final visionVisit = await _tryVisionVisitIntent(text, turnId);
-      if (visionVisit) return;
+        final social = await _trySocialIntent(text, turnId);
+        if (social) {
+          logInfo('utterance_route', 'Routed utterance', data: {
+            'turn_id': turnId,
+            'utterance_routing': routing,
+            'lane': 'closed_form',
+            'family': 'social',
+          });
+          return;
+        }
+
+        final googleData = await _tryGoogleDataIntent(text, turnId);
+        if (googleData) {
+          logInfo('utterance_route', 'Routed utterance', data: {
+            'turn_id': turnId,
+            'utterance_routing': routing,
+            'lane': 'closed_form',
+            'family': 'google_data',
+          });
+          return;
+        }
+
+        final homeData = await _tryHomeDataIntent(text, turnId);
+        if (homeData) {
+          logInfo('utterance_route', 'Routed utterance', data: {
+            'turn_id': turnId,
+            'utterance_routing': routing,
+            'lane': 'closed_form',
+            'family': 'home_data',
+          });
+          return;
+        }
+
+        final visionVisit = await _tryVisionVisitIntent(text, turnId);
+        if (visionVisit) {
+          logInfo('utterance_route', 'Routed utterance', data: {
+            'turn_id': turnId,
+            'utterance_routing': routing,
+            'lane': 'closed_form',
+            'family': 'vision_visit',
+          });
+          return;
+        }
+      }
 
       final mcp = session.mcpProvidersForVoice(utterance: text);
-      final newsResearch = looksLikeNewsResearch(text);
+      final newsResearch = split && looksLikeNewsResearch(text);
+      final weatherResearch =
+          split && !newsResearch && looksLikeWeatherResearch(text);
+      final pinned = newsResearch || weatherResearch;
       final clipped =
           text.length > 500 ? '${text.substring(0, 500)}…' : text;
       final memoryUser = _memoryUserid;
       final agentText = memoryUser != null
           ? await conversationMemory.wrapForAgent(memoryUser, text)
           : text;
-      final useDynamic = !newsResearch &&
+      final useDynamic = !pinned &&
           shouldUseDynamicChat(
             dynamicPlanning: await session.effectiveDynamicPlanning(),
             voiceBackend: session.config.orchestration.voiceBackend,
@@ -1655,25 +1744,47 @@ class AttentionCoordinator {
           );
       final callKind = newsResearch
           ? 'news_research'
-          : (useDynamic ? 'dynamic_chat' : 'direct_agent');
+          : weatherResearch
+              ? 'weather_research'
+              : (useDynamic ? 'dynamic_chat' : 'direct_agent');
+      final lane = pinned ? 'pinned' : 'ao';
       logInfo(
         callKind,
         newsResearch
             ? 'Calling news research (fetch_url)'
-            : (useDynamic ? 'Calling dynamic chat' : 'Calling voice agent'),
+            : weatherResearch
+                ? 'Calling weather research (weather_mcp)'
+                : (useDynamic ? 'Calling dynamic chat' : 'Calling voice agent'),
         data: {
           'turn_id': turnId,
           'text': clipped,
           'memory': memoryUser != null,
-          'mcp': newsResearch ? const ['fetch_url'] : mcp,
+          'mcp': newsResearch
+              ? const ['fetch_url']
+              : weatherResearch
+                  ? const ['weather_mcp']
+                  : mcp,
           'voice_backend': session.config.orchestration.voiceBackend,
+          'utterance_routing': routing,
+          'lane': lane,
         },
       );
+      logInfo('utterance_route', 'Routed utterance', data: {
+        'turn_id': turnId,
+        'utterance_routing': routing,
+        'lane': lane,
+        if (newsResearch) 'family': 'news',
+        if (weatherResearch) 'family': 'weather',
+      });
       _armWorkingAck(
         turnId: turnId,
-        mcpProviders: newsResearch ? const ['fetch_url'] : mcp,
+        mcpProviders: newsResearch
+            ? const ['fetch_url']
+            : weatherResearch
+                ? const ['weather_mcp']
+                : mcp,
         utterance: text,
-        force: useDynamic || newsResearch,
+        force: useDynamic || pinned,
       );
       _resetAoStatusSpeak(turnId);
       void onStatus(ReachRunStatus status) {
@@ -1681,12 +1792,14 @@ class AttentionCoordinator {
       }
       var response = newsResearch
           ? await session.researchVoice(agentText, onStatus: onStatus)
-          : useDynamic
-              ? await session.chatVoice(
-                  steerDynamicResearchChat(agentText, text),
-                  onStatus: onStatus,
-                )
-              : await session.directVoice(agentText, onStatus: onStatus);
+          : weatherResearch
+              ? await session.weatherVoice(agentText, onStatus: onStatus)
+              : useDynamic
+                  ? await session.chatVoice(
+                      steerDynamicResearchChat(agentText, text),
+                      onStatus: onStatus,
+                    )
+                  : await session.directVoice(agentText, onStatus: onStatus);
       _cancelWorkingAckTimer();
       _cancelAoStatusPeriodic();
       response = unwrapSpokenReply(response);
@@ -2227,6 +2340,12 @@ class AttentionCoordinator {
         spoken = await _spokenWhereIsPerson(intent.personName);
       case HomeDataIntentKind.whenPersonLeft:
         spoken = await _spokenWhenPersonLeft(intent.personName);
+      case HomeDataIntentKind.familyCar:
+        spoken = await _spokenFamilyCar();
+      case HomeDataIntentKind.lockStatus:
+        spoken = await _spokenLockStatus(intent.lockKey);
+      case HomeDataIntentKind.garageStatus:
+        spoken = await _spokenGarageStatus();
     }
     if (spoken == null || spoken.trim().isEmpty) {
       logWarn('home_data_intent', 'HA agent returned empty', data: {
@@ -2295,6 +2414,42 @@ class AttentionCoordinator {
     return lookup.spoken;
   }
 
+  Future<String?> _spokenFamilyCar() async {
+    final ha = HaAgentClient();
+    final cam = await ha.entityState(kFamilyCarLastCamera);
+    final occ = await ha.entityState(kDrivewayCarOccupancy);
+    return speakFamilyCar(
+      lastCamera: cam?['state']?.toString(),
+      drivewayOccupancy: occ?['state']?.toString(),
+    );
+  }
+
+  Future<String?> _spokenLockStatus(String? lockKey) async {
+    final ha = HaAgentClient();
+    final key = (lockKey ?? 'front').trim();
+    if (key == 'all') {
+      final parts = <String>[];
+      for (final e in kHomeLockEntities.entries) {
+        final st = await ha.entityState(e.value);
+        final label = kHomeLockLabels[e.key] ?? e.key;
+        parts.add(speakLockState(label, st?['state']?.toString()));
+      }
+      return parts.join(' ');
+    }
+    final entity = kHomeLockEntities[key];
+    if (entity == null) {
+      return 'I do not know that lock.';
+    }
+    final st = await ha.entityState(entity);
+    final label = kHomeLockLabels[key] ?? key;
+    return speakLockState(label, st?['state']?.toString());
+  }
+
+  Future<String?> _spokenGarageStatus() async {
+    final st = await HaAgentClient().entityState(kGarageCoverEntity);
+    return speakGarageState(st?['state']?.toString());
+  }
+
   Future<bool> _tryGoogleDataIntent(String text, String turnId) async {
     final intent = parseGoogleDataIntent(text);
     if (intent == null) return false;
@@ -2350,6 +2505,12 @@ class AttentionCoordinator {
         case GoogleDataIntentKind.calendarToday:
           final titles = await gw.listTodayEventTitles();
           spoken = speakCalendarToday(titles);
+        case GoogleDataIntentKind.calendarTomorrow:
+          final titles = await gw.listTomorrowEventTitles();
+          spoken = speakCalendarTomorrow(titles);
+        case GoogleDataIntentKind.calendarNext:
+          final title = await gw.nextEventTitle();
+          spoken = speakCalendarNext(title);
         case GoogleDataIntentKind.calendarList:
           final names = await gw.listCalendarNames();
           spoken = speakCalendarList(names);

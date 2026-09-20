@@ -905,6 +905,7 @@ See `config/comstar.example.yaml` for the annotated version. Validation rules:
 | `orchestration.dynamic_planning` | bool; Reach sticky dynamic planning |
 | `orchestration.allowed_agent_provider_ids` | curated stock ids (`gpt_research`, `claude_research`, …) → Reach `allowedAgentProviderIds` |
 | `orchestration.voice_backend` | `hybrid` \| `direct` \| `dynamic` |
+| `orchestration.utterance_routing` | `split` (default) \| `ao`. **split** = Pi closed-form intents + pinned AO + open AO. **ao** = skip content closed-form (clock, social, home, google data, vision, news/weather pins); send those to AO. Env override: `COMSTAR_UTTERANCE_ROUTING`. Terminal self-care (sleep/volume/heal/restart) and account pairing always stay bridge-local. See [VOICE_CLOSED_FORM.md](VOICE_CLOSED_FORM.md). |
 | `orchestration.mtls.enabled` | when true, `base_url` must be `https://…` |
 | `orchestration.mtls.material_dir` | optional; default `~/.local/share/comstar/ao-mtls` |
 | `orchestration.mtls.client_name` | optional CN for enroll (default hostname) |
@@ -963,7 +964,9 @@ Response:
 **Non-goal:** this API does **not** drive the attention FSM or open AO sessions
 (ADR 0006). Local camera identity remains the terminal identity terminator.
 
-Optional voice paths (bridge-local, no AO):
+Optional voice paths (bridge-local, no AO) when `orchestration.utterance_routing: split`
+(default). Under `ao`, these content paths are skipped and AO handles them (except
+terminal control + pairing — always local). Full catalog: [VOICE_CLOSED_FORM.md](VOICE_CLOSED_FORM.md).
 
 | utterance | behavior |
 |---|---|
@@ -971,6 +974,10 @@ Optional voice paths (bridge-local, no AO):
 | “Where is Adna?” / “Is Zlatko home?” | Resolve spoken name → HA person state. If `home` / named zone, say that. Else reverse-geocode GPS (`latitude`/`longitude`) vs `zone.home` and speak by tier (below). If HA is `unknown` / no GPS, append Frigate `person_last_seen` when `COMSTAR_VISION_MCP_URL` is set |
 | “When did Adna leave?” / “When did they leave?” / “When is the last time we saw Adna around the house?” / “When was Adna last home?” | HA history (`GET /api/history/list`) for last `home`→away transition. Pronouns use the last successful where-is / leave person. **House / home phrasing is presence — not Frigate.** |
 | “Who was in the driveway?” / “When was the last time you saw Adna on the driveway?” | Frigate visitor / camera last-seen via vision MCP (`who_visited` / `person_last_seen`) |
+| “Where’s the family car?” | HA Frigate LPR sensors (`sensor.frigate_family_car_last_camera`, driveway car occupancy) — **not** `person.*` |
+| “Is the front door locked?” / “Is the garage door open?” | HA lock/cover entity reads |
+| “What’s the weather?” | Pinned AO `weather_mcp` (split mode) |
+| “What’s happening in the world?” | Pinned AO `fetch_url` news (split mode; must not match social whats-up) |
 
 **Location speech tiers** (distance from `zone.home`, country/state from reverse geocode — Nominatim, cached):
 

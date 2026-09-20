@@ -151,4 +151,34 @@ void main() {
     expect(she?.kind, HomeDataIntentKind.whereIsPerson);
     expect(she?.personName, isNull);
   });
+
+  test('family car is not a person lookup', () {
+    expect(
+      parseHomeDataIntent("Where's the family car?")?.kind,
+      HomeDataIntentKind.familyCar,
+    );
+    expect(
+      parseHomeDataIntent('Where is our car?')?.kind,
+      HomeDataIntentKind.familyCar,
+    );
+    expect(speakFamilyCar(lastCamera: 'Driveway', drivewayOccupancy: 'off'),
+        contains('Driveway'));
+  });
+
+  test('lock and garage status', () {
+    expect(
+      parseHomeDataIntent('Is the front door locked?')?.kind,
+      HomeDataIntentKind.lockStatus,
+    );
+    expect(
+      parseHomeDataIntent('Is the front door locked?')?.lockKey,
+      'front',
+    );
+    expect(
+      parseHomeDataIntent('Is the garage door open?')?.kind,
+      HomeDataIntentKind.garageStatus,
+    );
+    expect(speakLockState('front door', 'locked'), contains('locked'));
+    expect(speakGarageState('open'), contains('open'));
+  });
 }

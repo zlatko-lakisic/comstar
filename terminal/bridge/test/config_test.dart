@@ -19,6 +19,8 @@ void main() {
       expect(config.orchestration.mtls.enabled, isFalse);
       expect(config.orchestration.dynamicPlanning, isFalse);
       expect(config.orchestration.voiceBackend, 'hybrid');
+      expect(config.orchestration.utteranceRouting, 'split');
+      expect(config.orchestration.useClosedFormRouting, isTrue);
       expect(config.orchestration.dynamicTimeoutSeconds, 300);
       expect(config.orchestration.aoRespondingTimeoutMs, 300000);
       expect(config.orchestration.allowedAgentProviderIds, isNotEmpty);

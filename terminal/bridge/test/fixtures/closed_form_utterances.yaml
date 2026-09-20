@@ -1,0 +1,175 @@
+# Closed-form utterance regression table (split mode).
+# expect: parser family id used by closed_form_utterance_test.dart
+#
+# Families: terminal, identity, clock, social, google_data, home_data,
+# vision_visit, news, weather, pairing_google, none
+
+- utterance: "Go to sleep"
+  expect: terminal
+- utterance: "Mute"
+  expect: terminal
+- utterance: "Volume up"
+  expect: terminal
+- utterance: "Set volume to 40"
+  expect: terminal
+- utterance: "Heal yourself"
+  expect: terminal
+- utterance: "Restart the audio"
+  expect: terminal
+- utterance: "Who am I?"
+  expect: identity
+- utterance: "Recognize me"
+  expect: identity
+- utterance: "What time is it?"
+  expect: clock
+- utterance: "What's today's date?"
+  expect: clock
+- utterance: "What day is it?"
+  expect: clock
+- utterance: "What timezone are we in?"
+  expect: clock
+- utterance: "What's up?"
+  expect: social
+- utterance: "How are you?"
+  expect: social
+- utterance: "Thanks"
+  expect: social
+- utterance: "Hello"
+  expect: social
+- utterance: "What's on my calendar today?"
+  expect: google_data
+- utterance: "What meetings do I have today?"
+  expect: google_data
+- utterance: "What's on my calendar tomorrow?"
+  expect: google_data
+- utterance: "What's my next meeting?"
+  expect: google_data
+- utterance: "When is my next appointment?"
+  expect: google_data
+- utterance: "List my Google calendars"
+  expect: google_data
+- utterance: "What's in my Gmail today?"
+  expect: google_data
+- utterance: "What's in my Google Drive?"
+  expect: google_data
+- utterance: "Reconnect my Google"
+  expect: pairing_google
+- utterance: "Who's home?"
+  expect: home_data
+- utterance: "Is anyone home?"
+  expect: home_data
+- utterance: "Where is Adna?"
+  expect: home_data
+- utterance: "Is Zlatko home?"
+  expect: home_data
+- utterance: "When did Adna leave?"
+  expect: home_data
+- utterance: "When is the last time we saw Adna around the house?"
+  expect: home_data
+- utterance: "When was Adna last home?"
+  expect: home_data
+- utterance: "Where's the family car?"
+  expect: home_data
+- utterance: "Where is our car?"
+  expect: home_data
+- utterance: "Is the family car in the driveway?"
+  expect: home_data
+- utterance: "Is the front door locked?"
+  expect: home_data
+- utterance: "Is the office door unlocked?"
+  expect: home_data
+- utterance: "Is the back door locked?"
+  expect: home_data
+- utterance: "Are all the locks locked?"
+  expect: home_data
+- utterance: "Is the garage door open?"
+  expect: home_data
+- utterance: "Is the garage door closed?"
+  expect: home_data
+- utterance: "What's my WAN IP?"
+  expect: home_data
+- utterance: "What torrents am I downloading?"
+  expect: home_data
+- utterance: "How much irrigation did the garden get?"
+  expect: home_data
+- utterance: "Who was in the driveway today?"
+  expect: vision_visit
+- utterance: "When was the last time you saw Adna on the driveway?"
+  expect: vision_visit
+- utterance: "What's happening in the world today?"
+  expect: news
+- utterance: "What's going on in the world?"
+  expect: news
+- utterance: "Tell me the news"
+  expect: news
+- utterance: "Any current events I should know?"
+  expect: news
+- utterance: "What's the weather?"
+  expect: weather
+- utterance: "What's the forecast?"
+  expect: weather
+- utterance: "Will it rain today?"
+  expect: weather
+- utterance: "Do I need an umbrella?"
+  expect: weather
+- utterance: "Explain photosynthesis"
+  expect: none
+- utterance: "Help me plan a trip to Lisbon"
+  expect: none
+# Extra spoken variants for coverage
+- utterance: "Volume down"
+  expect: terminal
+- utterance: "Unmute"
+  expect: terminal
+- utterance: "Check your health"
+  expect: terminal
+- utterance: "Reboot the terminal"
+  expect: terminal
+- utterance: "What season is it?"
+  expect: clock
+- utterance: "Good morning"
+  expect: social
+- utterance: "Thank you"
+  expect: social
+- utterance: "What do we have planned for today?"
+  expect: google_data
+- utterance: "What meetings do I have tomorrow?"
+  expect: google_data
+- utterance: "What's my next event?"
+  expect: google_data
+- utterance: "Who is home?"
+  expect: home_data
+- utterance: "Where is Ibrica?"
+  expect: home_data
+- utterance: "When did they leave?"
+  expect: home_data
+- utterance: "Last time we saw Adna around the house"
+  expect: home_data
+- utterance: "Where is the family car?"
+  expect: home_data
+- utterance: "When did the car leave?"
+  expect: home_data
+- utterance: "Is the door to the garage locked?"
+  expect: home_data
+- utterance: "What is the public IP address?"
+  expect: home_data
+- utterance: "Any torrents downloading?"
+  expect: home_data
+- utterance: "How much water did our garden get yesterday?"
+  expect: home_data
+- utterance: "Who came by the driveway yesterday?"
+  expect: vision_visit
+- utterance: "When did you last see Zlatko on the front door camera?"
+  expect: vision_visit
+- utterance: "What are the headlines?"
+  expect: news
+- utterance: "Any news today?"
+  expect: news
+- utterance: "Is it going to snow?"
+  expect: weather
+- utterance: "How cold is it outside?"
+  expect: weather
+- utterance: "Write a poem about the hallway"
+  expect: none
+- utterance: "Research the history of Bosnia"
+  expect: none

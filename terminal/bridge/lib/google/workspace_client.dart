@@ -88,7 +88,59 @@ class GoogleWorkspaceClient {
     String calendarId = 'primary',
     int max = 8,
   }) async {
-    final bounds = _localDayBoundsUtcIso();
+    return _listEventTitlesForDayOffset(
+      dayOffset: 0,
+      calendarId: calendarId,
+      max: max,
+    );
+  }
+
+  /// Event titles for tomorrow (local day + 1).
+  Future<List<String>> listTomorrowEventTitles({
+    String calendarId = 'primary',
+    int max = 8,
+  }) async {
+    return _listEventTitlesForDayOffset(
+      dayOffset: 1,
+      calendarId: calendarId,
+      max: max,
+    );
+  }
+
+  /// Next upcoming event title from now (singleEvents ordered by start).
+  Future<String?> nextEventTitle({
+    String calendarId = 'primary',
+  }) async {
+    final now = DateTime.now().toUtc().toIso8601String();
+    final uri = Uri.https(
+      'www.googleapis.com',
+      '/calendar/v3/calendars/${Uri.encodeComponent(calendarId)}/events',
+      {
+        'timeMin': now,
+        'singleEvents': 'true',
+        'orderBy': 'startTime',
+        'maxResults': '1',
+      },
+    );
+    final res = await _http.get(uri, headers: await _authHeaders());
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw StateError('calendar events failed (${res.statusCode}): ${res.body}');
+    }
+    final map = jsonDecode(res.body) as Map<String, dynamic>;
+    final items = (map['items'] as List?) ?? const [];
+    if (items.isEmpty) return null;
+    final raw = items.first;
+    if (raw is! Map) return null;
+    final summary = raw['summary']?.toString().trim();
+    return (summary == null || summary.isEmpty) ? 'an untitled event' : summary;
+  }
+
+  Future<List<String>> _listEventTitlesForDayOffset({
+    required int dayOffset,
+    String calendarId = 'primary',
+    int max = 8,
+  }) async {
+    final bounds = _localDayBoundsUtcIso(dayOffset: dayOffset);
     final uri = Uri.https(
       'www.googleapis.com',
       '/calendar/v3/calendars/${Uri.encodeComponent(calendarId)}/events',
@@ -176,13 +228,15 @@ class GoogleWorkspaceClient {
   }
 
   /// Rough local-day bounds as RFC3339 UTC strings.
-  (String, String) _localDayBoundsUtcIso() {
+  /// [dayOffset] 0 = today, 1 = tomorrow.
+  (String, String) _localDayBoundsUtcIso({int dayOffset = 0}) {
     // Fixed offset approximation: America/New_York is UTC-4 in Aug (EDT).
     // Good enough for voice summaries; full TZDB is not shipped in bridge.
     final offsetHours = timeZone == 'America/New_York' ? -4 : 0;
     final nowUtc = DateTime.now().toUtc();
     final local = nowUtc.add(Duration(hours: offsetHours));
-    final startLocal = DateTime.utc(local.year, local.month, local.day);
+    final startLocal = DateTime.utc(local.year, local.month, local.day)
+        .add(Duration(days: dayOffset));
     final endLocal = startLocal.add(const Duration(days: 1));
     final startUtc = startLocal.subtract(Duration(hours: offsetHours));
     final endUtc = endLocal.subtract(Duration(hours: offsetHours));

@@ -7,6 +7,7 @@ orchestration:
   ttl_seconds: 3600
   timeout_seconds: 15
   overlay_root: ./overlays/comstar
+  utterance_routing: split                   # split | ao
   # mtls:
   #   enabled: true
   #   client_name: comstar-dev
