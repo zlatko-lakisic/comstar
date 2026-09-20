@@ -42,10 +42,20 @@ void main() {
         looksLikeNewsResearch("What's going on in the world today?"),
         isTrue,
       );
+      expect(
+        looksLikeNewsResearch("What's happening in the world today?"),
+        isTrue,
+      );
       expect(looksLikeNewsResearch('Tell me the news'), isTrue);
       expect(looksLikeNewsResearch('Any current events I should know?'), isTrue);
       expect(looksLikeNewsResearch('Explain photosynthesis'), isFalse);
       expect(looksLikeNewsResearch('Thanks'), isFalse);
+      expect(looksLikeNewsResearch("What's happening?"), isFalse);
+      expect(looksLikeNewsResearch("What's going on?"), isFalse);
+      expect(
+        looksLikeNewsResearch('You snuck on me. I hope you enjoyed.'),
+        isFalse,
+      );
     });
   });
 
@@ -88,8 +98,28 @@ void main() {
       expect(out, contains('Current request:'));
     });
 
-    test('leaves non-research prompts unchanged', () {
+    test('leaves non-news prompts unchanged', () {
       expect(steerDynamicResearchChat('hello', 'Thanks'), 'hello');
+      expect(
+        steerDynamicResearchChat('Current request:\nExplain gravity', 'Explain gravity'),
+        'Current request:\nExplain gravity',
+      );
+      expect(
+        steerDynamicResearchChat(
+          'Current request:\nYou snuck on me',
+          'You snuck on me',
+        ),
+        'Current request:\nYou snuck on me',
+      );
+    });
+
+    test('guardNonNewsPrompt blocks headline drift', () {
+      final out = guardNonNewsPrompt('Current request:\nHey', 'Hey there');
+      expect(out, contains(kAntiNewsDriftGuard));
+      expect(
+        guardNonNewsPrompt('Tell me the news', 'Tell me the news'),
+        'Tell me the news',
+      );
     });
   });
 

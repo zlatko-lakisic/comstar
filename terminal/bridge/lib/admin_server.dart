@@ -697,11 +697,13 @@ class AdminServer {
         case 'configure':
         case 'apply':
           final mode = body['default_run_mode']?.toString().trim();
+          final routing = body['utterance_routing']?.toString().trim().toLowerCase();
           final dyn = body['dynamic_planning'] is bool
               ? body['dynamic_planning'] as bool
               : (body['enabled'] is bool ? body['enabled'] as bool : null);
           final hasConfig = dyn != null ||
               (mode != null && mode.isNotEmpty) ||
+              (routing == 'split' || routing == 'ao') ||
               body.containsKey('enabled_agent_ids') ||
               body.containsKey('enabled_mcp_ids') ||
               body.containsKey('enabled_skill_ids');
@@ -712,7 +714,10 @@ class AdminServer {
               enabledAgentIds: _parseIdList(body['enabled_agent_ids']),
               enabledMcpIds: _parseIdList(body['enabled_mcp_ids']),
               enabledSkillIds: _parseIdList(body['enabled_skill_ids']),
+              utteranceRouting:
+                  (routing == 'split' || routing == 'ao') ? routing : null,
             );
+            await coordinator.refreshUtteranceRouting();
           }
           if (action == 'configure') {
             await _writeJson(request, 200, await _agentsStatusWithCatalog());

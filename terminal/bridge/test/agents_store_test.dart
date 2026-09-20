@@ -138,6 +138,22 @@ void main() {
       expect(status['ao_progress'], isNull);
     });
 
+    test('configure persists utterance_routing override', () async {
+      expect(store.effectiveUtteranceRouting(yaml), 'split');
+      await store.configure(utteranceRouting: 'ao');
+      final runtime = await store.loadRuntime();
+      expect(runtime.utteranceRouting, 'ao');
+      expect(store.effectiveUtteranceRouting(yaml, runtime), 'ao');
+      final status = await store.statusPayload(yaml: yaml, sessionActive: false);
+      expect(status['utterance_routing'], 'ao');
+      expect(status['utterance_routing_runtime'], 'ao');
+      await store.configure(utteranceRouting: 'split');
+      expect(
+        store.effectiveUtteranceRouting(yaml, await store.loadRuntime()),
+        'split',
+      );
+    });
+
     test('empty Admin mcp list still pins COMSTAR baseline stock ids', () async {
       final mcps = await store.effectiveAllowedMcpIds();
       expect(mcps, equals([...kComstarBaselineStockMcpIds]..sort()));

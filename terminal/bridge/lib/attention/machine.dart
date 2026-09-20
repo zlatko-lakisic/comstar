@@ -981,14 +981,19 @@ class AttentionMachine {
   }
 
   /// Spoken progress while AO is still planning/running — extend deadline so
-  /// planner-only time is not treated as "no answer" yet.
+  /// planner-only / queue time is not treated as "no answer" yet.
+  ///
+  /// Absolute hold is 45 minutes from Responding start; Reach's idle Future
+  /// timeout is the primary kill for silent death. Status heartbeats keep
+  /// resetting this grace window.
   void extendAoDeadline({int graceMs = 90000}) {
     if (!context.directAgentInFlight) return;
     final now = context.clock.nowMs;
-    final budget = context.config.orchestration.aoRespondingTimeoutMs;
     final start = context.respondingStartedAtMs;
-    final cap = start + budget + 120000; // +2 min beyond configured budget
+    const absoluteMs = 45 * 60 * 1000;
+    final cap = start + absoluteMs;
     final next = now + graceMs;
+    final budget = context.config.orchestration.aoRespondingTimeoutMs;
     final cur = context.aoDeadlineAtMs ?? (start + budget);
     final extended = next > cur ? next : cur;
     context.aoDeadlineAtMs = extended > cap ? cap : extended;

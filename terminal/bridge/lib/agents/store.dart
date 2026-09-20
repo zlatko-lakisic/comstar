@@ -42,6 +42,7 @@ class AgentsRuntime {
     this.enabledAgentIds,
     this.enabledMcpIds,
     this.enabledSkillIds,
+    this.utteranceRouting,
   });
 
   final bool? dynamicPlanning;
@@ -50,6 +51,9 @@ class AgentsRuntime {
   final List<String>? enabledMcpIds;
   final List<String>? enabledSkillIds;
 
+  /// Admin override: `split` | `ao`. Null → yaml / env.
+  final String? utteranceRouting;
+
   Map<String, dynamic> toJson() => {
         if (dynamicPlanning != null) 'dynamic_planning': dynamicPlanning,
         if (defaultRunMode != null && defaultRunMode!.isNotEmpty)
@@ -57,9 +61,12 @@ class AgentsRuntime {
         if (enabledAgentIds != null) 'enabled_agent_ids': enabledAgentIds,
         if (enabledMcpIds != null) 'enabled_mcp_ids': enabledMcpIds,
         if (enabledSkillIds != null) 'enabled_skill_ids': enabledSkillIds,
+        if (utteranceRouting != null && utteranceRouting!.isNotEmpty)
+          'utterance_routing': utteranceRouting,
       };
 
   factory AgentsRuntime.fromJson(Map<String, dynamic> map) {
+    final routing = _optionalNonEmpty(map['utterance_routing'])?.toLowerCase();
     return AgentsRuntime(
       dynamicPlanning: map['dynamic_planning'] is bool
           ? map['dynamic_planning'] as bool
@@ -68,6 +75,8 @@ class AgentsRuntime {
       enabledAgentIds: _stringList(map['enabled_agent_ids']),
       enabledMcpIds: _stringList(map['enabled_mcp_ids']),
       enabledSkillIds: _stringList(map['enabled_skill_ids']),
+      utteranceRouting:
+          (routing == 'split' || routing == 'ao') ? routing : null,
     );
   }
 }
@@ -357,14 +366,19 @@ class AgentsStore {
     List<String>? enabledAgentIds,
     List<String>? enabledMcpIds,
     List<String>? enabledSkillIds,
+    String? utteranceRouting,
   }) async {
     final cur = await loadRuntime();
+    final routing = utteranceRouting?.trim().toLowerCase();
     final next = AgentsRuntime(
       dynamicPlanning: dynamicPlanning ?? cur.dynamicPlanning,
       defaultRunMode: defaultRunMode ?? cur.defaultRunMode,
       enabledAgentIds: enabledAgentIds ?? cur.enabledAgentIds,
       enabledMcpIds: enabledMcpIds ?? cur.enabledMcpIds,
       enabledSkillIds: enabledSkillIds ?? cur.enabledSkillIds,
+      utteranceRouting: (routing == 'split' || routing == 'ao')
+          ? routing
+          : cur.utteranceRouting,
     );
     await saveRuntime(next);
     return next;
@@ -484,6 +498,19 @@ class AgentsStore {
     final r = runtime.defaultRunMode?.trim();
     if (r != null && r.isNotEmpty) return r;
     return yaml.defaultRunMode;
+  }
+
+  /// Env `COMSTAR_UTTERANCE_ROUTING` → Admin runtime → yaml.
+  String effectiveUtteranceRouting(
+    OrchestrationConfig yaml, [
+    AgentsRuntime? runtime,
+  ]) {
+    final env =
+        Platform.environment['COMSTAR_UTTERANCE_ROUTING']?.trim().toLowerCase();
+    if (env == 'split' || env == 'ao') return env!;
+    final r = runtime?.utteranceRouting?.trim().toLowerCase();
+    if (r == 'split' || r == 'ao') return r!;
+    return yaml.utteranceRouting;
   }
 
   /// Catalog from yaml (or curated defaults), intersected with Admin enables,
@@ -713,6 +740,9 @@ class AgentsStore {
       'enabled': dyn,
       'dynamic_planning': dyn,
       'default_run_mode': effectiveDefaultRunMode(yaml, runtime),
+      'utterance_routing': effectiveUtteranceRouting(yaml, runtime),
+      'utterance_routing_runtime': runtime.utteranceRouting,
+      'utterance_routing_yaml': yaml.utteranceRouting,
       'voice_backend': yaml.voiceBackend,
       'timeout_seconds': yaml.dynamicTimeoutSeconds,
       'enabled_agent_ids': enabledAgents,
