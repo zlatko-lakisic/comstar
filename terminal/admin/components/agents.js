@@ -310,6 +310,8 @@ export function createAgents(root, { api, onStatus } = {}) {
       </section>
       <section class="agents-section">
         <label class="agents-check"><input type="checkbox" id="dynEnabled" ${snapshot.dynamic_planning || snapshot.enabled ? 'checked' : ''} /> Dynamic planning enabled</label>
+        <label class="agents-check"><input type="checkbox" id="utteranceAo" ${snapshot.utterance_routing === 'ao' ? 'checked' : ''} /> Route hallway voice exclusively through AO</label>
+        <p class="muted">Off = closed-form catalog on the Pi first (<code>split</code>). On = every non-terminal utterance goes to AO (<code>ao</code>). Env <code>COMSTAR_UTTERANCE_ROUTING</code> overrides this switch.</p>
         <p class="muted">AO dynamic timeout: <strong>${Number(snapshot.timeout_seconds) || 300}s</strong> (from comstar.yaml)</p>
       </section>
     `;
@@ -428,6 +430,9 @@ export function createAgents(root, { api, onStatus } = {}) {
 
   async function collectAndSave(apply) {
     const enabled = !!body.querySelector('#dynEnabled')?.checked;
+    const utteranceRouting = body.querySelector('#utteranceAo')?.checked
+      ? 'ao'
+      : 'split';
     const env = {};
     for (const [k, v] of Object.entries(secretDraft)) {
       if (String(v || '').trim()) env[k] = String(v).trim();
@@ -439,6 +444,7 @@ export function createAgents(root, { api, onStatus } = {}) {
       action: apply ? 'apply' : 'configure',
       enabled,
       dynamic_planning: enabled,
+      utterance_routing: utteranceRouting,
       enabled_agent_ids: draftAgents,
       enabled_mcp_ids: draftMcps,
       enabled_skill_ids: draftSkills,

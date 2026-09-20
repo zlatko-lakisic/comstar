@@ -6,12 +6,15 @@ before any model runs. Classification always happens on the **Pi bridge**
 
 ## Routing mode
 
-`orchestration.utterance_routing` (env `COMSTAR_UTTERANCE_ROUTING`):
+`orchestration.utterance_routing` (env `COMSTAR_UTTERANCE_ROUTING`, Admin Agents
+toggle → runtime override):
 
 | Value | Behavior |
 |---|---|
 | `split` (default) | Closed-form families below → bridge-local or pinned AO; else open AO |
 | `ao` | Skip content closed-form; forward to AO with normal voice MCPs |
+
+Precedence: env → Admin runtime → yaml.
 
 **Always local (both modes):** terminal self-care (sleep, volume, heal, restart,
 reboot, health) and Google / Nextcloud / channel **pairing**.
@@ -30,6 +33,7 @@ Regression utterances: `terminal/bridge/test/fixtures/closed_form_utterances.yam
 | in the world / news / headlines | pinned `fetch_url` |
 | what’s up (alone) | social |
 | what’s happening + world/news | news, not social |
+| bare what’s happening / banter after news | not news — do not recycle headlines |
 | weather / forecast / rain | pinned `weather_mcp` (not news) |
 
 ## Families

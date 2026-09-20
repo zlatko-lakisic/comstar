@@ -446,12 +446,13 @@ Admin → **Agents** (`GET/POST /admin/api/agents`, CONTRACTS § Admin console):
    `allowedAgentProviderIds` + `sessionEnv` (AO uses keys for this COMSTAR
    session only — not Ada host env).
 
-**Timeouts:** `orchestration.timeout_seconds` (≤60) is the direct_agent budget;
-`orchestration.dynamic_timeout_seconds` (default **300**) is the Reach `chat`
-research budget. Hallway Responding uses the larger of those (with a ≥90s floor
-for HA tools) so “Sorry, I could not get an answer in time” does not fire while
-AO is still planning/running. Working acks speak earlier on dynamic turns and
-extend that deadline.
+**Timeouts:** `orchestration.timeout_seconds` (≤60) and
+`orchestration.dynamic_timeout_seconds` (default **300**) are **idle** budgets
+for `direct_agent` / Reach `chat`: each live status, queue wait, or heartbeat
+from AO resets the clock. Absolute wall-clock ceiling is `max(6× idle, 30m)`.
+Hallway Responding extends up to 45 minutes while status flows so
+“Sorry, I could not get an answer in time” does not fire mid-research.
+Working acks speak earlier on dynamic turns and also extend that deadline.
 
 Hybrid routing: home/tool phrases stay on `client.voice_responder`; open-ended
 questions use Reach `chat`. Optional Ada sticky prefs:

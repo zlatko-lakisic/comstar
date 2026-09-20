@@ -905,7 +905,7 @@ See `config/comstar.example.yaml` for the annotated version. Validation rules:
 | `orchestration.dynamic_planning` | bool; Reach sticky dynamic planning |
 | `orchestration.allowed_agent_provider_ids` | curated stock ids (`gpt_research`, `claude_research`, …) → Reach `allowedAgentProviderIds` |
 | `orchestration.voice_backend` | `hybrid` \| `direct` \| `dynamic` |
-| `orchestration.utterance_routing` | `split` (default) \| `ao`. **split** = Pi closed-form intents + pinned AO + open AO. **ao** = skip content closed-form (clock, social, home, google data, vision, news/weather pins); send those to AO. Env override: `COMSTAR_UTTERANCE_ROUTING`. Terminal self-care (sleep/volume/heal/restart) and account pairing always stay bridge-local. See [VOICE_CLOSED_FORM.md](VOICE_CLOSED_FORM.md). |
+| `orchestration.utterance_routing` | `split` (default) \| `ao`. **split** = Pi closed-form intents + pinned AO + open AO. **ao** = skip content closed-form (clock, social, home, google data, vision, news/weather pins); send those to AO. Precedence: env `COMSTAR_UTTERANCE_ROUTING` → Admin Agents runtime → yaml. Terminal self-care (sleep/volume/heal/restart) and account pairing always stay bridge-local. See [VOICE_CLOSED_FORM.md](VOICE_CLOSED_FORM.md). |
 | `orchestration.mtls.enabled` | when true, `base_url` must be `https://…` |
 | `orchestration.mtls.material_dir` | optional; default `~/.local/share/comstar/ao-mtls` |
 | `orchestration.mtls.client_name` | optional CN for enroll (default hostname) |

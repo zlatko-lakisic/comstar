@@ -99,6 +99,58 @@ void main() {
       expect(block, isNot(contains('line-0-')));
     });
 
+    test('formatHistoryBlock can suppress news headline dumps', () {
+      final turns = [
+        const ConversationTurn(
+          role: 'user',
+          text: "What's happening in the world today?",
+          tsMs: 1,
+        ),
+        ConversationTurn(
+          role: 'assistant',
+          text:
+              "Here are some headlines from around the world today:\n"
+              "1. Something big happened at the BBC and NPR covered it too.\n"
+              "2. Another story about elections around the world today.\n"
+              "3. A third headline so this is clearly a news dump reply.",
+          tsMs: 2,
+        ),
+        const ConversationTurn(
+          role: 'user',
+          text: 'You snuck on me',
+          tsMs: 3,
+        ),
+      ];
+      final kept = ConversationMemory.formatHistoryBlock(
+        turns,
+        maxChars: 2000,
+        suppressNewsAnswers: true,
+      );
+      expect(kept, contains('You snuck on me'));
+      expect(kept, isNot(contains('headlines from around the world')));
+      final forNews = ConversationMemory.formatHistoryBlock(
+        turns,
+        maxChars: 2000,
+        suppressNewsAnswers: false,
+      );
+      expect(forNews, contains('headlines from around the world'));
+    });
+
+    test('wrapForAgent suppresses prior headlines on non-news asks', () async {
+      await memory.recordExchange(
+        userid: 'zlatko',
+        userText: "What's happening in the world today?",
+        assistantText:
+            "Here are some headlines from around the world today:\n"
+            "1. Example BBC story about something worldwide.\n"
+            "2. Example NPR story with enough text to look like a dump.",
+      );
+      final prompt = await memory.wrapForAgent('zlatko', 'You snuck on me');
+      expect(prompt, contains('You snuck on me'));
+      expect(prompt, contains('Do not recite prior world news'));
+      expect(prompt, isNot(contains('headlines from around the world')));
+    });
+
     test('guests get no wrap', () async {
       final prompt = await memory.wrapForAgent('guest', 'hello');
       expect(prompt, 'hello');

@@ -115,6 +115,7 @@ class AttentionCoordinator {
     audioServer.control = this.control;
     audioServer.onSleepAction = _onSleepHttp;
     audioServer.onAvatarOptions = applyAvatarOptions;
+    _effectiveUtteranceRouting = config.orchestration.utteranceRouting;
   }
 
   final ComstarConfig config;
@@ -162,13 +163,20 @@ class AttentionCoordinator {
           'userid': _memoryUserid,
         },
         'ao_progress': latestAoProgress,
-        'utterance_routing': config.orchestration.utteranceRouting,
+        'utterance_routing': _effectiveUtteranceRouting,
       };
 
   /// Latest Reach run status for Admin poll (null when idle).
   Map<String, Object?>? latestAoProgress;
   final AttentionMachine machine;
   final EffectRunner runner;
+
+  /// Cached effective routing for sync healthStatus; refreshed each turn / configure.
+  var _effectiveUtteranceRouting = 'split';
+
+  Future<void> refreshUtteranceRouting() async {
+    _effectiveUtteranceRouting = await session.effectiveUtteranceRouting();
+  }
 
   /// Directory of prebaked WAVs (`sorry.wav`, `offline.wav`, …). Optional.
   final String? fallbackAudioDir;
@@ -248,6 +256,7 @@ class AttentionCoordinator {
   var _announceTickCounter = 0;
 
   Future<void> start({vision.VisionPoller? visionPoller}) async {
+    await refreshUtteranceRouting();
     await audioServer.start();
     if (config.announce.enabled) {
       announce = AnnounceService(
@@ -1621,8 +1630,9 @@ class AttentionCoordinator {
   Future<void> _runDirectAgent(String text, String turnId) async {
     final turnSpan = Span('turn_total');
     try {
-      final routing = config.orchestration.utteranceRouting;
-      final split = config.orchestration.useClosedFormRouting;
+      final routing = await session.effectiveUtteranceRouting();
+      _effectiveUtteranceRouting = routing;
+      final split = routing == 'split';
 
       final local = await _tryTerminalIntent(text, turnId);
       if (local) {
@@ -1744,9 +1754,10 @@ class AttentionCoordinator {
       final clipped =
           text.length > 500 ? '${text.substring(0, 500)}…' : text;
       final memoryUser = _memoryUserid;
-      final agentText = memoryUser != null
+      var agentText = memoryUser != null
           ? await conversationMemory.wrapForAgent(memoryUser, text)
           : text;
+      agentText = guardNonNewsPrompt(agentText, text);
       final useDynamic = !pinned &&
           shouldUseDynamicChat(
             dynamicPlanning: await session.effectiveDynamicPlanning(),

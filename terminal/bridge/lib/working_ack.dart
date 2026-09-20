@@ -55,14 +55,35 @@ bool looksLikeResearch(String text) {
 }
 
 /// News / current-events phrasing that needs live `fetch_url`, not planner prose.
+///
+/// Requires an explicit news/world cue. Bare "what's happening" alone is social
+/// / open AO — not headlines.
 bool looksLikeNewsResearch(String text) {
   final t = _normalizeUtterance(text);
   if (t.isEmpty) return false;
+  if (RegExp(r'\b(news|headlines|current events|world news)\b').hasMatch(t)) {
+    return true;
+  }
+  // "what's going on / happening … in/around the world"
   return RegExp(
-    r'\b(news|headlines|current events|in the world|'
-    r'going on in (the )?world|whats going on|whats happening|'
-    r'what is going on|what is happening)\b',
+    r'\b(going on|happening) (in|around) (the )?world\b|'
+    r'\bin the world( today)?\b|'
+    r'\baround the world\b',
   ).hasMatch(t);
+}
+
+/// Guardrail appended to non-news AO prompts so prior headline turns in
+/// conversation memory do not get re-spoken.
+const kAntiNewsDriftGuard =
+    'Answer ONLY the Current request. Do not recite world news, headlines, '
+    'or current events unless that request explicitly asks for them.';
+
+/// Append [kAntiNewsDriftGuard] when the utterance is not a news ask.
+String guardNonNewsPrompt(String wrapped, String utterance) {
+  if (looksLikeNewsResearch(utterance)) return wrapped;
+  final base = wrapped.trimRight();
+  if (base.contains(kAntiNewsDriftGuard)) return wrapped;
+  return '$base\n\n$kAntiNewsDriftGuard';
 }
 
 /// Weather / forecast phrasing — pinned `weather_mcp`, never bolted onto news.
@@ -107,9 +128,12 @@ String seedWeatherPrompt(String text) {
       'headlines unless asked. If tools fail, say you could not get weather.';
 }
 
-/// Steer Reach `chat` toward stock research agents + mandatory step MCP.
+/// Steer Reach `chat` toward stock research + fetch_url for **news/world** asks.
+///
+/// General "what is / explain" research must not inherit headline + RSS constraints
+/// (that recycled news after unrelated hallway turns).
 String steerDynamicResearchChat(String wrapped, String utterance) {
-  if (!looksLikeResearch(utterance)) return wrapped;
+  if (!looksLikeNewsResearch(utterance)) return wrapped;
   final urls = kNewsFetchUrls.map((u) => '  $u').join('\n');
   final steer = 'Planning constraints for this request:\n'
       '- Prefer agent_provider_id ollama_qwen2_5_14b_instruct (or gpt_research / '

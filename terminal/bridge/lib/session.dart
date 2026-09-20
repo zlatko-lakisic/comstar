@@ -1040,6 +1040,14 @@ class ComstarSession {
     );
   }
 
+  Future<String> effectiveUtteranceRouting() async {
+    final runtime = await agentsStore.loadRuntime();
+    return agentsStore.effectiveUtteranceRouting(
+      config.orchestration,
+      runtime,
+    );
+  }
+
   /// Steer qwen tool-use: bare questions often skip MCP and invent "no access".
   static String _voicePromptForMcps({
     required String text,

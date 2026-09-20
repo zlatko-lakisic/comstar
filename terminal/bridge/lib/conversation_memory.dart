@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:comstar_bridge/config.dart';
 import 'package:comstar_bridge/durable_memory.dart';
+import 'package:comstar_bridge/working_ack.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 
@@ -415,9 +416,11 @@ class ConversationMemory {
 
     final history = await store.load(userid);
     if (history.turns.isNotEmpty) {
+      final wantNews = looksLikeNewsResearch(trimmed);
       final block = formatHistoryBlock(
         history.turns,
         maxChars: maxInjectChars,
+        suppressNewsAnswers: !wantNews,
       );
       if (block.isNotEmpty) {
         parts.add(
@@ -428,6 +431,8 @@ class ConversationMemory {
           'most recent assistant line above — treat it as the same conversation.\n'
           'Ignore prior plan summaries, progress lines, and unfinished goals — '
           'answer ONLY the Current request below.\n'
+          'Do not recite prior world news or headlines unless the Current '
+          'request explicitly asks for news, world events, or headlines.\n'
           '$block',
         );
       }
@@ -504,14 +509,22 @@ class ConversationMemory {
   ///
   /// Strips repeated timeout / empty-reply apologies so they do not bias the
   /// local planner toward acknowledging instead of researching.
+  /// When [suppressNewsAnswers] is true, drop assistant turns that look like
+  /// headline dumps so they cannot be re-spoken on unrelated requests.
   static String formatHistoryBlock(
     List<ConversationTurn> turns, {
     required int maxChars,
+    bool suppressNewsAnswers = false,
   }) {
     if (turns.isEmpty || maxChars <= 0) return '';
     final lines = <String>[];
     for (final t in turns) {
       if (t.role == 'assistant' && isTimeoutApology(t.text)) continue;
+      if (suppressNewsAnswers &&
+          t.role == 'assistant' &&
+          isNewsHeadlineDump(t.text)) {
+        continue;
+      }
       final who = t.role == 'user' ? 'Resident' : 'COMSTAR';
       final where =
           (t.terminal != null && t.terminal!.trim().isNotEmpty)
@@ -536,5 +549,26 @@ class ConversationMemory {
         t.contains("don't have a reply right now") ||
         t.contains('dont have a reply right now') ||
         t.contains('i do not have a reply right now');
+  }
+
+  /// Assistant turns that are mostly world-news dumps (memory poison).
+  static bool isNewsHeadlineDump(String text) {
+    final t = text.toLowerCase().trim();
+    if (t.isEmpty) return false;
+    if (t.contains('headlines from around the world') ||
+        t.contains('headlines from around the') ||
+        t.contains("here's what's happening") ||
+        t.contains('heres whats happening') ||
+        t.contains('here is what is happening')) {
+      return true;
+    }
+    final hasNewsCue = t.contains('headline') ||
+        t.contains(' around the world') ||
+        (t.contains('news') &&
+            (t.contains('bbc') ||
+                t.contains('npr') ||
+                t.contains('reuters') ||
+                RegExp(r'\b\d+\.\s').hasMatch(t)));
+    return hasNewsCue && t.length > 200;
   }
 }
