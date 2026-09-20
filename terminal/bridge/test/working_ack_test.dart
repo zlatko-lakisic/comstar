@@ -50,14 +50,15 @@ void main() {
   });
 
   group('seedNewsFetchPrompt', () {
-    test('embeds fetch URLs and anti-placeholder rules', () {
+    test('embeds RSS fetch URLs and anti-placeholder rules', () {
       final prompt = seedNewsFetchPrompt("What's going on in the world today?");
       expect(prompt, contains("What's going on in the world today?"));
-      expect(prompt, contains('https://www.reuters.com/'));
-      expect(prompt, contains('https://www.bbc.com/news'));
-      expect(prompt, contains('https://apnews.com/'));
+      expect(prompt, contains('https://feeds.bbci.co.uk/news/world/rss.xml'));
+      expect(prompt, contains('https://www.npr.org/rss/rss.php?id=1001'));
+      expect(prompt, isNot(contains('https://www.reuters.com/')));
       expect(prompt, contains('[Description]'));
       expect(prompt, contains('fetch_url'));
+      expect(prompt, contains('RSS'));
     });
   });
 
@@ -68,7 +69,7 @@ void main() {
         'Tell me the news',
       );
       expect(out, contains('mcp_providers: ["fetch_url"]'));
-      expect(out, contains('https://www.reuters.com/'));
+      expect(out, contains('https://feeds.bbci.co.uk/news/world/rss.xml'));
       expect(out, contains('Do not attach weather_mcp'));
       expect(out, isNot(contains('weather_mcp when useful')));
       expect(out, contains('Current request:'));

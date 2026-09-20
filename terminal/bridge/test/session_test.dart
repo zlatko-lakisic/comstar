@@ -414,8 +414,9 @@ void main() {
       );
       expect(fake.lastAgentId, ComstarSession.researchAgentId);
       expect(fake.lastMcpIds, equals(ComstarSession.researchMcpProviders));
-      expect(fake.lastText, contains('https://www.reuters.com/'));
+      expect(fake.lastText, contains('https://feeds.bbci.co.uk/news/world/rss.xml'));
       expect(fake.lastText, contains('fetch_url'));
+      expect(fake.lastText, contains('RSS'));
       expect(seen, contains('Searching…'));
     });
 

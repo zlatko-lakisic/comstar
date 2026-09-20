@@ -15,6 +15,37 @@ void main() {
       );
     });
 
+    test('skips internal completion dumps', () {
+      expect(
+        aoStatusSpeakLine(ReachRunStatus(
+          processing: true,
+          phase: 'working',
+          message:
+              'completed direct-ollama_qwen2_5_14b_instruct: ## Question',
+        )),
+        isNull,
+      );
+      expect(
+        aoStatusSpeakLine(ReachRunStatus(
+          processing: true,
+          phase: 'working',
+          message: 'starting direct-ollama_qwen2_5_14b_instruct: ## Question',
+        )),
+        isNull,
+      );
+    });
+
+    test('softens model-id consulting lines', () {
+      expect(
+        aoStatusSpeakLine(ReachRunStatus(
+          processing: true,
+          phase: 'working',
+          message: 'Consulting qwen2.5:14b-instruct…',
+        )),
+        'Looking that up…',
+      );
+    });
+
     test('skips done and empty', () {
       expect(
         aoStatusSpeakLine(ReachRunStatus(

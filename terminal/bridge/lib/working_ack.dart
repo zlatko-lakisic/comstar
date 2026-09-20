@@ -66,20 +66,23 @@ bool looksLikeNewsResearch(String text) {
 }
 
 /// HTTPS sources seeded so AO's ollama+fetch_url fast-path can run.
+/// Prefer RSS over HTML homepages — Reuters/AP/BBC HTML often 401/403 or CSS junk.
 const kNewsFetchUrls = <String>[
-  'https://www.reuters.com/',
-  'https://www.bbc.com/news',
-  'https://apnews.com/',
+  'https://feeds.bbci.co.uk/news/world/rss.xml',
+  'https://feeds.bbci.co.uk/news/rss.xml',
+  'https://www.npr.org/rss/rss.php?id=1001',
+  'https://rss.nytimes.com/services/xml/rss/nyt/World.xml',
 ];
 
 /// Direct-agent prompt: concrete URLs + anti-placeholder instructions.
 String seedNewsFetchPrompt(String text) {
   final urls = kNewsFetchUrls.join('\n');
   return '${text.trim()}\n\n'
-      'Call fetch_url / fetch on each URL below, then answer with real headlines '
-      'only in short spoken English. Never invent bracket placeholders like '
+      'Call fetch_url / fetch on each RSS URL below. Read the <title> items from '
+      'the feed XML and speak 3–5 real world headlines in short spoken English. '
+      'Do not invent stories. Never invent bracket placeholders like '
       '[Description] or [Current temperature]. Do not answer weather unless '
-      'asked. If fetch fails, say you could not fetch the news.\n'
+      'asked. If every fetch fails, say you could not fetch the news.\n'
       '$urls';
 }
 
