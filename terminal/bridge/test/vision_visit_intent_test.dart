@@ -42,6 +42,15 @@ void main() {
       expect(i?.camera, '');
     });
 
+    test('we saw around the house (hallway phrasing)', () {
+      final i = parseVisionVisitIntent(
+        'When is the last time we saw Adna around the house?',
+      );
+      expect(i?.kind, VisionVisitIntentKind.personLastSeen);
+      expect(i?.personName, 'Adna');
+      expect(i?.since, '30d');
+    });
+
     test('STT last time see variant', () {
       final i = parseVisionVisitIntent(
         'When did you last time see Adna?',
