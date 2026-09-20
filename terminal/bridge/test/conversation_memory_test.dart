@@ -32,6 +32,23 @@ void main() {
       expect(ConversationMemory.isMemoryUser(null), isFalse);
     });
 
+    test('prompt_max_turns 0 sends current request only', () async {
+      final zero = ConversationMemory(
+        store: FileConversationMemoryStore(root: tmp),
+        promptMaxTurns: 0,
+        terminalId: 'hall',
+      );
+      await zero.recordExchange(
+        userid: 'zlatko',
+        userText: 'old chatter about the hallway lights',
+        assistantText: 'Sure, I can help with lights.',
+      );
+      final prompt = await zero.wrapForAgent('zlatko', "What's the status of my home?");
+      expect(prompt, "What's the status of my home?");
+      expect(prompt, isNot(contains('Prior conversation')));
+      expect(prompt, isNot(contains('old chatter')));
+    });
+
     test('wrapForAgent is thin: recent pairs only, no facts block', () async {
       await memory.recordExchange(
         userid: 'zlatko',

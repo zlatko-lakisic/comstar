@@ -586,7 +586,7 @@ class ComstarConfig {
           : 20,
       promptMaxTurns: map.containsKey('prompt_max_turns')
           ? _requireInt(map, 'prompt_max_turns', 'memory')
-          : 2,
+          : 0,
       maxInjectChars: map.containsKey('max_inject_chars')
           ? _requireInt(map, 'max_inject_chars', 'memory')
           : 3500,
@@ -1342,7 +1342,7 @@ class MemoryConfig {
   const MemoryConfig({
     this.enabled = true,
     this.maxTurns = 20,
-    this.promptMaxTurns = 2,
+    this.promptMaxTurns = 0,
     this.maxInjectChars = 3500,
     this.storeDir = '',
     this.url = '',
@@ -1357,8 +1357,7 @@ class MemoryConfig {
   final bool enabled;
   final int maxTurns;
 
-  /// Max recent turn lines injected into AO prompts (not store retention).
-  /// Each user/assistant message counts as one turn. Default 2 ≈ one exchange.
+  /// Max recent **pairs** injected into AO prompts (0 = none; use memory MCP).
   final int promptMaxTurns;
   final int maxInjectChars;
 

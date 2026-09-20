@@ -801,8 +801,10 @@ get Nextcloud tools. Say **Nextcloud / my cloud / NAS files** so routing attache
 
 ## Conversation memory hygiene
 
-AO prompts inject at most `memory.prompt_max_turns` pairs (default 2). Durable
-facts stay in SQLite for MCP recall — they are not stuffed into every prompt.
+AO prompts inject at most `memory.prompt_max_turns` pairs (default **0** — MCP
+recall only). Durable facts stay in SQLite for MCP recall — they are not stuffed
+into every prompt. Set `prompt_max_turns: 1` or `2` only if short follow-ups need
+inline continuity without a tool call.
 
 After upgrading to thin-prompt memory, purge epistemic junk prefs once:
 

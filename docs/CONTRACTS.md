@@ -705,8 +705,9 @@ not route these through AO `time` MCP.
 (last `memory.max_turns` turns) plus durable facts (`memory.durable`) extracted
 from explicit “remember that…”, prefs, name, etc. **AO prompts** receive only a
 thin stub: the last `memory.prompt_max_turns` conversational **pairs** (default
-2), with greeter / sleep / working-ack / status / empty-apology / news-dump
-noise filtered out — **no** durable-facts block in the prompt. Guests get none.
+**0** — no rolling chat in the prompt; use dial-back `client.comstar_memory`).
+When `prompt_max_turns` > 0, greeter / sleep / working-ack / status / empty-apology /
+news-dump noise is filtered out — **no** durable-facts block in the prompt. Guests get none.
 Shared across terminals via `memory.url` → `scripts/comstar_memory_server.py`
 (SQLite FTS for facts). Older prefs/facts are recalled on demand via dial-back
 `client.comstar_memory` (CONTRACTS §5), not by stuffing the transcript or
