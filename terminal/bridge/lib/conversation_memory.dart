@@ -435,7 +435,8 @@ class ConversationMemory {
 
     if (parts.isEmpty) return trimmed;
     return '${parts.join('\n\n')}\n\n'
-        'Current request (authoritative — ignore conflicting prior goals):\n'
+        'Current request:\n'
+        '(Authoritative — ignore conflicting prior goals or plan summaries.)\n'
         '$trimmed';
   }
 
