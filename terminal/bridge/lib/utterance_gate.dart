@@ -285,8 +285,16 @@ bool looksIncompleteUtterance(String text) {
       'who is it',
       'what is it',
       'how is it',
+      'you up to', // "what are you up to?"
+      'you from', // "where are you from?"
     };
     if (completeTails.contains(last3)) return false;
+  }
+
+  // Phrasal endings that look like hanging prepositions but are complete.
+  if (words.length >= 2) {
+    final last2 = '${words[words.length - 2]} ${words.last}';
+    if (last2 == 'up to' || last2 == 'you from') return false;
   }
 
   const hanging = {
