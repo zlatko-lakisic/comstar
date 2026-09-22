@@ -90,6 +90,15 @@ void main() {
       expect(looksIncompleteUtterance('Check my email'), isFalse);
       expect(looksIncompleteUtterance("What's next?"), isFalse);
       expect(looksIncompleteUtterance('Did you see?'), isFalse);
+      expect(looksIncompleteUtterance('What are you up to?'), isFalse);
+      expect(looksIncompleteUtterance('up to? What are you up to?'), isFalse);
+      expect(
+        looksIncompleteUtterance(
+          'up to? What are you up to? I said, what are you up to?',
+        ),
+        isFalse,
+      );
+      expect(looksIncompleteUtterance('Where are you from?'), isFalse);
     });
   });
 }
