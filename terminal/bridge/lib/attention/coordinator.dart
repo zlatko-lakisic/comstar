@@ -48,6 +48,7 @@ import 'package:comstar_bridge/session.dart';
 import 'package:comstar_bridge/social_intent.dart';
 import 'package:comstar_bridge/spoken_language.dart';
 import 'package:comstar_bridge/spoken_reply.dart';
+import 'package:comstar_bridge/speak_format.dart';
 import 'package:comstar_bridge/stt.dart';
 import 'package:comstar_bridge/utterance_gate.dart';
 import 'package:comstar_bridge/admin_ops.dart';
@@ -76,7 +77,7 @@ class AttentionCoordinator {
     required this.ws,
     required this.session,
     required this.stt,
-    required this.tts,
+    required TtsEngine tts,
     required this.audioServer,
     TerminalControl? control,
     Clock? clock,
@@ -104,6 +105,7 @@ class AttentionCoordinator {
             ),
         conversationMemory =
             conversationMemory ?? ConversationMemory.fromConfig(config),
+        tts = SpeakFormatTts(tts),
         machine = AttentionMachine(
           config: config,
           clock: clock ?? SystemClock(),
@@ -1932,6 +1934,11 @@ class AttentionCoordinator {
             : response,
       });
       unawaited(_rememberExchange(userText: text, assistantText: response));
+      response = formatForSpeech(response);
+      if (response.trim().isEmpty) {
+        await _speakFallback('Sorry, I could not get a clear answer.', turnId);
+        return;
+      }
       final ttsSpan = Span('tts_total');
       final path = await tts.synthesizeToFile(response);
       _lastTtsTotal = Duration(milliseconds: ttsSpan.elapsedMs);
@@ -3662,6 +3669,10 @@ class AttentionCoordinator {
     String turnId, {
     String? rememberUserText,
   }) async {
+    spoken = formatForSpeech(spoken);
+    if (spoken.trim().isEmpty) {
+      spoken = 'Okay.';
+    }
     final ttsSpan = Span('tts_total');
     final path = await tts.synthesizeToFile(spoken);
     _lastTtsTotal = Duration(milliseconds: ttsSpan.elapsedMs);
@@ -3675,6 +3686,8 @@ class AttentionCoordinator {
 
   /// Greeter-style announce while Engaged (pairing outcome after the turn).
   Future<void> _announceEngaged(String spoken) async {
+    spoken = formatForSpeech(spoken);
+    if (spoken.trim().isEmpty) return;
     try {
       machine.context.playing = true;
       _followUpGen++;
