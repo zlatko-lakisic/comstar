@@ -1,73 +1,89 @@
-# HANDOFF — TTS engine: Kokoro on the AI server, Piper on the Pi as fallback
+# HANDOFF — TTS engine: Qwen3-TTS on Ada, Piper on the Pi as fallback
 
-**Audience:** Cursor / Claude Code, plus one human operator.
-**Companions:** `docs/CONTRACTS.md` §2, §6, §7 · `docs/IMPLEMENTATION_PLAN.md` M6 · `README.md` §Latency budget
-**Status of this document:** proposal. Nothing here is VERIFIED until TTS.0 exit criteria are met.
-**ADR target:** `docs/adr/0008-tts-engine.md` (0003 is already `speech-on-ada`).
+**Audience:** Cursor / Claude Code, plus one human operator.  
+**Companions:** `docs/CONTRACTS.md` §2, §6, §7 · `docs/IMPLEMENTATION_PLAN.md` M6 · `docs/adr/0008-tts-engine.md` · `docs/adr/0003-speech-on-ada.md`  
+**Status:** proposal (retargeted 2026-09-23). Nothing product-cut until room listen + Ada bench gates pass.  
+**ADR:** `docs/adr/0008-tts-engine.md`
 
 ---
 
-## Why we are changing this
+## Why (and why not Kokoro)
 
-Piper is the fastest and smallest local engine and also the flattest. `en_US-ryan-high` is a good Piper voice and it still reads as synthetic across a room, which is exactly the setting COMSTAR lives in. Kokoro-82M is a StyleTTS2-derived 82M-parameter model, Apache-2.0 with open weights, 24 kHz output, and sherpa-onnx supports it via `OfflineTtsKokoroModelConfig`, so this is a model swap inside the runtime we already ship, not a new service stack.
+Piper is small/fast and flat across a hallway — expected for Tier 2 resilience.  
+Kokoro-82M was chosen as a drop-in sherpa model (Apache-2.0, tiny VRAM). Listening
+and Arena (~Elo 1056 vs ~1128 top open weight) show the flatness is **the model**.
+We also already proved Kokoro gives **no early first audio** (TTFC ≈ full synth) and
+Ada `venv-tts` **cannot** get a working CUDA EP — so GPU quality/latency for Kokoro
+is blocked on ORT/sherpa, not config.
 
-The cost is that Kokoro does not fit the Pi. On the RTX 4000 Ada it should be fine — **if** the sherpa-onnx build includes the CUDA EP. TTS.0.1 must measure that; the Ada `venv-tts` package may be CPU-only today.
-
-So the engine moves to the server. That reverses the earlier "STT/TTS on the Pi for latency" decision when the choice was Piper-local versus Piper-remote. Kokoro on the Ada plus a LAN hop should beat Piper on the Pi for any utterance longer than a sentence — confirm in TTS.0.1.
+**Pick: Qwen3-TTS 1.7B on Ada** (Apache 2.0, PyTorch/transformers → Ada CUDA works
+without fixing ORT; native streaming; voice design; fits 16 GB with CPAI).  
+**Fallback try if room fails:** Chatterbox (MIT).  
+**Keep:** Piper on Pi as Tier 2 unchanged.
 
 ---
 
 ## Target architecture
 
 ```
-  Raspberry Pi 4                              AI server (RTX 4000 Ada)
+  Raspberry Pi                              AI server (RTX 4000 Ada)
 
-  comstar-bridge                              comstar-tts        :8091
-   └ lib/tts.dart                              └ sherpa-onnx + Kokoro
-      ├ primary  ──── HTTP ──────────────────────►  (GPU if EP available)
-      │
-      └ fallback ──► comstar-tts-local :8091
-                      └ sherpa-onnx + Piper
+  comstar-bridge                            comstar-tts (Reach hello.speech)
+   └ PreferReachTts                          └ Qwen3-TTS 1.7B  (Tier 1)
+      ├ primary  ──── HTTP /v1/audio/speech ──►   PyTorch + CUDA
+      │                  → wav (stream later)
+      └ fallback ──► comstar-tts :8091
+                      └ sherpa-onnx + Piper     (Tier 2)
                          en_US-ryan-high
-                         (CPU, already deployed)
 
-  assets/speech/*.wav
-   └ pre-baked with Kokoro at build time
+  assets/speech/*.wav + phrase banks
+   └ bake with the same frozen Qwen3 voice (Tier 0)
 ```
 
 | Tier | Engine | Where | Used for |
 |---|---|---|---|
-| 0 | Kokoro, baked at build time | `assets/speech/` on the Pi | Greetings, fallback lines, tones |
-| 1 | Kokoro, live | AI server | Every real answer |
-| 2 | Piper, live | Pi, CPU | Tier 1 unavailable and text not in Tier 0 |
+| 0 | Qwen3, baked | Pi assets / phrase banks | Greetings, narration lines, sorry/offline |
+| 1 | Qwen3-TTS 1.7B, live | Ada | Every real answer |
+| 2 | Piper, live | Pi CPU | Ada down / speechClient null / text not in Tier 0 |
 
-**Do not** build request-level race, mid-stream splice, or voice-matching. Health check, circuit breaker, turn-boundary failover only. Tier 0 is the resilience story.
+**Bridge stays dumb:** same `POST /v1/audio/speech` shape. Add
+`scripts/tts_server_qwen.py` next to `tts_server_kokoro.py`. Do **not** change
+`PreferReachTts`, `HttpTts`, audio server, or kiosk for the engine swap.
 
----
-
-## TTS.0 — Ground truth (verification only; no product client code)
-
-### TTS.0.1 — Kokoro on the Ada, measured
-`spike/kokoro_bench.py` + `scripts/verify_tts.sh`. Record RTF, time-to-first-chunk, VRAM, idle vs CodeProject.AI contended → `docs/BASELINES.md`.
-
-### TTS.0.2 — Confirm streaming
-Read sherpa-onnx Python API **source/docs on the installed package**. Do not guess from Piper alone. Write finding into CONTRACTS §6.
-
-### TTS.0.3 — Voice selection
-Listen on the real Pi speakers. Record pick in ADR 0008.
-
-### TTS.0.4 — Sample rate
-Kokoro 24 kHz vs Piper 22.05 kHz. Recommendation: 24 kHz canonical. CONTRACTS §2.
-
-### Exit criteria
-- [x] Contended and uncontended RTF in BASELINES.md (CPU; CUDA EP unavailable)
-- [x] Streaming answered in CONTRACTS §6 (API yes; Kokoro buffer-complete empirically)
-- [ ] Voice chosen via real speakers (TTS.0.3)
-- [ ] Canonical sample rate in CONTRACTS §2 (TTS.0.4)
-- [x] `docs/adr/0008-tts-engine.md` drafted (Proposed; 0.3/0.4 open)
+**Do not** build request-level race, mid-stream splice across engines, or
+voice-matching. Turn-boundary failover only. Tier 0 is resilience.
 
 ---
 
-## Implementation (TTS.1–TTS.8)
+## Gates (before Accept / cutover)
 
-Deferred until TTS.0 exit criteria are met. See original handoff body for task breakdown, config keys, latency table, tests, and risks.
+1. **Room listen @ ~3 m** on Pi speakers — pick voice via Qwen3 **voice design**, freeze it.  
+2. **Bench on Ada** — TTFC, RTF, VRAM idle vs CPAI contended → `docs/BASELINES.md`  
+   (do not trust ~97 ms marketing numbers on A4000).  
+3. **Canonical sample rate** → CONTRACTS §2.  
+4. Bake Tier 0 + narration banks with the frozen voice so fixed lines match live.
+
+Kokoro BASELINES §12 stays as historical evidence (CPU, no early chunk, no CUDA EP).
+
+---
+
+## Implementation sketch (after gates)
+
+1. Ada venv: PyTorch + Qwen3-TTS weights; `tts_server_qwen.py` OpenAI-compatible.  
+2. Point Reach `hello.speech` TTS URL (or `COMSTAR_TTS_URL` / override) at it.  
+3. Optional: stream first audio into bridge later — **not** required for first cut if
+   full WAV still beats Kokoro TTFC; prefer native stream when wiring is cheap.  
+4. Leave `comstar-tts` Piper unit on Pi.  
+5. Retire Kokoro as product Tier 1 in runbooks; keep script for archaeology.
+
+Community crib: [Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS),
+[OpenAI FastAPI wrapper](https://github.com/groxaxo/Qwen3-TTS-Openai-Fastapi),
+[streaming engine](https://github.com/X-Square-Robot/Qwen3TTS-Streaming).
+
+---
+
+## As-built reminder (unchanged by this retarget)
+
+- Prefer Reach `speechClient.synthesize`; else `COMSTAR_TTS_URL` / Piper (`speech_routing.dart`, ADR 0003).  
+- `formatForSpeech` before synth (`speak_format.dart`).  
+- Kiosk plays loopback `audioUrl`; follow-up on `speak.ended` (ADR 0001).
