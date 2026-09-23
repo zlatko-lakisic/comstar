@@ -685,6 +685,9 @@ Future<bool> _defaultHealthProbe(String url) async {
   final client = HttpClient();
   try {
     client.connectionTimeout = const Duration(seconds: 4);
+    // Ada AO health is HTTPS with a private/self-signed (or mTLS) cert.
+    // Reachability matters more than PKI here — curl -k equivalent.
+    client.badCertificateCallback = (_, __, ___) => true;
     final uri = Uri.parse(url);
     final req = await client.getUrl(uri).timeout(const Duration(seconds: 4));
     final resp = await req.close().timeout(const Duration(seconds: 6));

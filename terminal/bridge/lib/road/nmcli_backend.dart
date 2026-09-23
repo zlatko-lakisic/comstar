@@ -339,6 +339,24 @@ class NmcliVpnBackend {
       'connection.autoconnect',
       'no',
     ]);
+    // Phone-home must not steal the default route / DNS (MikroTik also has
+    // redirect-gateway=disabled). Reach Ada via pushed/connected routes only.
+    await _run([
+      'connection',
+      'modify',
+      'id',
+      connectionName,
+      'ipv4.never-default',
+      'yes',
+    ]);
+    await _run([
+      'connection',
+      'modify',
+      'id',
+      connectionName,
+      'ipv6.never-default',
+      'yes',
+    ]);
     logInfo('road_ovpn_applied', 'OpenVPN profile applied', data: {
       'connection': connectionName,
       'password_tls': user.isNotEmpty,
