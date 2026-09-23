@@ -357,6 +357,16 @@ class NmcliVpnBackend {
       'ipv6.never-default',
       'yes',
     ]);
+    // Home nets needed for Ada / HA when redirect-gateway is off. MikroTik
+    // should also push these; client routes cover older server configs.
+    await _run([
+      'connection',
+      'modify',
+      'id',
+      connectionName,
+      'ipv4.routes',
+      '10.0.10.0/24,192.168.89.0/24,192.168.90.0/24,172.16.90.0/24',
+    ]);
     logInfo('road_ovpn_applied', 'OpenVPN profile applied', data: {
       'connection': connectionName,
       'password_tls': user.isNotEmpty,

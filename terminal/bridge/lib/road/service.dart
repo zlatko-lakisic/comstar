@@ -543,8 +543,8 @@ class RoadService {
     lastActiveConnection = usedName;
     lastActiveProtocol = usedProto;
 
-    // Brief settle, then health probe.
-    await Future<void>.delayed(const Duration(seconds: 2));
+    // Brief settle for pushed routes / DNS, then health probe.
+    await Future<void>.delayed(const Duration(seconds: 5));
     final healthy = await _probeHealth();
     if (healthy) {
       consecutiveFailures = 0;

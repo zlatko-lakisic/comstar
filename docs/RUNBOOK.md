@@ -404,6 +404,15 @@ Do not rely on Android/OpenVPN 2.6 defaults (ChaCha20 / GCM-first) — those res
 with `unknown cipher alg or key size`. Keep `proto tcp` + client cert + PPP user.
 Site-to-site Mostar remains **L2TP**, not this phone OVPN path.
 
+**Required:** OVPN server `push-routes` must include Ada’s LAN (and any other
+home nets the Pi needs) because COMSTAR uses `never-default` (no full tunnel):
+
+```text
+10.0.10.0 255.255.255.0,192.168.89.0 255.255.255.0,192.168.90.0 255.255.255.0,172.16.90.0 255.255.255.0
+```
+
+Empty `push-routes` → tunnel up but Ada unreachable → health fail → reconnect loop.
+
 **3. Monitor**
 
 With **Enable health monitor** on and off-home: periodic reconcile keeps the
