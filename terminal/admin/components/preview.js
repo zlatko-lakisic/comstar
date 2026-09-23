@@ -67,9 +67,8 @@ function drawVisionOverlays(canvas, img, overlays) {
     const h = (o.y_max - o.y_min) * box.scale;
     if (w <= 0 || h <= 0) continue;
 
-    const isFace = o.kind === 'face';
-    const known = isFace && o.label && o.label !== 'unknown';
-    const stroke = known ? '#3dffa8' : isFace ? '#ffb020' : '#5eb8ff';
+    const known = o.label && o.label !== 'unknown';
+    const stroke = known ? '#3dffa8' : '#ffb020';
     ctx.strokeStyle = stroke;
     ctx.lineWidth = 2;
     ctx.strokeRect(x, y, w, h);
@@ -77,7 +76,7 @@ function drawVisionOverlays(canvas, img, overlays) {
     const conf = typeof o.confidence === 'number'
       ? ` ${(o.confidence * 100).toFixed(0)}%`
       : '';
-    const text = `${o.label || o.kind}${conf}`;
+    const text = `${o.label || 'unknown'}${conf}`;
     ctx.font = '600 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
     const tw = ctx.measureText(text).width + 8;
     const th = 16;

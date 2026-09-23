@@ -84,7 +84,7 @@ the dialog is open (no always-on capture). Auth is the same LAN token as other
 | `GET /admin/api/preview/panel.ws` | WebSocket (RFB) | Bridge starts loopback `wayvnc -w -d` (view-only, WebSocket) while ≥1 client is connected; proxies bytes. **503** if preview disabled / wayvnc missing / labwc not ready. Admin embeds vendored noVNC. |
 | `GET /admin/api/preview/panel.mjpeg` | `multipart/x-mixed-replace` JPEG | Only when `admin.preview_panel: grim`. Timed `grim` (+ PNG→ffmpeg if needed). Prefer wayvnc. |
 | `GET /admin/api/preview/camera.mjpeg` | `multipart/x-mixed-replace` JPEG | Prefer last JPEG from the vision poller (`COMSTAR_VISION=1`); else short-lived ffmpeg V4L2 grab at `admin.preview_camera_fps` only while subscribed. **503** if preview disabled or no camera/vision frames. |
-| `GET /admin/api/preview/vision` | JSON | `{ok, vision_active, ts_ms, overlays:[{kind,label,confidence,x_min,y_min,x_max,y_max}]}` — pixel boxes from the last vision poll (`kind` is `person` \| `face`; face `label` is userid or `unknown`). Empty when no person / vision off. Admin Live draws these on the camera pane. |
+| `GET /admin/api/preview/vision` | JSON | `{ok, vision_active, ts_ms, overlays:[{kind,label,confidence,x_min,y_min,x_max,y_max}]}` — pixel boxes from the last vision poll (`kind` is `person` \| `face`). `label` is FreeIPA `displayName` (first+last) when the face is known, else `unknown`. Admin Live draws these on the camera pane. |
 
 **Config** (`admin`):
 

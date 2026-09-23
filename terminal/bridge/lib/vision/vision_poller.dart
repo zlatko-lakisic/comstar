@@ -42,7 +42,8 @@ final class VisionRecovered extends VisionEvent {
   const VisionRecovered();
 }
 
-/// Poll loop: detection at current fps; recognize only when needed.
+/// Poll loop: detection at current fps; face recognize for Admin overlays
+/// always while a person is present; identity votes only when needed.
 class VisionPoller {
   VisionPoller({
     required this.camera,
@@ -51,6 +52,7 @@ class VisionPoller {
     required this.config,
     required this.clock,
     this.absentFrameThreshold = 3,
+    this.resolveLabel,
   });
 
   final Camera camera;
@@ -59,6 +61,9 @@ class VisionPoller {
   final VisionConfig config;
   final Clock clock;
   final int absentFrameThreshold;
+
+  /// Optional faceId → display name (e.g. LDAP first+last) for Live overlays.
+  Future<String?> Function(String faceId)? resolveLabel;
 
   final _events = StreamController<VisionEvent>.broadcast(sync: true);
   StreamSubscription<Uint8List>? _frameSub;
@@ -141,11 +146,13 @@ class VisionPoller {
           (a, b) => a.confidence >= b.confidence ? a : b,
         );
         _emit(VisionPersonDetected(best.confidence));
-        _setPersonOverlays(person);
-
-        if (_personPresent && identity.needsRecognition) {
-          await _recognize(frame);
-        }
+        // Default label is unknown until face recognize stamps a name.
+        _setUnknownPersonOverlays(person);
+        // Always recognize for Live boxes; identity votes only when needed.
+        await _recognize(
+          frame,
+          applyIdentity: identity.needsRecognition,
+        );
       } else {
         _personPresent = false;
         _absentFrames++;
@@ -160,16 +167,22 @@ class VisionPoller {
     }
   }
 
-  Future<void> _recognize(Uint8List frame) async {
+  Future<void> _recognize(
+    Uint8List frame, {
+    required bool applyIdentity,
+  }) async {
     final matches = await client.recognizeFace(frame);
     if (matches.isEmpty) {
       // No face this frame (angle/blur/cutoff). Keep vote progress while the
       // person is still present — wiping here blocked engagement whenever CPAI
       // flipped between success and unsuccessful on adjacent frames.
+      // Overlays stay as "unknown" from person detect.
       return;
     }
 
-    _mergeFaceOverlays(matches);
+    await _mergeFaceOverlays(matches);
+
+    if (!applyIdentity) return;
 
     // Multi-user: emit every known face above threshold. Single-user path
     // still uses the best match for vote locking.
@@ -212,12 +225,12 @@ class VisionPoller {
     }
   }
 
-  void _setPersonOverlays(List<Detection> persons) {
+  void _setUnknownPersonOverlays(List<Detection> persons) {
     _lastOverlays = [
       for (final d in persons)
         VisionOverlay(
           kind: 'person',
-          label: 'person',
+          label: 'unknown',
           confidence: d.confidence,
           xMin: d.xMin,
           yMin: d.yMin,
@@ -228,19 +241,32 @@ class VisionPoller {
     _lastOverlayTsMs = clock.nowMs;
   }
 
-  void _mergeFaceOverlays(List<FaceMatch> matches) {
-    final faces = <VisionOverlay>[
-      for (final m in matches)
+  Future<void> _mergeFaceOverlays(List<FaceMatch> matches) async {
+    final faces = <VisionOverlay>[];
+    for (final m in matches) {
+      var label = 'unknown';
+      if (m.isKnown) {
+        final resolver = resolveLabel;
+        if (resolver != null) {
+          final named = await resolver(m.userid);
+          final trimmed = named?.trim();
+          label = (trimmed != null && trimmed.isNotEmpty) ? trimmed : 'unknown';
+        } else {
+          label = m.userid;
+        }
+      }
+      faces.add(
         VisionOverlay(
           kind: 'face',
-          label: m.isKnown ? m.userid : 'unknown',
+          label: label,
           confidence: m.confidence,
           xMin: m.xMin,
           yMin: m.yMin,
           xMax: m.xMax,
           yMax: m.yMax,
         ),
-    ];
+      );
+    }
     // Keep person boxes that don't heavily overlap a face (multi-person).
     final keptPersons = _lastOverlays.where((o) {
       if (o.kind != 'person') return false;
