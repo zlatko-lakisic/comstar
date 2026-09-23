@@ -54,7 +54,7 @@ never require the admin token.
 |---|---|---|---|
 | `/admin/` | GET | token if LAN-bound | Static admin UI |
 | `/admin/health` `/health` | GET | none | Attention/session/WS snapshot (heal script) |
-| `/admin/api/status` | GET | token if LAN-bound | Extended status + host metrics + AO/CPAI probes (AO probe uses mTLS client cert when `orchestration.mtls.enabled`) |
+| `/admin/api/status` | GET | token if LAN-bound | Extended status + host metrics + AO/CPAI probes (AO probe uses mTLS client cert when `orchestration.mtls.enabled`). Includes `bind` (socket bind), `listen_ip` / `listen_kind` (`lan`\|`wlan`\|`vpn`\|`loopback`) for the address the client is using / preferred host IPv4. |
 | `/admin/api/logs` | GET | token if LAN-bound | SSE `journalctl --user` tail |
 | `/admin/api/restart` | POST | token if LAN-bound | `{unit: bridge\|audio\|kiosk\|stt\|health\|all}` |
 | `/admin/api/reboot` | POST | token if LAN-bound | `{confirm: "reboot"}` → `sudo /sbin/reboot` |

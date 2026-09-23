@@ -299,10 +299,15 @@ function renderChrome(status) {
   els.clock.textContent = fmtClock();
 
   const lan = !!status.lan_bound;
+  const kind = String(status.listen_kind || (lan ? 'lan' : 'loopback')).toUpperCase();
+  const ip = status.listen_ip || status.bind || (lan ? '0.0.0.0' : '127.0.0.1');
   els.bindBadge.textContent = lan
-    ? `LAN ${status.bind || '0.0.0.0'}:${status.port || 8781}`
+    ? `${kind} ${ip}:${status.port || 8781}`
     : 'LOOPBACK';
   els.bindBadge.classList.toggle('badge--amber', lan);
+  els.bindBadge.title = lan
+    ? `Admin bound on all interfaces; showing ${kind} address`
+    : 'Admin bound to loopback only';
   els.lanRule.hidden = !lan;
 
   els.devBadge.hidden = !status.inject_enabled;

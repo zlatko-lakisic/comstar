@@ -18,6 +18,7 @@ import 'package:comstar_bridge/host_metrics.dart';
 import 'package:comstar_bridge/house_presence.dart';
 import 'package:comstar_bridge/log.dart';
 import 'package:comstar_bridge/admin_ops.dart';
+import 'package:comstar_bridge/admin_listen_endpoint.dart';
 import 'package:comstar_bridge/admin_preview.dart';
 import 'package:comstar_bridge/admin_wayvnc.dart';
 import 'package:comstar_bridge/ao_mtls/service.dart';
@@ -228,7 +229,7 @@ class AdminServer {
       }
 
       if (request.method == 'GET' && adminPath == '/admin/api/status') {
-        await _writeJson(request, 200, await _status());
+        await _writeJson(request, 200, await _status(request));
         return;
       }
 
@@ -369,7 +370,7 @@ class AdminServer {
     }
   }
 
-  Future<Map<String, Object?>> _status() async {
+  Future<Map<String, Object?>> _status([HttpRequest? request]) async {
     final base = Map<String, Object?>.from(coordinator.healthStatus());
     base['inject_enabled'] = injectEnabled;
     base['lan_bound'] = lanBound;
@@ -377,6 +378,22 @@ class AdminServer {
     base['hostname'] = Platform.localHostname;
     base['port'] = port;
     base['bind'] = lanBound ? '0.0.0.0' : '127.0.0.1';
+    if (lanBound) {
+      try {
+        final listen = await resolveListenEndpoint(
+          hostHeader: request?.headers.value(HttpHeaders.hostHeader),
+        );
+        if (listen != null) {
+          base['listen_ip'] = listen.ip;
+          base['listen_kind'] = listen.kind;
+        }
+      } on Object {
+        // leave unset — UI falls back to bind
+      }
+    } else {
+      base['listen_ip'] = '127.0.0.1';
+      base['listen_kind'] = 'loopback';
+    }
     try {
       final up = await File('/proc/uptime').readAsString();
       final secs = double.tryParse(up.split(RegExp(r'\s+')).first);
