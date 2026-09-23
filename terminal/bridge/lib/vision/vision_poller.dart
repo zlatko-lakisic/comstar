@@ -6,6 +6,7 @@ import 'package:comstar_bridge/config.dart';
 import 'package:comstar_bridge/vision/camera.dart';
 import 'package:comstar_bridge/vision/cpai_client.dart';
 import 'package:comstar_bridge/vision/identity.dart';
+import 'package:comstar_bridge/vision/models.dart';
 
 /// Events emitted by the vision poll loop for the attention machine.
 sealed class VisionEvent {
@@ -66,11 +67,19 @@ class VisionPoller {
   var _absentFrames = 0;
   var _busy = false;
   Uint8List? _lastFrameJpeg;
+  List<VisionOverlay> _lastOverlays = const [];
+  var _lastOverlayTsMs = 0;
 
   Stream<VisionEvent> get events => _events.stream;
 
   /// Latest camera JPEG (for Admin Live view tap). Not persisted.
   Uint8List? get lastFrameJpeg => _lastFrameJpeg;
+
+  /// Last person/face boxes aligned with [lastFrameJpeg] (Admin overlay).
+  List<VisionOverlay> get lastOverlays =>
+      List<VisionOverlay>.unmodifiable(_lastOverlays);
+
+  int get lastOverlayTsMs => _lastOverlayTsMs;
 
   double get targetFps => _targetFps;
 
@@ -130,6 +139,7 @@ class VisionPoller {
           (a, b) => a.confidence >= b.confidence ? a : b,
         );
         _emit(VisionPersonDetected(best.confidence));
+        _setPersonOverlays(person);
 
         if (_personPresent && identity.needsRecognition) {
           await _recognize(frame);
@@ -137,6 +147,8 @@ class VisionPoller {
       } else {
         _personPresent = false;
         _absentFrames++;
+        _lastOverlays = const [];
+        _lastOverlayTsMs = clock.nowMs;
         if (_absentFrames >= absentFrameThreshold) {
           _emit(const VisionPersonAbsent());
         }
@@ -154,6 +166,8 @@ class VisionPoller {
       // flipped between success and unsuccessful on adjacent frames.
       return;
     }
+
+    _mergeFaceOverlays(matches);
 
     // Multi-user: emit every known face above threshold. Single-user path
     // still uses the best match for vote locking.
@@ -194,6 +208,62 @@ class VisionPoller {
       case IdentityVotePending():
         break;
     }
+  }
+
+  void _setPersonOverlays(List<Detection> persons) {
+    _lastOverlays = [
+      for (final d in persons)
+        VisionOverlay(
+          kind: 'person',
+          label: 'person',
+          confidence: d.confidence,
+          xMin: d.xMin,
+          yMin: d.yMin,
+          xMax: d.xMax,
+          yMax: d.yMax,
+        ),
+    ];
+    _lastOverlayTsMs = clock.nowMs;
+  }
+
+  void _mergeFaceOverlays(List<FaceMatch> matches) {
+    final faces = <VisionOverlay>[
+      for (final m in matches)
+        VisionOverlay(
+          kind: 'face',
+          label: m.isKnown ? m.userid : 'unknown',
+          confidence: m.confidence,
+          xMin: m.xMin,
+          yMin: m.yMin,
+          xMax: m.xMax,
+          yMax: m.yMax,
+        ),
+    ];
+    // Keep person boxes that don't heavily overlap a face (multi-person).
+    final keptPersons = _lastOverlays.where((o) {
+      if (o.kind != 'person') return false;
+      for (final f in faces) {
+        if (_iou(o, f) > 0.3) return false;
+      }
+      return true;
+    });
+    _lastOverlays = [...keptPersons, ...faces];
+    _lastOverlayTsMs = clock.nowMs;
+  }
+
+  static double _iou(VisionOverlay a, VisionOverlay b) {
+    final x1 = a.xMin > b.xMin ? a.xMin : b.xMin;
+    final y1 = a.yMin > b.yMin ? a.yMin : b.yMin;
+    final x2 = a.xMax < b.xMax ? a.xMax : b.xMax;
+    final y2 = a.yMax < b.yMax ? a.yMax : b.yMax;
+    final iw = x2 - x1;
+    final ih = y2 - y1;
+    if (iw <= 0 || ih <= 0) return 0;
+    final inter = iw * ih;
+    final areaA = (a.xMax - a.xMin) * (a.yMax - a.yMin);
+    final areaB = (b.xMax - b.xMin) * (b.yMax - b.yMin);
+    final union = areaA + areaB - inter;
+    return union <= 0 ? 0 : inter / union;
   }
 
   void _emit(VisionEvent event) {

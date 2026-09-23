@@ -152,6 +152,55 @@ void main() {
       await poller.dispose();
     });
 
+    test('caches person then face overlays for admin preview', () async {
+      final poller = VisionPoller(
+        camera: FakeCamera([fakeJpegFrame()]),
+        client: client,
+        identity: identity,
+        config: _visionConfig(server.baseUri.toString()),
+        clock: clock,
+      );
+
+      await poller.pollOnce(fakeJpegFrame());
+      final overlays = poller.lastOverlays;
+      expect(overlays, isNotEmpty);
+      expect(overlays.any((o) => o.kind == 'face' && o.label == '_probe'), isTrue);
+      final face = overlays.firstWhere((o) => o.kind == 'face');
+      expect(face.toJson()['x_min'], 174);
+      expect(face.toJson()['y_max'], 373);
+
+      await poller.dispose();
+    });
+
+    test('clears overlays when person absent', () async {
+      await server.stop();
+      server = FakeCpaiServer(
+        detectionFixture: const <String, dynamic>{
+          'success': true,
+          'predictions': <dynamic>[],
+        },
+      );
+      await server.start();
+      client.dispose();
+      client = CpaiClient(
+        config: _visionConfig(server.baseUri.toString()),
+      );
+
+      final poller = VisionPoller(
+        camera: FakeCamera([fakeJpegFrame()]),
+        client: client,
+        identity: identity,
+        config: _visionConfig(server.baseUri.toString()),
+        clock: clock,
+        absentFrameThreshold: 1,
+      );
+
+      await poller.pollOnce(fakeJpegFrame());
+      expect(poller.lastOverlays, isEmpty);
+
+      await poller.dispose();
+    });
+
     test('person absent after threshold frames', () async {
       await server.stop();
       server = FakeCpaiServer(

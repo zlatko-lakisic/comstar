@@ -194,6 +194,12 @@ class AttentionCoordinator {
   /// Latest vision JPEG for Admin Live view (null when vision off / no frames).
   Uint8List? get visionLastJpeg => _visionPoller?.lastFrameJpeg;
 
+  /// Last person/face boxes for Admin Live camera overlay.
+  List<vision.VisionOverlay> get visionLastOverlays =>
+      _visionPoller?.lastOverlays ?? const [];
+
+  int get visionLastOverlayTsMs => _visionPoller?.lastOverlayTsMs ?? 0;
+
   /// True when a vision poller was started with this coordinator.
   bool get visionActive => _visionPoller != null;
   Future<void>? _sessionOpenFuture;

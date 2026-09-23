@@ -254,6 +254,12 @@ class AdminServer {
         return;
       }
 
+      if (request.method == 'GET' &&
+          adminPath == '/admin/api/preview/vision') {
+        await _handlePreviewVision(request);
+        return;
+      }
+
       if (request.method == 'GET' && adminPath == '/admin/api/logs') {
         await _streamLogs(request);
         return;
@@ -622,6 +628,24 @@ class AdminServer {
         'hint': cameraPreview.unavailableHint,
       });
     }
+  }
+
+  Future<void> _handlePreviewVision(HttpRequest request) async {
+    if (!config.admin.previewEnabled) {
+      await _writeJson(request, 503, {
+        'ok': false,
+        'error': 'preview_disabled',
+        'hint': 'Set admin.preview_enabled: true',
+      });
+      return;
+    }
+    final overlays = coordinator.visionLastOverlays;
+    await _writeJson(request, 200, {
+      'ok': true,
+      'vision_active': coordinator.visionActive,
+      'ts_ms': coordinator.visionLastOverlayTsMs,
+      'overlays': [for (final o in overlays) o.toJson()],
+    });
   }
 
   Future<bool> _unitActive(String unit) async {

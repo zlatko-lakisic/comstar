@@ -1,4 +1,4 @@
-/** Admin Live view — wayvnc panel (noVNC) + camera MJPEG. */
+/** Admin Live view — wayvnc panel (noVNC) + camera MJPEG + vision boxes. */
 
 import RFB from '../vendor/novnc/core/rfb.js';
 
@@ -18,10 +18,83 @@ function wsUrlFromApi(api, path) {
   return u.toString();
 }
 
+/** Map object-fit:contain letterbox so pixel boxes align with the JPEG. */
+function containRect(frameW, frameH, naturalW, naturalH) {
+  if (!frameW || !frameH || !naturalW || !naturalH) {
+    return { x: 0, y: 0, w: frameW, h: frameH, scale: 1 };
+  }
+  const scale = Math.min(frameW / naturalW, frameH / naturalH);
+  const w = naturalW * scale;
+  const h = naturalH * scale;
+  return {
+    x: (frameW - w) / 2,
+    y: (frameH - h) / 2,
+    w,
+    h,
+    scale,
+  };
+}
+
+function drawVisionOverlays(canvas, img, overlays) {
+  if (!canvas || !img) return;
+  const parent = canvas.parentElement;
+  const cw = parent?.clientWidth || img.clientWidth || 0;
+  const ch = parent?.clientHeight || img.clientHeight || 0;
+  if (!cw || !ch) return;
+
+  const dpr = window.devicePixelRatio || 1;
+  if (canvas.width !== Math.round(cw * dpr) || canvas.height !== Math.round(ch * dpr)) {
+    canvas.width = Math.round(cw * dpr);
+    canvas.height = Math.round(ch * dpr);
+    canvas.style.width = `${cw}px`;
+    canvas.style.height = `${ch}px`;
+  }
+
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cw, ch);
+
+  const nw = img.naturalWidth || 0;
+  const nh = img.naturalHeight || 0;
+  if (!nw || !nh || !overlays?.length) return;
+
+  const box = containRect(cw, ch, nw, nh);
+  for (const o of overlays) {
+    const x = box.x + o.x_min * box.scale;
+    const y = box.y + o.y_min * box.scale;
+    const w = (o.x_max - o.x_min) * box.scale;
+    const h = (o.y_max - o.y_min) * box.scale;
+    if (w <= 0 || h <= 0) continue;
+
+    const isFace = o.kind === 'face';
+    const known = isFace && o.label && o.label !== 'unknown';
+    const stroke = known ? '#3dffa8' : isFace ? '#ffb020' : '#5eb8ff';
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, w, h);
+
+    const conf = typeof o.confidence === 'number'
+      ? ` ${(o.confidence * 100).toFixed(0)}%`
+      : '';
+    const text = `${o.label || o.kind}${conf}`;
+    ctx.font = '600 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+    const tw = ctx.measureText(text).width + 8;
+    const th = 16;
+    const ty = Math.max(0, y - th);
+    ctx.fillStyle = 'rgba(0,0,0,0.65)';
+    ctx.fillRect(x, ty, tw, th);
+    ctx.fillStyle = stroke;
+    ctx.fillText(text, x + 4, ty + 12);
+  }
+}
+
 export function createLivePreview({ api, modalRoot, button }) {
   let open = false;
   let onKey = null;
   let rfb = null;
+  let visionTimer = null;
+  let onVisionResize = null;
 
   function setButtonState(preview) {
     if (!button) return;
@@ -38,6 +111,14 @@ export function createLivePreview({ api, modalRoot, button }) {
   }
 
   function stopStreams() {
+    if (visionTimer) {
+      clearInterval(visionTimer);
+      visionTimer = null;
+    }
+    if (onVisionResize) {
+      window.removeEventListener('resize', onVisionResize);
+      onVisionResize = null;
+    }
     if (rfb) {
       try {
         rfb.disconnect();
@@ -48,6 +129,7 @@ export function createLivePreview({ api, modalRoot, button }) {
     }
     const panelImg = modalRoot.querySelector('#previewPanelImg');
     const camImg = modalRoot.querySelector('#previewCameraImg');
+    const overlay = modalRoot.querySelector('#previewCameraOverlay');
     if (panelImg) {
       panelImg.removeAttribute('src');
       panelImg.onload = null;
@@ -57,6 +139,13 @@ export function createLivePreview({ api, modalRoot, button }) {
       camImg.removeAttribute('src');
       camImg.onload = null;
       camImg.onerror = null;
+    }
+    if (overlay) {
+      const ctx = overlay.getContext?.('2d');
+      if (ctx) {
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, overlay.width, overlay.height);
+      }
     }
   }
 
@@ -110,6 +199,27 @@ export function createLivePreview({ api, modalRoot, button }) {
     panelImg.src = api.url('/api/preview/panel.mjpeg');
   }
 
+  function startVisionOverlay(camImg, canvas) {
+    let lastOverlays = [];
+    const redraw = () => drawVisionOverlays(canvas, camImg, lastOverlays);
+
+    const poll = async () => {
+      if (!open) return;
+      try {
+        const data = await api.get('/api/preview/vision');
+        lastOverlays = Array.isArray(data?.overlays) ? data.overlays : [];
+        redraw();
+      } catch (_) {
+        // keep last boxes; stream may still be fine
+      }
+    };
+
+    onVisionResize = redraw;
+    window.addEventListener('resize', onVisionResize);
+    visionTimer = setInterval(poll, 400);
+    poll();
+  }
+
   async function openModal() {
     if (open) return;
     open = true;
@@ -146,6 +256,7 @@ export function createLivePreview({ api, modalRoot, button }) {
               <div class="preview-pane__label">Camera</div>
               <div class="preview-pane__frame">
                 <img id="previewCameraImg" alt="Hallway camera" />
+                <canvas id="previewCameraOverlay" class="preview-pane__overlay" aria-hidden="true"></canvas>
               </div>
               <p class="preview-pane__status mono" id="previewCameraStatus">connecting…</p>
             </div>
@@ -157,6 +268,7 @@ export function createLivePreview({ api, modalRoot, button }) {
     const panelStatus = modalRoot.querySelector('#previewPanelStatus');
     const camStatus = modalRoot.querySelector('#previewCameraStatus');
     const camImg = modalRoot.querySelector('#previewCameraImg');
+    const camOverlay = modalRoot.querySelector('#previewCameraOverlay');
 
     modalRoot.querySelector('#previewClose')?.addEventListener('click', close);
     modalRoot.querySelector('.modal--preview')?.addEventListener('click', (e) => {
@@ -190,10 +302,14 @@ export function createLivePreview({ api, modalRoot, button }) {
       paneStatus(camStatus, camHint || 'unavailable', 'bad');
     } else {
       paneStatus(camStatus, 'connecting…', 'amber');
-      camImg.onload = () => paneStatus(camStatus, 'live', 'live');
+      camImg.onload = () => {
+        paneStatus(camStatus, 'live', 'live');
+        drawVisionOverlays(camOverlay, camImg, []);
+      };
       camImg.onerror = () =>
         paneStatus(camStatus, camHint || 'unavailable', 'bad');
       camImg.src = api.url('/api/preview/camera.mjpeg');
+      startVisionOverlay(camImg, camOverlay);
     }
   }
 
