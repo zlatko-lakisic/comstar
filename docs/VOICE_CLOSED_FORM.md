@@ -21,6 +21,10 @@ reboot, health); Google / Nextcloud / channel **pairing**; and **home status**
 overview (“status of my home”, “how’s the house”) — short HA spoken summary so
 TTS does not read long AO markdown.
 
+When AO still returns markdown (lists, bold, headings, links, fences), the bridge
+runs `formatForSpeech` before every TTS call so the voice reads natural prose
+instead of markup characters.
+
 Lanes: `bridge-local` | `pinned-ao` | `open-ao` | `defer`.
 
 Regression utterances: `terminal/bridge/test/fixtures/closed_form_utterances.yaml`.
