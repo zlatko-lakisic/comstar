@@ -36,6 +36,9 @@ class HttpAudioServer {
   Future<Map<String, dynamic>?> Function(Map<String, dynamic> options)?
       onAvatarOptions;
 
+  /// Optional extra readiness (kiosk/audio WS) for splash gate.
+  Map<String, Object?> Function()? readinessExtra;
+
   /// Last options accepted via `/control/avatar` (for GET).
   Map<String, dynamic> _avatarOptions = const {
     'bloom': 3,
@@ -77,6 +80,9 @@ class HttpAudioServer {
     }
 
     if (path == 'kiosk' || path.startsWith('kiosk/')) {
+      if (path == 'kiosk/ready.json' || path == 'kiosk/ready') {
+        return _serveReady();
+      }
       logDebug('kiosk_http', 'serve', data: {'path': path});
       return _serveKiosk(path);
     }
@@ -245,6 +251,92 @@ class HttpAudioServer {
         body: jsonEncode(body),
         headers: {'Content-Type': 'application/json'},
       );
+
+  /// Splash gate: bridge is up; wait for HDMI speaker sink before avatar UI.
+  /// Does **not** require kiosk WS (chicken-and-egg — kiosk connects after splash).
+  Response _serveReady() {
+    final preferred =
+        Platform.environment['COMSTAR_SPEAKER_SOURCE']?.trim().isNotEmpty == true
+            ? Platform.environment['COMSTAR_SPEAKER_SOURCE']!.trim()
+            : (control?.preferredSink ?? 'comstar_hdmi');
+
+    final speaker = _speakerReady(preferred);
+    final extra = readinessExtra?.call() ?? const <String, Object?>{};
+    final audioConnected = extra['audio_connected'] == true;
+
+    final speakerOk = speaker['ok'] == true;
+    final waiting = <String>[];
+    if (!speakerOk) waiting.add('speaker');
+    if (!audioConnected) waiting.add('audio');
+
+    // Gate on speaker sink only — audio WS is informational (splash status).
+    final ok = speakerOk;
+
+    final body = <String, Object?>{
+      'ok': ok,
+      'bridge': true,
+      'speaker': speaker['ok'] == true,
+      'speaker_sink': speaker['sink'],
+      'speaker_want': preferred,
+      'audio_connected': audioConnected,
+      'kiosk_connected': extra['kiosk_connected'] == true,
+      'waiting': waiting,
+      'status': ok
+          ? 'ready'
+          : 'Waiting for speaker…',
+    };
+    return Response.ok(
+      utf8.encode(jsonEncode(body)),
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Cache-Control': 'no-store',
+        'Access-Control-Allow-Origin': '*',
+      },
+    );
+  }
+
+  Map<String, Object?> _speakerReady(String preferred) {
+    final sinks = _listSinkNames();
+    final hasPreferred = sinks.contains(preferred);
+    final def = _defaultSink();
+    final ok = hasPreferred && def == preferred;
+    return {
+      'ok': ok,
+      'sink': def,
+      'has_preferred': hasPreferred,
+    };
+  }
+
+  List<String> _listSinkNames() {
+    try {
+      final r = Process.runSync('pactl', ['list', 'short', 'sinks']);
+      if (r.exitCode != 0) return const [];
+      return r.stdout
+          .toString()
+          .trim()
+          .split('\n')
+          .where((l) => l.trim().isNotEmpty)
+          .map((l) {
+            final parts = l.split('\t');
+            return parts.length >= 2 ? parts[1] : '';
+          })
+          .where((n) => n.isNotEmpty)
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  String? _defaultSink() {
+    try {
+      final r = Process.runSync('pactl', ['get-default-sink']);
+      if (r.exitCode != 0) return null;
+      final n = r.stdout.toString().trim();
+      return n.isEmpty ? null : n;
+    } catch (_) {
+      return null;
+    }
+  }
 
   Future<Response> _serveKiosk(String urlPath) async {
     final root = kioskRoot;

@@ -71,23 +71,20 @@ ensure_splash_server() {
 
 ensure_splash_server || true
 
-# Prefer same-origin kiosk when the bridge is already up. Splash on :8769 fetching
-# :8776 is cross-origin; recent Chromium Private Network Access often blocks it,
-# leaving the panel on "Waiting for bridge…" forever with no avatar.
-if curl -fsS -m 0.6 "http://127.0.0.1:8776/kiosk/boot.txt" >/dev/null 2>&1; then
-  START_URL="$URL"
-  echo "Kiosk start direct (bridge ready)"
+# Always open the branded splash first — never jump straight to the avatar.
+# Splash waits for bridge + speaker readiness (see splash.html / kiosk/ready.json).
+# Encode ? and & inside target so bloom/fps stay on the kiosk URL, not splash.
+TARGET_Q=$(URL="$URL" python3 -c 'import urllib.parse,os; print(urllib.parse.quote(os.environ["URL"], safe=":/"))')
+if curl -fsS -m 0.4 "http://127.0.0.1:${SPLASH_PORT}/splash.html" >/dev/null 2>&1; then
+  START_URL="http://127.0.0.1:${SPLASH_PORT}/splash.html?target=${TARGET_Q}&timeout_ms=180000"
+  echo "Kiosk start via splash :${SPLASH_PORT}"
+elif curl -fsS -m 0.4 "http://127.0.0.1:8776/kiosk/splash.html" >/dev/null 2>&1; then
+  START_URL="http://127.0.0.1:8776/kiosk/splash.html?target=${TARGET_Q}&timeout_ms=180000"
+  echo "Kiosk start via bridge splash"
 else
-  # Encode ? and & inside target so bloom/fps stay on the kiosk URL, not splash.
-  TARGET_Q=$(URL="$URL" python3 -c 'import urllib.parse,os; print(urllib.parse.quote(os.environ["URL"], safe=":/"))')
-  if curl -fsS -m 0.4 "http://127.0.0.1:${SPLASH_PORT}/splash.html" >/dev/null 2>&1; then
-    START_URL="http://127.0.0.1:${SPLASH_PORT}/splash.html?target=${TARGET_Q}"
-  elif curl -fsS -m 0.4 "http://127.0.0.1:8776/kiosk/splash.html" >/dev/null 2>&1; then
-    START_URL="http://127.0.0.1:8776/kiosk/splash.html?target=${TARGET_Q}"
-  else
-    # Last resort: open kiosk URL directly (may blank until bridge is up).
-    START_URL="$URL"
-  fi
+  # Last resort: open kiosk URL directly (may blank until bridge is up).
+  START_URL="$URL"
+  echo "Kiosk start direct (no splash server)"
 fi
 
 mkdir -p "$PROFILE"

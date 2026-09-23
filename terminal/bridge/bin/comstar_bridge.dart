@@ -162,6 +162,14 @@ Future<void> main(List<String> arguments) async {
   await coordinator.start(visionPoller: visionPoller);
   await hotspot.start();
 
+  audioServer.readinessExtra = () {
+    final h = coordinator!.healthStatus();
+    return {
+      'audio_connected': h['audio_connected'] == true,
+      'kiosk_connected': h['kiosk_connected'] == true,
+    };
+  };
+
   final road = RoadService(
     yamlConfig: config.road,
     defaultHealthUrl:
