@@ -8,6 +8,8 @@ import 'package:comstar_bridge/vision/cpai_client.dart';
 import 'package:comstar_bridge/vision/identity.dart';
 import 'package:comstar_bridge/vision/models.dart';
 
+export 'package:comstar_bridge/vision/models.dart' show VisionOverlay;
+
 /// Events emitted by the vision poll loop for the attention machine.
 sealed class VisionEvent {
   const VisionEvent();
