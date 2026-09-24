@@ -36,6 +36,9 @@ class HttpAudioServer {
   Future<Map<String, dynamic>?> Function(Map<String, dynamic> options)?
       onAvatarOptions;
 
+  /// Optional extra readiness (kiosk/audio WS) for splash gate.
+  Map<String, Object?> Function()? readinessExtra;
+
   /// Last options accepted via `/control/avatar` (for GET).
   Map<String, dynamic> _avatarOptions = const {
     'bloom': 3,
@@ -77,6 +80,9 @@ class HttpAudioServer {
     }
 
     if (path == 'kiosk' || path.startsWith('kiosk/')) {
+      if (path == 'kiosk/ready.json' || path == 'kiosk/ready') {
+        return _serveReady();
+      }
       logDebug('kiosk_http', 'serve', data: {'path': path});
       return _serveKiosk(path);
     }
@@ -245,6 +251,112 @@ class HttpAudioServer {
         body: jsonEncode(body),
         headers: {'Content-Type': 'application/json'},
       );
+
+  /// Preferred Pulse sink name (env override or terminal control default).
+  String get preferredSpeakerSink {
+    final env = Platform.environment['COMSTAR_SPEAKER_SOURCE']?.trim();
+    if (env != null && env.isNotEmpty) return env;
+    return control?.preferredSink ?? 'comstar_hdmi';
+  }
+
+  /// True when preferred sink exists and is the Pulse default.
+  bool get isSpeakerReady => speakerReadiness()['ok'] == true;
+
+  /// Splash / boot gate snapshot for the preferred speaker sink.
+  Map<String, Object?> speakerReadiness() {
+    final preferred = preferredSpeakerSink;
+    final sinks = _listSinkNames();
+    final hasPreferred = sinks.contains(preferred);
+    final def = _defaultSink();
+    final ok = hasPreferred && def == preferred;
+    return {
+      'ok': ok,
+      'sink': def,
+      'want': preferred,
+      'has_preferred': hasPreferred,
+    };
+  }
+
+  String _speakerStatusMessage(Map<String, Object?> speaker) {
+    if (speaker['ok'] == true) return 'ready';
+    if (speaker['has_preferred'] != true) {
+      return 'Waiting for HDMI speaker…';
+    }
+    final sink = speaker['sink'];
+    final want = speaker['want'];
+    if (sink != null && sink != want) {
+      return 'Switching to speaker…';
+    }
+    return 'Waiting for speaker…';
+  }
+
+  /// Splash gate: bridge is up; wait for HDMI speaker sink before avatar UI.
+  /// Does **not** require kiosk WS (chicken-and-egg — kiosk connects after splash).
+  Response _serveReady() {
+    final preferred = preferredSpeakerSink;
+    final speaker = speakerReadiness();
+    final extra = readinessExtra?.call() ?? const <String, Object?>{};
+    final audioConnected = extra['audio_connected'] == true;
+
+    final speakerOk = speaker['ok'] == true;
+    final waiting = <String>[];
+    if (!speakerOk) waiting.add('speaker');
+    if (!audioConnected) waiting.add('audio');
+
+    // Gate on speaker sink only — audio WS is informational (splash status).
+    final ok = speakerOk;
+
+    final body = <String, Object?>{
+      'ok': ok,
+      'bridge': true,
+      'speaker': speakerOk,
+      'speaker_sink': speaker['sink'],
+      'speaker_want': preferred,
+      'audio_connected': audioConnected,
+      'kiosk_connected': extra['kiosk_connected'] == true,
+      'waiting': waiting,
+      'status': _speakerStatusMessage(speaker),
+    };
+    return Response.ok(
+      utf8.encode(jsonEncode(body)),
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Cache-Control': 'no-store',
+        'Access-Control-Allow-Origin': '*',
+      },
+    );
+  }
+
+  List<String> _listSinkNames() {
+    try {
+      final r = Process.runSync('pactl', ['list', 'short', 'sinks']);
+      if (r.exitCode != 0) return const [];
+      return r.stdout
+          .toString()
+          .trim()
+          .split('\n')
+          .where((l) => l.trim().isNotEmpty)
+          .map((l) {
+            final parts = l.split('\t');
+            return parts.length >= 2 ? parts[1] : '';
+          })
+          .where((n) => n.isNotEmpty)
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  String? _defaultSink() {
+    try {
+      final r = Process.runSync('pactl', ['get-default-sink']);
+      if (r.exitCode != 0) return null;
+      final n = r.stdout.toString().trim();
+      return n.isEmpty ? null : n;
+    } catch (_) {
+      return null;
+    }
+  }
 
   Future<Response> _serveKiosk(String urlPath) async {
     final root = kioskRoot;

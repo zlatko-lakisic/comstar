@@ -41,9 +41,20 @@
     text-transform: uppercase;
     color: #A8B6C4;
   }
+  .status-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    min-height: 1.4em;
+    padding: 0 24px;
+    max-width: min(92vw, 420px);
+  }
   .spin {
-    width: 28px;
-    height: 28px;
+    flex: 0 0 auto;
+    width: 16px;
+    height: 16px;
     border-radius: 50%;
     border: 2px solid rgba(61, 220, 255, 0.18);
     border-top-color: #3DDCFF;
@@ -51,13 +62,14 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
   .status {
+    flex: 1 1 auto;
     font: 400 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
     color: #6E7F90;
-    min-height: 1.4em;
-    text-align: center;
-    padding: 0 24px;
+    text-align: left;
+    min-width: 0;
   }
   .status.is-err { color: #FF5C5C; }
+  .status-row.is-err .spin { display: none; }
   .retry {
     display: none;
     margin-top: 4px;
@@ -77,7 +89,6 @@
 <body>
   <div class="wrap" id="wrap">
     <div class="mark" aria-hidden="true">
-      <!-- Inline brand mark so file:// works without relative asset fetch. -->
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="COMSTAR">
         <defs>
           <radialGradient id="glow" cx="50%" cy="50%" r="50%">
@@ -99,23 +110,29 @@
       </svg>
     </div>
     <div class="word">COMSTAR</div>
-    <div class="spin" id="spin" aria-hidden="true"></div>
-    <div class="status" id="status">Starting…</div>
+    <div class="status-row" id="statusRow">
+      <div class="spin" id="spin" aria-hidden="true"></div>
+      <div class="status" id="status">Starting…</div>
+    </div>
     <button type="button" class="retry" id="retry">Retry</button>
   </div>
 <script>
 (function () {
   const DEFAULT_TARGET = 'http://127.0.0.1:8776/kiosk/?bloom=3&fps=12';
   const BOOT = 'http://127.0.0.1:8776/kiosk/boot.txt';
+  const READY = 'http://127.0.0.1:8776/kiosk/ready.json';
+  const BRIDGE_SPLASH = 'http://127.0.0.1:8776/kiosk/splash.html';
   const params = new URLSearchParams(location.search);
-  const timeoutMs = Number(params.get('timeout_ms') || 90000);
+  // HDMI sink can take ~2 min after boot (prefer-hdmi fail → health heal).
+  const timeoutMs = Number(params.get('timeout_ms') || 180000);
   const statusEl = document.getElementById('status');
+  const statusRowEl = document.getElementById('statusRow');
   const spinEl = document.getElementById('spin');
   const retryEl = document.getElementById('retry');
   let stopped = false;
   let started = performance.now();
+  let lastStatus = '';
 
-  /** Only allow loopback kiosk URLs — blocks open redirects / XSS via ?target=. */
   function sanitizeTarget(raw) {
     try {
       const u = new URL(String(raw || ''), 'http://127.0.0.1');
@@ -123,7 +140,6 @@
       if (u.hostname !== '127.0.0.1' && u.hostname !== 'localhost') return DEFAULT_TARGET;
       if (u.port !== '8776') return DEFAULT_TARGET;
       if (!u.pathname.startsWith('/kiosk')) return DEFAULT_TARGET;
-      // Drop credentials / hash; keep query for bloom/fps.
       u.username = '';
       u.password = '';
       u.hash = '';
@@ -134,10 +150,18 @@
   }
 
   const target = sanitizeTarget(params.get('target') || DEFAULT_TARGET);
+  const onBridgeOrigin = location.port === '8776' && location.pathname.indexOf('/kiosk/') === 0;
 
   function setStatus(msg, err) {
-    statusEl.textContent = msg;
-    statusEl.classList.toggle('is-err', !!err);
+    const next = String(msg || '');
+    const isErr = !!err;
+    if (next === lastStatus && statusEl.classList.contains('is-err') === isErr) {
+      return;
+    }
+    lastStatus = next;
+    statusEl.textContent = next;
+    statusEl.classList.toggle('is-err', isErr);
+    statusRowEl.classList.toggle('is-err', isErr);
   }
 
   function showRetry() {
@@ -145,49 +169,77 @@
     retryEl.classList.add('show');
   }
 
-  async function probe() {
-    // no-cors: opaque success means the bridge answered; network errors reject.
-    // Avoids CORS / PNA failures that leave splash stuck on "Waiting…".
-    async function ping(url) {
-      try {
-        await fetch(url, { cache: 'no-store', mode: 'no-cors', method: 'GET' });
-        return true;
-      } catch (_) {
-        return false;
-      }
-    }
-    if (await ping(BOOT)) return true;
+  async function ping(url) {
     try {
-      const u = new URL(target);
-      const base = u.origin + u.pathname.replace(/\/?$/, '/');
-      return await ping(base);
+      await fetch(url, { cache: 'no-store', mode: 'no-cors', method: 'GET' });
+      return true;
     } catch (_) {
       return false;
     }
   }
 
+  async function fetchReady() {
+    try {
+      const r = await fetch(READY, { cache: 'no-store', mode: 'cors' });
+      if (!r.ok) return null;
+      return await r.json();
+    } catch (_) {
+      return null;
+    }
+  }
+
   async function go() {
     if (stopped) return;
-    setStatus('Waiting for bridge…');
-    const ok = await probe();
-    if (ok) {
-      setStatus('Loading kiosk…');
+
+    // Phase 1: wait for bridge HTTP (works cross-origin via no-cors).
+    if (!onBridgeOrigin) {
+      setStatus('Waiting for bridge…');
+      if (!(await ping(BOOT))) {
+        if (performance.now() - started >= timeoutMs) {
+          setStatus('Bridge did not start. Check comstar-bridge.', true);
+          showRetry();
+          return;
+        }
+        setTimeout(go, 500);
+        return;
+      }
+      // Hop to same-origin splash so ready.json is readable (avoids PNA).
+      const q = new URLSearchParams();
+      q.set('target', target);
+      q.set('timeout_ms', String(Math.max(5000, timeoutMs - (performance.now() - started))));
+      location.replace(BRIDGE_SPLASH + '?' + q.toString());
+      return;
+    }
+
+    // Phase 2 (same-origin): hold until speaker sink is ready.
+    // Only update the label when the bridge reports a new status — avoid
+    // Checking ↔ Waiting flicker between polls.
+    const ready = await fetchReady();
+    if (ready && ready.ok) {
+      setStatus('Loading avatar…');
       location.replace(target);
       return;
     }
-    const elapsed = performance.now() - started;
-    if (elapsed >= timeoutMs) {
-      setStatus('Bridge did not start. Check comstar-bridge.', true);
+    if (ready && typeof ready.status === 'string' && ready.status && ready.status !== 'ready') {
+      setStatus(ready.status);
+    } else if (!lastStatus || lastStatus === 'Starting…') {
+      setStatus('Waiting for systems…');
+    }
+
+    if (performance.now() - started >= timeoutMs) {
+      setStatus('Systems not ready. Check HDMI audio / comstar-bridge.', true);
       showRetry();
       return;
     }
-    setTimeout(go, 500);
+    setTimeout(go, 700);
   }
 
   retryEl.addEventListener('click', () => {
     stopped = false;
     started = performance.now();
+    lastStatus = '';
     retryEl.classList.remove('show');
+    statusRowEl.classList.remove('is-err');
     spinEl.style.display = '';
     setStatus('Retrying…');
     go();
