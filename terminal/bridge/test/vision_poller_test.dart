@@ -50,7 +50,7 @@ void main() {
       await server.stop();
     });
 
-    test('recognize is not called while identity is valid', () async {
+    test('recognize still runs for overlays while identity is valid', () async {
       final poller = VisionPoller(
         camera: FakeCamera([fakeJpegFrame()]),
         client: client,
@@ -59,13 +59,17 @@ void main() {
         clock: clock,
       );
 
-      // Resolve identity first.
+      // Resolve identity first — identity votes skip, but face overlays refresh.
       identity.recordMatch('_probe', 1.0);
       expect(identity.isResolved, isTrue);
 
       await poller.pollOnce(fakeJpegFrame());
       expect(server.detectionCalls, 1);
-      expect(server.recognizeCalls, 0);
+      expect(server.recognizeCalls, 1);
+      expect(
+        poller.lastOverlays.any((o) => o.kind == 'face' && o.label == '_probe'),
+        isTrue,
+      );
 
       await poller.dispose();
     });
@@ -148,6 +152,79 @@ void main() {
       await poller.pollOnce(fakeJpegFrame());
       expect(events.whereType<VisionPersonDetected>(), isNotEmpty);
       expect(events.whereType<VisionFaceRecognized>(), isNotEmpty);
+
+      await poller.dispose();
+    });
+
+    test('caches person then face overlays for admin preview', () async {
+      final poller = VisionPoller(
+        camera: FakeCamera([fakeJpegFrame()]),
+        client: client,
+        identity: identity,
+        config: _visionConfig(server.baseUri.toString()),
+        clock: clock,
+        resolveLabel: (faceId) async =>
+            faceId == '_probe' ? 'Zlatko Lakisic' : null,
+      );
+
+      await poller.pollOnce(fakeJpegFrame());
+      final overlays = poller.lastOverlays;
+      expect(overlays, isNotEmpty);
+      expect(
+        overlays.any((o) => o.kind == 'face' && o.label == 'Zlatko Lakisic'),
+        isTrue,
+      );
+      final face = overlays.firstWhere((o) => o.kind == 'face');
+      expect(face.toJson()['x_min'], 174);
+      expect(face.toJson()['y_max'], 373);
+
+      await poller.dispose();
+    });
+
+    test('unknown label when directory miss', () async {
+      final poller = VisionPoller(
+        camera: FakeCamera([fakeJpegFrame()]),
+        client: client,
+        identity: identity,
+        config: _visionConfig(server.baseUri.toString()),
+        clock: clock,
+        resolveLabel: (_) async => null,
+      );
+
+      await poller.pollOnce(fakeJpegFrame());
+      expect(
+        poller.lastOverlays.every((o) => o.label == 'unknown'),
+        isTrue,
+      );
+
+      await poller.dispose();
+    });
+
+    test('clears overlays when person absent', () async {
+      await server.stop();
+      server = FakeCpaiServer(
+        detectionFixture: const <String, dynamic>{
+          'success': true,
+          'predictions': <dynamic>[],
+        },
+      );
+      await server.start();
+      client.dispose();
+      client = CpaiClient(
+        config: _visionConfig(server.baseUri.toString()),
+      );
+
+      final poller = VisionPoller(
+        camera: FakeCamera([fakeJpegFrame()]),
+        client: client,
+        identity: identity,
+        config: _visionConfig(server.baseUri.toString()),
+        clock: clock,
+        absentFrameThreshold: 1,
+      );
+
+      await poller.pollOnce(fakeJpegFrame());
+      expect(poller.lastOverlays, isEmpty);
 
       await poller.dispose();
     });

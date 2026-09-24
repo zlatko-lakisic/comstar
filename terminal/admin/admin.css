@@ -795,12 +795,20 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
 }
 .preview-pane__frame img {
   width: 100%;
   height: 100%;
   object-fit: contain;
   background: #000;
+}
+.preview-pane__overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
 }
 .preview-pane__frame--vnc {
   position: relative;

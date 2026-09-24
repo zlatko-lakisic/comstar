@@ -54,7 +54,7 @@ never require the admin token.
 |---|---|---|---|
 | `/admin/` | GET | token if LAN-bound | Static admin UI |
 | `/admin/health` `/health` | GET | none | Attention/session/WS snapshot (heal script) |
-| `/admin/api/status` | GET | token if LAN-bound | Extended status + host metrics + AO/CPAI probes (AO probe uses mTLS client cert when `orchestration.mtls.enabled`) |
+| `/admin/api/status` | GET | token if LAN-bound | Extended status + host metrics + AO/CPAI probes (AO probe uses mTLS client cert when `orchestration.mtls.enabled`). Includes `bind` (socket bind), `listen_ip` / `listen_kind` (`lan`\|`wlan`\|`vpn`\|`loopback`) for the address the client is using / preferred host IPv4. |
 | `/admin/api/logs` | GET | token if LAN-bound | SSE `journalctl --user` tail |
 | `/admin/api/restart` | POST | token if LAN-bound | `{unit: bridge\|audio\|kiosk\|stt\|health\|all}` |
 | `/admin/api/reboot` | POST | token if LAN-bound | `{confirm: "reboot"}` → `sudo /sbin/reboot` |
@@ -68,6 +68,7 @@ never require the admin token.
 | `/admin/api/preview/panel.ws` | GET↑WS | token if LAN-bound | WebSocket RFB proxy to loopback **wayvnc** (default panel) |
 | `/admin/api/preview/panel.mjpeg` | GET | token if LAN-bound | Multipart JPEG panel via `grim` when `admin.preview_panel: grim` |
 | `/admin/api/preview/camera.mjpeg` | GET | token if LAN-bound | Multipart MJPEG of hallway camera; see below |
+| `/admin/api/preview/vision` | GET | token if LAN-bound | Last person/face boxes for camera overlay; see below |
 | `/admin/inject` | POST | token if LAN-bound | Attention event inject; **403 unless `COMSTAR_ENV=dev`** |
 | `/oauth/google/*` | * | none | Desktop OAuth start/callback/resend |
 
@@ -83,6 +84,7 @@ the dialog is open (no always-on capture). Auth is the same LAN token as other
 | `GET /admin/api/preview/panel.ws` | WebSocket (RFB) | Bridge starts loopback `wayvnc -w -d` (view-only, WebSocket) while ≥1 client is connected; proxies bytes. **503** if preview disabled / wayvnc missing / labwc not ready. Admin embeds vendored noVNC. |
 | `GET /admin/api/preview/panel.mjpeg` | `multipart/x-mixed-replace` JPEG | Only when `admin.preview_panel: grim`. Timed `grim` (+ PNG→ffmpeg if needed). Prefer wayvnc. |
 | `GET /admin/api/preview/camera.mjpeg` | `multipart/x-mixed-replace` JPEG | Prefer last JPEG from the vision poller (`COMSTAR_VISION=1`); else short-lived ffmpeg V4L2 grab at `admin.preview_camera_fps` only while subscribed. **503** if preview disabled or no camera/vision frames. |
+| `GET /admin/api/preview/vision` | JSON | `{ok, vision_active, ts_ms, overlays:[{kind,label,confidence,x_min,y_min,x_max,y_max}]}` — pixel boxes from the last vision poll (`kind` is `person` \| `face`). `label` is FreeIPA `displayName` (first+last) when the face is known, else `unknown`. Admin Live draws these on the camera pane. |
 
 **Config** (`admin`):
 

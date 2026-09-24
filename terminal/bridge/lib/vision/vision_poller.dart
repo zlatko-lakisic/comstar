@@ -6,6 +6,9 @@ import 'package:comstar_bridge/config.dart';
 import 'package:comstar_bridge/vision/camera.dart';
 import 'package:comstar_bridge/vision/cpai_client.dart';
 import 'package:comstar_bridge/vision/identity.dart';
+import 'package:comstar_bridge/vision/models.dart';
+
+export 'package:comstar_bridge/vision/models.dart' show VisionOverlay;
 
 /// Events emitted by the vision poll loop for the attention machine.
 sealed class VisionEvent {
@@ -39,7 +42,8 @@ final class VisionRecovered extends VisionEvent {
   const VisionRecovered();
 }
 
-/// Poll loop: detection at current fps; recognize only when needed.
+/// Poll loop: detection at current fps; face recognize for Admin overlays
+/// always while a person is present; identity votes only when needed.
 class VisionPoller {
   VisionPoller({
     required this.camera,
@@ -48,6 +52,7 @@ class VisionPoller {
     required this.config,
     required this.clock,
     this.absentFrameThreshold = 3,
+    this.resolveLabel,
   });
 
   final Camera camera;
@@ -56,6 +61,9 @@ class VisionPoller {
   final VisionConfig config;
   final Clock clock;
   final int absentFrameThreshold;
+
+  /// Optional faceId → display name (e.g. LDAP first+last) for Live overlays.
+  Future<String?> Function(String faceId)? resolveLabel;
 
   final _events = StreamController<VisionEvent>.broadcast(sync: true);
   StreamSubscription<Uint8List>? _frameSub;
@@ -66,11 +74,19 @@ class VisionPoller {
   var _absentFrames = 0;
   var _busy = false;
   Uint8List? _lastFrameJpeg;
+  List<VisionOverlay> _lastOverlays = const [];
+  var _lastOverlayTsMs = 0;
 
   Stream<VisionEvent> get events => _events.stream;
 
   /// Latest camera JPEG (for Admin Live view tap). Not persisted.
   Uint8List? get lastFrameJpeg => _lastFrameJpeg;
+
+  /// Last person/face boxes aligned with [lastFrameJpeg] (Admin overlay).
+  List<VisionOverlay> get lastOverlays =>
+      List<VisionOverlay>.unmodifiable(_lastOverlays);
+
+  int get lastOverlayTsMs => _lastOverlayTsMs;
 
   double get targetFps => _targetFps;
 
@@ -130,13 +146,18 @@ class VisionPoller {
           (a, b) => a.confidence >= b.confidence ? a : b,
         );
         _emit(VisionPersonDetected(best.confidence));
-
-        if (_personPresent && identity.needsRecognition) {
-          await _recognize(frame);
-        }
+        // Default label is unknown until face recognize stamps a name.
+        _setUnknownPersonOverlays(person);
+        // Always recognize for Live boxes; identity votes only when needed.
+        await _recognize(
+          frame,
+          applyIdentity: identity.needsRecognition,
+        );
       } else {
         _personPresent = false;
         _absentFrames++;
+        _lastOverlays = const [];
+        _lastOverlayTsMs = clock.nowMs;
         if (_absentFrames >= absentFrameThreshold) {
           _emit(const VisionPersonAbsent());
         }
@@ -146,14 +167,22 @@ class VisionPoller {
     }
   }
 
-  Future<void> _recognize(Uint8List frame) async {
+  Future<void> _recognize(
+    Uint8List frame, {
+    required bool applyIdentity,
+  }) async {
     final matches = await client.recognizeFace(frame);
     if (matches.isEmpty) {
       // No face this frame (angle/blur/cutoff). Keep vote progress while the
       // person is still present — wiping here blocked engagement whenever CPAI
       // flipped between success and unsuccessful on adjacent frames.
+      // Overlays stay as "unknown" from person detect.
       return;
     }
+
+    await _mergeFaceOverlays(matches);
+
+    if (!applyIdentity) return;
 
     // Multi-user: emit every known face above threshold. Single-user path
     // still uses the best match for vote locking.
@@ -194,6 +223,75 @@ class VisionPoller {
       case IdentityVotePending():
         break;
     }
+  }
+
+  void _setUnknownPersonOverlays(List<Detection> persons) {
+    _lastOverlays = [
+      for (final d in persons)
+        VisionOverlay(
+          kind: 'person',
+          label: 'unknown',
+          confidence: d.confidence,
+          xMin: d.xMin,
+          yMin: d.yMin,
+          xMax: d.xMax,
+          yMax: d.yMax,
+        ),
+    ];
+    _lastOverlayTsMs = clock.nowMs;
+  }
+
+  Future<void> _mergeFaceOverlays(List<FaceMatch> matches) async {
+    final faces = <VisionOverlay>[];
+    for (final m in matches) {
+      var label = 'unknown';
+      if (m.isKnown) {
+        final resolver = resolveLabel;
+        if (resolver != null) {
+          final named = await resolver(m.userid);
+          final trimmed = named?.trim();
+          label = (trimmed != null && trimmed.isNotEmpty) ? trimmed : 'unknown';
+        } else {
+          label = m.userid;
+        }
+      }
+      faces.add(
+        VisionOverlay(
+          kind: 'face',
+          label: label,
+          confidence: m.confidence,
+          xMin: m.xMin,
+          yMin: m.yMin,
+          xMax: m.xMax,
+          yMax: m.yMax,
+        ),
+      );
+    }
+    // Keep person boxes that don't heavily overlap a face (multi-person).
+    final keptPersons = _lastOverlays.where((o) {
+      if (o.kind != 'person') return false;
+      for (final f in faces) {
+        if (_iou(o, f) > 0.3) return false;
+      }
+      return true;
+    });
+    _lastOverlays = [...keptPersons, ...faces];
+    _lastOverlayTsMs = clock.nowMs;
+  }
+
+  static double _iou(VisionOverlay a, VisionOverlay b) {
+    final x1 = a.xMin > b.xMin ? a.xMin : b.xMin;
+    final y1 = a.yMin > b.yMin ? a.yMin : b.yMin;
+    final x2 = a.xMax < b.xMax ? a.xMax : b.xMax;
+    final y2 = a.yMax < b.yMax ? a.yMax : b.yMax;
+    final iw = x2 - x1;
+    final ih = y2 - y1;
+    if (iw <= 0 || ih <= 0) return 0;
+    final inter = iw * ih;
+    final areaA = (a.xMax - a.xMin) * (a.yMax - a.yMin);
+    final areaB = (b.xMax - b.xMin) * (b.yMax - b.yMin);
+    final union = areaA + areaB - inter;
+    return union <= 0 ? 0 : inter / union;
   }
 
   void _emit(VisionEvent event) {

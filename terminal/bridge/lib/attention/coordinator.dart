@@ -194,6 +194,12 @@ class AttentionCoordinator {
   /// Latest vision JPEG for Admin Live view (null when vision off / no frames).
   Uint8List? get visionLastJpeg => _visionPoller?.lastFrameJpeg;
 
+  /// Last person/face boxes for Admin Live camera overlay.
+  List<vision.VisionOverlay> get visionLastOverlays =>
+      _visionPoller?.lastOverlays ?? const [];
+
+  int get visionLastOverlayTsMs => _visionPoller?.lastOverlayTsMs ?? 0;
+
   /// True when a vision poller was started with this coordinator.
   bool get visionActive => _visionPoller != null;
   Future<void>? _sessionOpenFuture;
@@ -285,6 +291,7 @@ class AttentionCoordinator {
     );
     if (visionPoller != null) {
       _visionPoller = visionPoller;
+      visionPoller.resolveLabel = _overlayLabelForFaceId;
       await visionPoller.start();
       _visionSub = visionPoller.events.listen(_onVisionEvent);
     }
@@ -831,6 +838,15 @@ class AttentionCoordinator {
           );
         }
     }
+  }
+
+  /// Admin Live overlay label: FreeIPA displayName (first+last) or null → unknown.
+  Future<String?> _overlayLabelForFaceId(String faceId) async {
+    final result = await directory.resolveByFaceId(faceId);
+    return switch (result) {
+      DirectoryResolved(:final profile) => profile.displayName,
+      DirectoryMiss() || DirectoryError() => null,
+    };
   }
 
   void _handleAudioEnvelope(Envelope envelope) {
