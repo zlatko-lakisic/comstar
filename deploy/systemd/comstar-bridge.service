@@ -21,10 +21,11 @@ Environment=COMSTAR_SPEAKER_SOURCE=comstar_hdmi
 # Fallback when Ada speech is off / Mac bring-up (optional once Ada proven)
 Environment=COMSTAR_STT_URL=http://127.0.0.1:8090
 Environment=COMSTAR_TTS_URL=http://127.0.0.1:8091
-# When AO advertises hello.speech, pin better Ada sidecars via Reach overrides:
+# When AO advertises hello.speech, pin Ada sidecars via Reach overrides:
 # Environment=COMSTAR_SPEECH_OVERRIDE=1
 # Environment=COMSTAR_STT_URL=http://10.0.10.16:8093
-# Environment=COMSTAR_TTS_URL=http://10.0.10.16:8092
+# Environment=COMSTAR_TTS_URL=http://10.0.10.16:8091
+#   (:8091 = Qwen3-TTS Tier 1; :8092 was Kokoro — retired as product primary)
 # Or dedicated: COMSTAR_STT_OVERRIDE / COMSTAR_TTS_OVERRIDE
 # Optional when Ada sets AGENTIC_SPEECH_TOKEN:
 # Environment=COMSTAR_SPEECH_TOKEN=
