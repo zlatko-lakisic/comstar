@@ -252,15 +252,49 @@ class HttpAudioServer {
         headers: {'Content-Type': 'application/json'},
       );
 
+  /// Preferred Pulse sink name (env override or terminal control default).
+  String get preferredSpeakerSink {
+    final env = Platform.environment['COMSTAR_SPEAKER_SOURCE']?.trim();
+    if (env != null && env.isNotEmpty) return env;
+    return control?.preferredSink ?? 'comstar_hdmi';
+  }
+
+  /// True when preferred sink exists and is the Pulse default.
+  bool get isSpeakerReady => speakerReadiness()['ok'] == true;
+
+  /// Splash / boot gate snapshot for the preferred speaker sink.
+  Map<String, Object?> speakerReadiness() {
+    final preferred = preferredSpeakerSink;
+    final sinks = _listSinkNames();
+    final hasPreferred = sinks.contains(preferred);
+    final def = _defaultSink();
+    final ok = hasPreferred && def == preferred;
+    return {
+      'ok': ok,
+      'sink': def,
+      'want': preferred,
+      'has_preferred': hasPreferred,
+    };
+  }
+
+  String _speakerStatusMessage(Map<String, Object?> speaker) {
+    if (speaker['ok'] == true) return 'ready';
+    if (speaker['has_preferred'] != true) {
+      return 'Waiting for HDMI speaker…';
+    }
+    final sink = speaker['sink'];
+    final want = speaker['want'];
+    if (sink != null && sink != want) {
+      return 'Switching to speaker…';
+    }
+    return 'Waiting for speaker…';
+  }
+
   /// Splash gate: bridge is up; wait for HDMI speaker sink before avatar UI.
   /// Does **not** require kiosk WS (chicken-and-egg — kiosk connects after splash).
   Response _serveReady() {
-    final preferred =
-        Platform.environment['COMSTAR_SPEAKER_SOURCE']?.trim().isNotEmpty == true
-            ? Platform.environment['COMSTAR_SPEAKER_SOURCE']!.trim()
-            : (control?.preferredSink ?? 'comstar_hdmi');
-
-    final speaker = _speakerReady(preferred);
+    final preferred = preferredSpeakerSink;
+    final speaker = speakerReadiness();
     final extra = readinessExtra?.call() ?? const <String, Object?>{};
     final audioConnected = extra['audio_connected'] == true;
 
@@ -275,15 +309,13 @@ class HttpAudioServer {
     final body = <String, Object?>{
       'ok': ok,
       'bridge': true,
-      'speaker': speaker['ok'] == true,
+      'speaker': speakerOk,
       'speaker_sink': speaker['sink'],
       'speaker_want': preferred,
       'audio_connected': audioConnected,
       'kiosk_connected': extra['kiosk_connected'] == true,
       'waiting': waiting,
-      'status': ok
-          ? 'ready'
-          : 'Waiting for speaker…',
+      'status': _speakerStatusMessage(speaker),
     };
     return Response.ok(
       utf8.encode(jsonEncode(body)),
@@ -293,18 +325,6 @@ class HttpAudioServer {
         'Access-Control-Allow-Origin': '*',
       },
     );
-  }
-
-  Map<String, Object?> _speakerReady(String preferred) {
-    final sinks = _listSinkNames();
-    final hasPreferred = sinks.contains(preferred);
-    final def = _defaultSink();
-    final ok = hasPreferred && def == preferred;
-    return {
-      'ok': ok,
-      'sink': def,
-      'has_preferred': hasPreferred,
-    };
   }
 
   List<String> _listSinkNames() {

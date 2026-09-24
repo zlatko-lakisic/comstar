@@ -263,9 +263,15 @@ class AttentionCoordinator {
   var _sleepWakeRestarting = false;
   var _announceTickCounter = 0;
 
+  /// False until speaker sink + kiosk WS are up (splash dismissed + avatar connected).
+  /// Unsolicited speak (greeter, announce) waits on this so audio is not lost.
+  var _bootSurfaceReady = false;
+  Completer<void>? _bootSurfaceCompleter;
+
   Future<void> start({vision.VisionPoller? visionPoller}) async {
     await refreshUtteranceRouting();
     await audioServer.start();
+    _armBootSurfaceWatch();
     if (config.announce.enabled) {
       announce = AnnounceService(
         config: config,
@@ -301,6 +307,60 @@ class AttentionCoordinator {
     await _visionPoller?.stop();
     await session.close();
     await audioServer.stop();
+  }
+
+  /// Speaker sink ready and kiosk WebSocket connected (avatar past splash).
+  bool _isBootSurfaceReadyNow() =>
+      audioServer.isSpeakerReady && ws.hasRole('kiosk');
+
+  void _markBootSurfaceReady({String reason = 'ready'}) {
+    if (_bootSurfaceReady) return;
+    _bootSurfaceReady = true;
+    final c = _bootSurfaceCompleter;
+    if (c != null && !c.isCompleted) c.complete();
+    _bootSurfaceCompleter = null;
+    logInfo('boot_surface_ready', 'Unsolicited speak unlocked', data: {
+      'reason': reason,
+      'speaker': audioServer.isSpeakerReady,
+      'kiosk': ws.hasRole('kiosk'),
+    });
+  }
+
+  /// Poll until HDMI speaker + kiosk UI are up; timeout so we never soft-brick.
+  void _armBootSurfaceWatch() {
+    if (_bootSurfaceReady) return;
+    _bootSurfaceCompleter ??= Completer<void>();
+    unawaited(() async {
+      // Match splash timeout (~3 min) for HDMI heal after prefer-hdmi fail.
+      for (var i = 0; i < 360; i++) {
+        if (_isBootSurfaceReadyNow()) {
+          _markBootSurfaceReady();
+          return;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+      }
+      logWarn(
+        'boot_surface_timeout',
+        'Speaker/kiosk not ready in time; unlocking speak anyway',
+        data: {
+          'speaker': audioServer.isSpeakerReady,
+          'kiosk': ws.hasRole('kiosk'),
+        },
+      );
+      _markBootSurfaceReady(reason: 'timeout');
+    }());
+  }
+
+  /// Hold greeter / announce until the loading surface is dismissed.
+  Future<void> _awaitBootSurfaceReady() async {
+    if (_bootSurfaceReady) return;
+    if (_isBootSurfaceReadyNow()) {
+      _markBootSurfaceReady();
+      return;
+    }
+    final c = _bootSurfaceCompleter ??= Completer<void>();
+    logInfo('boot_speak_hold', 'Holding speak until surface ready');
+    await c.future;
   }
 
   void attachAudioChannel(WebSocketChannel channel) {
@@ -364,6 +424,7 @@ class AttentionCoordinator {
       _announceTickCounter++;
       // ~1 Hz gate evaluation while engaged and idle.
       if (_announceTickCounter % 10 == 0 &&
+          _bootSurfaceReady &&
           machine.state is Engaged &&
           !machine.context.playing &&
           !machine.context.announcedThisEngage) {
@@ -3688,6 +3749,7 @@ class AttentionCoordinator {
   Future<void> _announceEngaged(String spoken) async {
     spoken = formatForSpeech(spoken);
     if (spoken.trim().isEmpty) return;
+    await _awaitBootSurfaceReady();
     try {
       machine.context.playing = true;
       _followUpGen++;
@@ -4200,6 +4262,7 @@ class AttentionCoordinator {
     String turnId,
     String mood,
   ) async {
+    await _awaitBootSurfaceReady();
     try {
       machine.context.playing = true;
       _followUpGen++;
@@ -4261,6 +4324,7 @@ class AttentionCoordinator {
   }
 
   Future<void> _runGreeter(String userid) async {
+    await _awaitBootSurfaceReady();
     try {
       final name = machine.context.cachedDisplayName ?? userid;
       var greeting = phraseBank.pick(PhraseCategory.engage, name: name);

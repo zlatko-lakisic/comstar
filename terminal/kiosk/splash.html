@@ -41,9 +41,20 @@
     text-transform: uppercase;
     color: #A8B6C4;
   }
+  .status-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    min-height: 1.4em;
+    padding: 0 24px;
+    max-width: min(92vw, 420px);
+  }
   .spin {
-    width: 28px;
-    height: 28px;
+    flex: 0 0 auto;
+    width: 16px;
+    height: 16px;
     border-radius: 50%;
     border: 2px solid rgba(61, 220, 255, 0.18);
     border-top-color: #3DDCFF;
@@ -51,13 +62,14 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
   .status {
+    flex: 1 1 auto;
     font: 400 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
     color: #6E7F90;
-    min-height: 1.4em;
-    text-align: center;
-    padding: 0 24px;
+    text-align: left;
+    min-width: 0;
   }
   .status.is-err { color: #FF5C5C; }
+  .status-row.is-err .spin { display: none; }
   .retry {
     display: none;
     margin-top: 4px;
@@ -98,8 +110,10 @@
       </svg>
     </div>
     <div class="word">COMSTAR</div>
-    <div class="spin" id="spin" aria-hidden="true"></div>
-    <div class="status" id="status">Starting…</div>
+    <div class="status-row" id="statusRow">
+      <div class="spin" id="spin" aria-hidden="true"></div>
+      <div class="status" id="status">Starting…</div>
+    </div>
     <button type="button" class="retry" id="retry">Retry</button>
   </div>
 <script>
@@ -112,10 +126,12 @@
   // HDMI sink can take ~2 min after boot (prefer-hdmi fail → health heal).
   const timeoutMs = Number(params.get('timeout_ms') || 180000);
   const statusEl = document.getElementById('status');
+  const statusRowEl = document.getElementById('statusRow');
   const spinEl = document.getElementById('spin');
   const retryEl = document.getElementById('retry');
   let stopped = false;
   let started = performance.now();
+  let lastStatus = '';
 
   function sanitizeTarget(raw) {
     try {
@@ -137,8 +153,15 @@
   const onBridgeOrigin = location.port === '8776' && location.pathname.indexOf('/kiosk/') === 0;
 
   function setStatus(msg, err) {
-    statusEl.textContent = msg;
-    statusEl.classList.toggle('is-err', !!err);
+    const next = String(msg || '');
+    const isErr = !!err;
+    if (next === lastStatus && statusEl.classList.contains('is-err') === isErr) {
+      return;
+    }
+    lastStatus = next;
+    statusEl.textContent = next;
+    statusEl.classList.toggle('is-err', isErr);
+    statusRowEl.classList.toggle('is-err', isErr);
   }
 
   function showRetry() {
@@ -189,17 +212,18 @@
     }
 
     // Phase 2 (same-origin): hold until speaker sink is ready.
-    setStatus('Checking systems…');
+    // Only update the label when the bridge reports a new status — avoid
+    // Checking ↔ Waiting flicker between polls.
     const ready = await fetchReady();
     if (ready && ready.ok) {
-      setStatus('Loading…');
+      setStatus('Loading avatar…');
       location.replace(target);
       return;
     }
-    if (ready && ready.status) {
+    if (ready && typeof ready.status === 'string' && ready.status && ready.status !== 'ready') {
       setStatus(ready.status);
-    } else {
-      setStatus('Waiting for speaker…');
+    } else if (!lastStatus || lastStatus === 'Starting…') {
+      setStatus('Waiting for systems…');
     }
 
     if (performance.now() - started >= timeoutMs) {
@@ -213,7 +237,9 @@
   retryEl.addEventListener('click', () => {
     stopped = false;
     started = performance.now();
+    lastStatus = '';
     retryEl.classList.remove('show');
+    statusRowEl.classList.remove('is-err');
     spinEl.style.display = '';
     setStatus('Retrying…');
     go();
